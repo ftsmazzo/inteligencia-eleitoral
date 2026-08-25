@@ -1,0 +1,10 @@
+---
+description: Pastas do projeto — o que o agente pode e não pode gravar
+alwaysApply: true
+---
+
+Não criar, editar, mover nem apagar nada em Arquitetura/. É legado de outra aplicação, só consulta. Artefato novo vai em docs/, data/, inbox/ (só README), .cursor/, AGENTS.md.
+
+inbox/ é RAW sujo: somente leitura. Não editar, renomear, organizar nem apagar arquivos despejados. Reuso = copiar para data/raw/<id_base>/<data>/ com SHA-256. Nunca promover arquivo de inbox direto ao Postgres.
+
+data/raw e data/staging são a árvore canônica deste projeto. Não gravar fato com prefixo ne9_ nem copiar a árvore da campanha para a raiz.

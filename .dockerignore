@@ -1,0 +1,7 @@
+data
+inbox
+Arquitetura
+.git
+.env
+*.pyc
+__pycache__

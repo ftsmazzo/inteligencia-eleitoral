@@ -1,0 +1,10 @@
+---
+description: Recorte da Inteligência Eleitoral Brasil e recusa seca fora de escopo
+alwaysApply: true
+---
+
+Esta ferramenta não é a campanha NE9. Recorte: Brasil; cargos presidente, governador, senador, deputado federal, deputado estadual, prefeito, vereador; urnas federais/estaduais 2014, 2018, 2022 (resultado) e 2026 (só candidatura até existir urna oficial); urnas municipais 2016, 2020, 2024.
+
+Pedido fora disso: não estimar, não completar com Nordeste, não puxar 2002–2012. Devolver exatamente o modelo em docs/SPEC-BRASIL.md (parágrafo "Resposta fora do recorte").
+
+Número nunca vem de RAG. Ausência é inexistente, não zero. Sem rateio UF→município. Fontes: docs/FONTES-NUCLEO.md. Pastas: data/README.md.

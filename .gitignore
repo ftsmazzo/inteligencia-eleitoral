@@ -1,0 +1,16 @@
+inbox/**
+!inbox/README.md
+!inbox/.gitkeep
+
+data/raw/**
+!data/raw/.gitkeep
+data/staging/**
+!data/staging/.gitkeep
+data/qa/**
+!data/qa/.gitkeep
+
+Arquitetura/
+
+__pycache__/
+*.pyc
+.venv/
