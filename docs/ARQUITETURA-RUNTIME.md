@@ -6,7 +6,7 @@ A pessoa designada conecta **só o MCP**. Não recebe usuário do Postgres.
 
 Dois serviços no dia 1:
 
-1. **postgres** (16+) — volume persistente, backup. Extensões: `pg_trgm`; `vector` só quando houver trilha B.
+1. **postgres** (16+) — volume persistente, backup. Extensões: `pg_trgm`; `vector` só quando houver trilha B. **Sem porta publicada na internet** — só rede interna (`postgres:5432` para o `mcp-api`). Administração/carga: tunnel SSH ou job no EasyPanel.
 2. **mcp-api** — app Python atrás de HTTPS. Rotas: `/health`, `/mcp`. Token no header. A mesma app pode expor REST fino (`/v1/votacao`) que chama as **mesmas** funções SQL — um contrato, dois transportes.
 
 Não neste projeto: Redis, OpenSearch, o Postgres de clipping, o MCP da campanha, o serviço `pesquisas`.

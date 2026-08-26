@@ -1,5 +1,7 @@
 # Auditoria do ciclo eleitoral · 25/08/2026
 
+> **Obsoleto para status de carga.** Use `docs/AUDITORIA-RECORTE.md` e `python scripts/auditar_recorte.py`. Este arquivo permanece só como registro do download manual daquele dia.
+
 Nada foi carregado no banco. CDN TSE respondeu **403** desta máquina (mesmo bloqueio da campanha). Os 13 pacotes faltantes vão por download no navegador.
 
 ## O que já está em `data/raw` (Brasil completo, zip)

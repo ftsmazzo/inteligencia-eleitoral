@@ -1,6 +1,8 @@
 # Inventário do inbox (despejo intacto)
 
-O `inbox/` **não foi movido nem limpo** — 965 arquivos, ~50 GB. Esta página é o índice: o que entra no núcleo Brasil, o que fica de fora, o que falta baixar.
+O `inbox/` **não foi movido nem limpo** — 965 arquivos, ~50 GB. Esta página é o índice do **despejo**: o que entra no núcleo Brasil, o que fica de fora.
+
+**Status de carga (raw + Postgres):** `docs/AUDITORIA-RECORTE.md` e `python scripts/auditar_recorte.py`. Não usar esta página para saber se o banco está completo — ela envelhece rápido.
 
 CSV misturado com PDF é o padrão da campanha: número, acervo e relatório na mesma árvore. Aqui separamos por **uso**, não por extensão.
 
