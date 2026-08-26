@@ -1,6 +1,8 @@
 # Guia do usuário · Inteligência Eleitoral Brasil
 
-Versão 1.0 · 26/08/2026
+**Página online (principal):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia
+
+Versão 1.0 · 26/08/2026 — este arquivo é espelho estático; prefira a página web.
 
 Este guia é para **quem usa** a ferramenta — não para quem administra servidor ou banco de dados.
 

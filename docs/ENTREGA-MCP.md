@@ -2,8 +2,8 @@
 
 Versão 0.1 · 26/08/2026
 
-**Guia simples para o usuário:** `docs/GUIA-USUARIO.md`  
-**Skill para IAs (Claude, GPT, Manus, Cursor):** `docs/SKILL-INTELIGENCIA-ELEITORAL.md`
+**Guia do usuário (página web):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia  
+**Skill para IAs:** download na página /guia ou `docs/SKILL-INTELIGENCIA-ELEITORAL.md`
 
 A pessoa designada **não recebe login do Postgres**. Acesso só via HTTP(S) com token.
 

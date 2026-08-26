@@ -14,5 +14,5 @@ Dump sujo: `inbox/` (somente leitura). Canônico: `data/` (`data/README.md`).
 
 Entrega MCP: `docs/ENTREGA-MCP.md`.
 
-Guia do usuário (conexão MCP + exemplos): `docs/GUIA-USUARIO.md`.  
-Skill portátil (Claude, GPT, Manus, Cursor): `docs/SKILL-INTELIGENCIA-ELEITORAL.md`.
+Guia do usuário (página web): https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia  
+Skill portátil (Claude, GPT, Manus, Cursor): `docs/SKILL-INTELIGENCIA-ELEITORAL.md` ou download na página /guia.

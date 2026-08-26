@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inteligência Eleitoral Brasil · Guia</title>
+  <meta name="description" content="Guia para conectar e usar a base eleitoral oficial do Brasil via MCP — votos, candidatos, eleitos e contexto." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --surface: #ffffff;
+      --ink: #0c1222;
+      --muted: #5c6478;
+      --line: #e2e8f0;
+      --brand: #0d4f4a;
+      --brand-light: #e6f4f2;
+      --accent: #c9a227;
+      --accent-soft: #faf3dc;
+      --ok: #15803d;
+      --radius: 16px;
+      --shadow: 0 4px 24px rgba(12, 18, 34, 0.06);
+      --shadow-lg: 0 20px 50px rgba(12, 18, 34, 0.1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.6;
+      font-size: 16px;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+    /* Header */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(244, 246, 250, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+    }
+    .header-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 0; gap: 16px; flex-wrap: wrap;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+    .logo-mark {
+      width: 40px; height: 40px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--brand), #1a7a72);
+      display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 14px;
+    }
+    .logo-text { font-family: Fraunces, serif; font-weight: 700; font-size: 1.05rem; }
+    nav { display: flex; gap: 8px; flex-wrap: wrap; }
+    nav a {
+      text-decoration: none; color: var(--muted); font-size: 0.9rem; font-weight: 500;
+      padding: 8px 14px; border-radius: 999px; transition: 0.2s;
+    }
+    nav a:hover { background: var(--surface); color: var(--ink); }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; font-weight: 600; padding: 6px 12px;
+      border-radius: 999px; background: var(--surface); border: 1px solid var(--line);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.2); }
+
+    /* Hero */
+    .hero {
+      padding: 56px 0 48px;
+      background: linear-gradient(180deg, var(--brand-light) 0%, var(--bg) 100%);
+    }
+    .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+    @media (max-width: 860px) { .hero-grid { grid-template-columns: 1fr; } }
+    .hero h1 {
+      font-family: Fraunces, serif; font-size: clamp(2rem, 5vw, 2.75rem);
+      line-height: 1.15; margin-bottom: 16px; letter-spacing: -0.02em;
+    }
+    .hero p.lead { font-size: 1.125rem; color: var(--muted); margin-bottom: 28px; max-width: 520px; }
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 22px; border-radius: 12px; font-weight: 600; font-size: 0.95rem;
+      text-decoration: none; border: none; cursor: pointer; transition: 0.2s;
+    }
+    .btn-primary { background: var(--brand); color: #fff; }
+    .btn-primary:hover { background: #0a3d39; transform: translateY(-1px); }
+    .btn-secondary { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+    .btn-secondary:hover { border-color: var(--brand); color: var(--brand); }
+    .hero-card {
+      background: var(--surface); border-radius: var(--radius); padding: 28px;
+      box-shadow: var(--shadow-lg); border: 1px solid var(--line);
+    }
+    .hero-card h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 16px; }
+    .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .stat {
+      background: var(--bg); border-radius: 12px; padding: 16px;
+    }
+    .stat strong { display: block; font-size: 1.5rem; font-family: Fraunces, serif; color: var(--brand); }
+    .stat span { font-size: 0.8rem; color: var(--muted); }
+
+    /* Sections */
+    section { padding: 64px 0; }
+    section:nth-child(even) { background: var(--surface); }
+    .section-head { text-align: center; max-width: 640px; margin: 0 auto 40px; }
+    .section-head h2 { font-family: Fraunces, serif; font-size: 1.85rem; margin-bottom: 12px; }
+    .section-head p { color: var(--muted); }
+
+    /* Cards grid */
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+    .card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 24px; transition: 0.2s;
+    }
+    section:nth-child(even) .card { background: var(--bg); }
+    .card:hover { box-shadow: var(--shadow); border-color: #cbd5e1; }
+    .card-icon {
+      width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+      background: var(--brand-light); color: var(--brand); font-size: 1.25rem; margin-bottom: 14px;
+    }
+    .card h3 { font-size: 1.05rem; margin-bottom: 8px; }
+    .card p { font-size: 0.9rem; color: var(--muted); }
+    .card .ex { margin-top: 12px; font-size: 0.85rem; font-style: italic; color: var(--brand); }
+
+    /* Timeline */
+    .years { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 24px; }
+    .year-chip {
+      padding: 10px 18px; border-radius: 999px; font-weight: 600; font-size: 0.9rem;
+      background: var(--brand-light); color: var(--brand);
+    }
+    .year-chip.mun { background: var(--accent-soft); color: #8a6910; }
+    .year-chip.live { background: #ede9fe; color: #5b21b6; }
+
+    /* Connect */
+    .connect-box {
+      background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+      overflow: hidden; box-shadow: var(--shadow);
+    }
+    section:nth-child(even) .connect-box { background: var(--bg); }
+    .token-row {
+      padding: 20px 24px; border-bottom: 1px solid var(--line);
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: end;
+    }
+    .token-row label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
+    .token-row input {
+      flex: 1; min-width: 240px; padding: 12px 16px; border-radius: 10px;
+      border: 1px solid var(--line); font-family: inherit; font-size: 0.95rem;
+    }
+    .token-row input:focus { outline: 2px solid var(--brand); border-color: transparent; }
+    .tabs { display: flex; border-bottom: 1px solid var(--line); overflow-x: auto; }
+    .tab {
+      padding: 14px 20px; font-weight: 600; font-size: 0.9rem; cursor: pointer;
+      color: var(--muted); border: none; background: none; white-space: nowrap;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+    }
+    .tab.active { color: var(--brand); border-bottom-color: var(--brand); }
+    .tab-panel { display: none; padding: 24px; }
+    .tab-panel.active { display: block; }
+    .code-block { position: relative; margin-top: 12px; }
+    .code-block pre {
+      background: #0c1222; color: #e2e8f0; padding: 20px; border-radius: 12px;
+      overflow-x: auto; font-size: 0.82rem; line-height: 1.5;
+      font-family: "Consolas", "Monaco", monospace;
+    }
+    .copy-btn {
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);
+      padding: 6px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 600; cursor: pointer;
+    }
+    .copy-btn:hover { background: rgba(255,255,255,0.2); }
+    .steps { counter-reset: step; list-style: none; }
+    .steps li {
+      counter-increment: step; padding-left: 48px; position: relative; margin-bottom: 20px;
+    }
+    .steps li::before {
+      content: counter(step); position: absolute; left: 0; top: 0;
+      width: 32px; height: 32px; border-radius: 50%; background: var(--brand); color: #fff;
+      display: grid; place-items: center; font-weight: 700; font-size: 0.9rem;
+    }
+
+    /* Resources */
+    .resource-list { display: grid; gap: 12px; }
+    .resource {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 18px 20px; background: var(--surface); border: 1px solid var(--line);
+      border-radius: 12px; text-decoration: none; color: inherit; transition: 0.2s;
+    }
+    section:nth-child(even) .resource { background: var(--bg); }
+    .resource:hover { border-color: var(--brand); box-shadow: var(--shadow); }
+    .resource strong { display: block; font-size: 0.95rem; }
+    .resource span { font-size: 0.85rem; color: var(--muted); }
+    .resource-dl { font-size: 0.8rem; font-weight: 600; color: var(--brand); white-space: nowrap; }
+
+    /* FAQ */
+    details {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+      padding: 16px 20px; margin-bottom: 10px;
+    }
+    section:nth-child(even) details { background: var(--bg); }
+    summary { font-weight: 600; cursor: pointer; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    details p { margin-top: 12px; color: var(--muted); font-size: 0.95rem; }
+
+    footer {
+      padding: 40px 0; text-align: center; color: var(--muted); font-size: 0.85rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: var(--ink); color: #fff; padding: 12px 24px; border-radius: 999px;
+      font-weight: 600; font-size: 0.9rem; opacity: 0; transition: 0.3s; z-index: 200;
+      pointer-events: none;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap header-inner">
+      <a class="logo" href="#top">
+        <div class="logo-mark">IE</div>
+        <span class="logo-text">Inteligência Eleitoral Brasil</span>
+      </a>
+      <nav>
+        <a href="#o-que-e">O que é</a>
+        <a href="#conectar">Conectar</a>
+        <a href="#perguntas">Perguntas</a>
+        <a href="#recursos">Recursos</a>
+      </nav>
+      <div class="status-pill"><span class="dot" id="health-dot"></span><span id="health-text">Verificando…</span></div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <h1>Dados eleitorais do Brasil, prontos para sua IA</h1>
+          <p class="lead">Votos, candidatos, eleitos, contas de campanha, população, CadÚnico, Bolsa Família e Câmara — fontes oficiais, sem inventar número.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#conectar">Conectar agora</a>
+            <a class="btn btn-secondary" href="#recursos">Baixar recursos</a>
+          </div>
+        </div>
+        <div class="hero-card">
+          <h3>Na base agora</h3>
+          <div class="stat-row">
+            <div class="stat"><strong>5.571</strong><span>municípios</span></div>
+            <div class="stat"><strong>6</strong><span>eleições na urna</span></div>
+            <div class="stat"><strong>19</strong><span>consultas MCP</span></div>
+            <div class="stat"><strong>100%</strong><span>Brasil</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="o-que-e">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>O que você pode fazer</h2>
+          <p>Pergunte em linguagem normal. A IA consulta a base e devolve só o que existe.</p>
+        </div>
+        <div class="grid-3">
+          <div class="card"><div class="card-icon">🗳️</div><h3>Votos e eleitos</h3><p>Resultado oficial por candidato, partido, município ou UF.</p><p class="ex">“Votos do Lula em SP no 2º turno de 2022”</p></div>
+          <div class="card"><div class="card-icon">👤</div><h3>Candidatos</h3><p>Quem concorreu, partido, situação, número na urna.</p><p class="ex">“Candidatos PL a dep. federal em PE em 2022”</p></div>
+          <div class="card"><div class="card-icon">📊</div><h3>Comparecimento</h3><p>Aptos, comparecimento, brancos, nulos e válidos.</p><p class="ex">“Apuração em Recife, prefeito 2024”</p></div>
+          <div class="card"><div class="card-icon">💰</div><h3>Contas e bens</h3><p>Receitas, despesas e patrimônio declarado ao TSE.</p><p class="ex">“Receita de campanha do candidato X em 2022”</p></div>
+          <div class="card"><div class="card-icon">🏛️</div><h3>Câmara</h3><p>Deputados, proposições e votos nominais 2023–2026.</p><p class="ex">“PLs apresentados em 2024”</p></div>
+          <div class="card"><div class="card-icon">🌎</div><h3>Contexto</h3><p>População IBGE, CadÚnico e Bolsa Família municipal.</p><p class="ex">“Famílias no CadÚnico em Fortaleza”</p></div>
+        </div>
+        <div class="section-head" style="margin-top:48px;margin-bottom:16px">
+          <h2>Anos disponíveis</h2>
+        </div>
+        <div class="years">
+          <span class="year-chip">2014 geral</span>
+          <span class="year-chip mun">2016 municipal</span>
+          <span class="year-chip">2018 geral</span>
+          <span class="year-chip mun">2020 municipal</span>
+          <span class="year-chip">2022 geral</span>
+          <span class="year-chip mun">2024 municipal</span>
+          <span class="year-chip live">2026 candidatura (sem urna)</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="conectar">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Conectar em 3 passos</h2>
+          <p>Cole seu token uma vez — os blocos abaixo atualizam automaticamente.</p>
+        </div>
+        <div class="connect-box">
+          <div class="token-row">
+            <div style="flex:1;min-width:240px">
+              <label for="token">Seu token de acesso</label>
+              <input type="password" id="token" placeholder="Cole o token que você recebeu" autocomplete="off" />
+            </div>
+            <button class="btn btn-secondary" type="button" id="toggle-token">Mostrar</button>
+          </div>
+          <ol class="steps wrap" style="padding:24px 24px 8px">
+            <li>Peça o <strong>token</strong> a quem administra a ferramenta.</li>
+            <li>Escolha sua IA abaixo e <strong>cole a configuração</strong>.</li>
+            <li>Faça uma pergunta com <strong>ano + cargo + lugar</strong>.</li>
+          </ol>
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="cursor">Cursor</button>
+            <button class="tab" data-tab="claude">Claude</button>
+            <button class="tab" data-tab="outras">ChatGPT · Manus · Outras</button>
+            <button class="tab" data-tab="teste">Teste rápido</button>
+          </div>
+          <div class="tab-panel active" id="panel-cursor">
+            <p style="color:var(--muted);margin-bottom:12px">Settings → MCP → cole este JSON:</p>
+            <div class="code-block">
+              <button class="copy-btn" data-copy="cfg-cursor">Copiar</button>
+              <pre id="cfg-cursor"></pre>
+            </div>
+          </div>
+          <div class="tab-panel" id="panel-claude">
+            <p style="color:var(--muted);margin-bottom:12px">Configuração MCP remota (Claude Desktop):</p>
+            <div class="code-block">
+              <button class="copy-btn" data-copy="cfg-claude">Copiar</button>
+              <pre id="cfg-claude"></pre>
+            </div>
+          </div>
+          <div class="tab-panel" id="panel-outras">
+            <p style="color:var(--muted);margin-bottom:16px">Copie a <strong>Skill para IA</strong> (aba Recursos) e cole nas instruções do agente. Informe URL e token:</p>
+            <div class="code-block">
+              <button class="copy-btn" data-copy="cfg-url">Copiar URL</button>
+              <pre id="cfg-url"></pre>
+            </div>
+          </div>
+          <div class="tab-panel" id="panel-teste">
+            <p style="color:var(--muted);margin-bottom:12px">Exemplo para testar (Postman, Insomnia ou extensão REST):</p>
+            <div class="code-block">
+              <button class="copy-btn" data-copy="cfg-teste">Copiar</button>
+              <pre id="cfg-teste"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="perguntas">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Como formular boas perguntas</h2>
+          <p>Sempre inclua ano, cargo e território (UF ou município).</p>
+        </div>
+        <div class="grid-3">
+          <div class="card"><h3>✓ Bom</h3><p>“Eleitos a governador no Ceará em 2022”</p></div>
+          <div class="card"><h3>✓ Bom</h3><p>“Votos válidos para presidente em MG, 2º turno 2022”</p></div>
+          <div class="card"><h3>✗ Evite</h3><p>“Como foi a eleição?” — falta ano, cargo e lugar</p></div>
+        </div>
+        <div class="section-head" style="margin-top:40px;margin-bottom:20px"><h2>Dúvidas frequentes</h2></div>
+        <details><summary>O número veio vazio. É zero?</summary><p>Não. Lista vazia significa que o dado <strong>não existe</strong> na base — não é zero votos.</p></details>
+        <details><summary>Posso pedir resultado de 2026?</summary><p>Só candidaturas (quem se inscreveu). Votos só depois da apuração oficial.</p></details>
+        <details><summary>A IA pode estimar se faltar dado?</summary><p>Não. Esta ferramenta proíbe inventar. Fora do recorte, a resposta é seca: dado inexistente.</p></details>
+        <details><summary>É a ferramenta da campanha NE9?</summary><p>Não. É o Brasil inteiro, produto separado, fontes TSE/IBGE/MDS/Câmara.</p></details>
+      </div>
+    </section>
+
+    <section id="recursos">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Recursos para download</h2>
+          <p>Skill, configs e catálogo — prontos para copiar ou anexar.</p>
+        </div>
+        <div class="resource-list">
+          <a class="resource" href="recursos/skill-ia.md" download>
+            <div><strong>Skill para IA</strong><span>Claude, GPT, Manus, Cursor — instruções completas</span></div>
+            <span class="resource-dl">Baixar ↓</span>
+          </a>
+          <a class="resource" href="recursos/mcp-cursor.json" download>
+            <div><strong>Config MCP · Cursor</strong><span>JSON pronto (substitua o token)</span></div>
+            <span class="resource-dl">Baixar ↓</span>
+          </a>
+          <a class="resource" href="recursos/mcp-claude.json" download>
+            <div><strong>Config MCP · Claude</strong><span>JSON pronto (substitua o token)</span></div>
+            <span class="resource-dl">Baixar ↓</span>
+          </a>
+          <a class="resource" href="recursos/catalogo.json" download>
+            <div><strong>Catálogo da base</strong><span>Lista formal de pacotes e indicadores</span></div>
+            <span class="resource-dl">Baixar ↓</span>
+          </a>
+        </div>
+        <div style="margin-top:32px">
+          <div class="code-block">
+            <button class="copy-btn" data-copy="skill-preview">Copiar Skill</button>
+            <pre id="skill-preview" style="max-height:320px">Carregando skill…</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>Inteligência Eleitoral Brasil · Fontes: TSE, IBGE, MDS, Câmara dos Deputados</p>
+      <p style="margin-top:8px">Dados oficiais · Brasil inteiro · Sem estimativa</p>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast">Copiado!</div>
+
+  <script>
+    const BASE = window.location.origin;
+    const MCP = BASE + '/mcp';
+
+    function token() {
+      const t = document.getElementById('token').value.trim();
+      return t || 'SEU_TOKEN_AQUI';
+    }
+
+    function mcpConfig() {
+      return JSON.stringify({
+        mcpServers: {
+          'inteligencia-eleitoral-brasil': {
+            url: MCP,
+            headers: { Authorization: 'Bearer ' + token() }
+          }
+        }
+      }, null, 2);
+    }
+
+    function refreshBlocks() {
+      document.getElementById('cfg-cursor').textContent = mcpConfig();
+      document.getElementById('cfg-claude').textContent = mcpConfig();
+      document.getElementById('cfg-url').textContent = 'URL MCP: ' + MCP + '\nToken: (use o campo acima — não compartilhe publicamente)';
+      document.getElementById('cfg-teste').textContent = [
+        'POST ' + MCP,
+        'Authorization: Bearer ' + token(),
+        'Content-Type: application/json',
+        '',
+        JSON.stringify({
+          method: 'nominata',
+          params: { ano: 2022, cargo: 'deputado_federal', uf: 'SP', sg_partido: 'PL', limite: 5 }
+        }, null, 2)
+      ].join('\n');
+    }
+
+    document.getElementById('token').addEventListener('input', refreshBlocks);
+    refreshBlocks();
+
+    document.getElementById('toggle-token').addEventListener('click', () => {
+      const inp = document.getElementById('token');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    });
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    function showToast() {
+      const el = document.getElementById('toast');
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2000);
+    }
+
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.copy;
+        const text = document.getElementById(id).textContent;
+        navigator.clipboard.writeText(text).then(showToast);
+      });
+    });
+
+    fetch(BASE + '/health').then(r => r.json()).then(d => {
+      if (d.status === 'ok') {
+        document.getElementById('health-dot').classList.add('ok');
+        document.getElementById('health-text').textContent = 'Serviço online';
+      }
+    }).catch(() => {
+      document.getElementById('health-text').textContent = 'Verifique conexão';
+    });
+
+    fetch('recursos/skill-ia.md').then(r => r.text()).then(t => {
+      document.getElementById('skill-preview').textContent = t;
+    }).catch(() => {
+      document.getElementById('skill-preview').textContent = 'Skill disponível em recursos/skill-ia.md';
+    });
+  </script>
+</body>
+</html>

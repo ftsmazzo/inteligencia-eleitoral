@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
 MSG_AUTH = "não autorizado"
+_STATIC = Path(__file__).resolve().parent / "static"
+_GUIA = _STATIC / "guia"
 
 
 def _token_ok(authorization: str | None, x_token: str | None) -> None:
@@ -179,6 +184,20 @@ def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/")
+def root() -> RedirectResponse:
+    return RedirectResponse(url="/guia", status_code=302)
+
+
+@app.get("/guia")
+def guia() -> FileResponse:
+    return FileResponse(_GUIA / "index.html")
+
+
+if _GUIA.is_dir():
+    app.mount("/guia/recursos", StaticFiles(directory=_GUIA / "recursos"), name="guia-recursos")
 
 
 @app.get("/v1/catalogo")
