@@ -129,6 +129,17 @@ Tabela canônica: `contexto.populacao_mun` (`ds_fonte` = `censo` \| `estimativa`
 
 ---
 
+## 6b. Social municipal (MDS) — contexto, não urna
+
+Reuso do `inbox/` (Brasil municipal, um mês). Não misturar com votação.
+
+| Id | Fonte | Competência nesta carga |
+|---|---|---|
+| `br_mun_cadunico` | Cadastro Único (CECAD/MDS) | `anomes=202607` |
+| `br_mun_bolsa_familia` | Bolsa Família municipal | `anomes=202608` |
+
+Tabelas: `contexto.cadunico_mun`, `contexto.bolsa_familia_mun`. APIs: `api.cadunico`, `api.bolsa_familia`. CSV usa IBGE 6 dígitos → malha 7. `inbox/bolsa/` (HTML/scrap) **não** entra.
+
 ## 7. Fora do núcleo (não baixar “para completar”)
 
 | Tema | Motivo | Link só para registrar a lacuna |

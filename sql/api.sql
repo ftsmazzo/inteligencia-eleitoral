@@ -115,7 +115,9 @@ AS $$
       jsonb_build_object('pacote','receita','anos','2014–2026','nota','prestação; exige ano e (sq_candidato ou uf); sem CPF'),
       jsonb_build_object('pacote','despesa','anos','2014–2026','nota','prestação contratada/declarada; exige ano e (sq_candidato ou uf); sem CPF'),
       jsonb_build_object('pacote','eleitos','anos','2014,2016,2018,2020,2022,2024','nota','mapa político; deriva de votacao.ds_sit_tot_turno; exige ano+cargo e (uf ou cod_ibge ou nacional); 2026 fora até haver urna'),
-      jsonb_build_object('pacote','populacao','anos','2010,2014,2016,2018,2020,2021,2022,2024,2025','nota','IBGE; censo 2010/2022 e estimativas SIDRA 6579; 2023/2026 sem publicação própria; exige ano+(uf|cod_ibge|nacional)')
+      jsonb_build_object('pacote','populacao','anos','2010,2014,2016,2018,2020,2021,2022,2024,2025','nota','IBGE; censo 2010/2022 e estimativas SIDRA 6579; 2023/2026 sem publicação própria; exige ano+(uf|cod_ibge|nacional)'),
+      jsonb_build_object('pacote','cadunico','anomes','202607','nota','Cadastro Único municipal MDS; snapshot; exige anomes opcional+(uf|cod_ibge|nacional)'),
+      jsonb_build_object('pacote','bolsa_familia','anomes','202608','nota','Bolsa Família municipal; snapshot de repasse; exige anomes opcional+(uf|cod_ibge|nacional)')
     )
   );
 $$;
@@ -916,6 +918,157 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION api.cadunico(
+  p_anomes integer DEFAULT NULL,
+  p_uf text DEFAULT NULL,
+  p_cod_ibge integer DEFAULT NULL,
+  p_nacional boolean DEFAULT false,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, contexto, pg_temp
+AS $$
+DECLARE
+  v_anomes integer;
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+  v_total_fam bigint;
+BEGIN
+  v_pedido := format('cadunico anomes=%s', p_anomes);
+  SELECT COALESCE(p_anomes, MAX(c.anomes)) INTO v_anomes FROM contexto.cadunico_mun c;
+  IF v_anomes IS NULL THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas','[]'::jsonb);
+  END IF;
+  IF p_anomes IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM contexto.cadunico_mun c WHERE c.anomes = p_anomes
+  ) THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas','[]'::jsonb);
+  END IF;
+  IF COALESCE(p_nacional, false) IS NOT TRUE
+     AND p_uf IS NULL AND p_cod_ibge IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' sem uf/cod_ibge/nacional');
+  END IF;
+  IF p_cod_ibge IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM ref.municipio m WHERE m.cod_ibge = p_cod_ibge
+  ) THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Município inexistente neste recorte.','linhas','[]'::jsonb);
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+
+  SELECT COALESCE(SUM(c.qt_familias), 0) INTO v_total_fam
+  FROM contexto.cadunico_mun c
+  JOIN ref.municipio m ON m.cod_ibge = c.cod_ibge
+  WHERE c.anomes = v_anomes
+    AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+    AND (p_cod_ibge IS NULL OR c.cod_ibge = p_cod_ibge);
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.qt_familias DESC NULLS LAST, t.nome), '[]'::jsonb)
+    INTO v_linhas
+  FROM (
+    SELECT
+      c.anomes, c.cod_ibge, m.nome, m.sg_uf,
+      c.qt_familias, c.qt_familias_ate_meio_sm, c.qt_familias_acima_meio_sm,
+      c.qt_familias_pobreza_pbf, c.qt_familias_baixa_renda, c.qt_familias_extrema_pobreza,
+      c.qt_pessoas_ate_meio_sm, c.qt_pessoas_acima_meio_sm, c.taxa_atualizacao_ate_meio_sm
+    FROM contexto.cadunico_mun c
+    JOIN ref.municipio m ON m.cod_ibge = c.cod_ibge
+    WHERE c.anomes = v_anomes
+      AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+      AND (p_cod_ibge IS NULL OR c.cod_ibge = p_cod_ibge)
+    ORDER BY c.qt_familias DESC NULLS LAST, m.nome
+    LIMIT v_lim
+  ) t;
+
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object(
+    'status', 'ok',
+    'anomes', v_anomes,
+    'qt_familias_total', v_total_fam,
+    'nota_metodologica', 'Cadastro Único municipal (MDS); snapshot por competência anomes; não é série histórica nesta carga',
+    'linhas', v_linhas
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.bolsa_familia(
+  p_anomes integer DEFAULT NULL,
+  p_uf text DEFAULT NULL,
+  p_cod_ibge integer DEFAULT NULL,
+  p_nacional boolean DEFAULT false,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, contexto, pg_temp
+AS $$
+DECLARE
+  v_anomes integer;
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+  v_total_fam bigint;
+  v_total_vr numeric;
+BEGIN
+  v_pedido := format('bolsa_familia anomes=%s', p_anomes);
+  SELECT COALESCE(p_anomes, MAX(b.anomes)) INTO v_anomes FROM contexto.bolsa_familia_mun b;
+  IF v_anomes IS NULL THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas','[]'::jsonb);
+  END IF;
+  IF p_anomes IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM contexto.bolsa_familia_mun b WHERE b.anomes = p_anomes
+  ) THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas','[]'::jsonb);
+  END IF;
+  IF COALESCE(p_nacional, false) IS NOT TRUE
+     AND p_uf IS NULL AND p_cod_ibge IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' sem uf/cod_ibge/nacional');
+  END IF;
+  IF p_cod_ibge IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM ref.municipio m WHERE m.cod_ibge = p_cod_ibge
+  ) THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Município inexistente neste recorte.','linhas','[]'::jsonb);
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+
+  SELECT COALESCE(SUM(b.qt_familias), 0), COALESCE(SUM(b.vr_repassado), 0)
+    INTO v_total_fam, v_total_vr
+  FROM contexto.bolsa_familia_mun b
+  JOIN ref.municipio m ON m.cod_ibge = b.cod_ibge
+  WHERE b.anomes = v_anomes
+    AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+    AND (p_cod_ibge IS NULL OR b.cod_ibge = p_cod_ibge);
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.vr_repassado DESC NULLS LAST, t.nome), '[]'::jsonb)
+    INTO v_linhas
+  FROM (
+    SELECT
+      b.anomes, b.cod_ibge, m.nome, m.sg_uf,
+      b.qt_familias, b.qt_pessoas, b.vr_repassado, b.vr_medio_beneficio, b.pct_familias_rf_mulher
+    FROM contexto.bolsa_familia_mun b
+    JOIN ref.municipio m ON m.cod_ibge = b.cod_ibge
+    WHERE b.anomes = v_anomes
+      AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+      AND (p_cod_ibge IS NULL OR b.cod_ibge = p_cod_ibge)
+    ORDER BY b.vr_repassado DESC NULLS LAST, m.nome
+    LIMIT v_lim
+  ) t;
+
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object(
+    'status', 'ok',
+    'anomes', v_anomes,
+    'qt_familias_total', v_total_fam,
+    'vr_repassado_total', v_total_vr,
+    'nota_metodologica', 'Bolsa Família municipal (repasse); snapshot por competência anomes; não é série histórica nesta carga',
+    'linhas', v_linhas
+  );
+END;
+$$;
+
 REVOKE ALL ON FUNCTION api.catalogo() FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.nominata(smallint, text, text, integer, text, bigint, integer, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.votacao(smallint, text, text, integer, boolean, smallint, text, bigint, integer, text, text, integer) FROM PUBLIC;
@@ -928,3 +1081,5 @@ REVOKE ALL ON FUNCTION api.receita(smallint, bigint, text, text, text, integer) 
 REVOKE ALL ON FUNCTION api.despesa(smallint, bigint, text, text, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.eleitos(smallint, text, text, integer, boolean, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.populacao(smallint, text, integer, boolean, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.cadunico(integer, text, integer, boolean, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.bolsa_familia(integer, text, integer, boolean, integer) FROM PUBLIC;
