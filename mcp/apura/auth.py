@@ -6,12 +6,11 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import bcrypt
 import jwt
 import psycopg
 from fastapi import HTTPException
-from passlib.context import CryptContext
 
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _ALGO = "HS256"
 _TTL_DAYS = 14
 
@@ -24,20 +23,21 @@ def _secret() -> str:
 
 
 def hash_senha(senha: str) -> str:
-    return _pwd.hash(senha)
+    return bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verificar_senha(senha: str, senha_hash: str) -> bool:
-    return _pwd.verify(senha, senha_hash)
+    return bcrypt.checkpw(senha.encode("utf-8"), senha_hash.encode("utf-8"))
 
 
 def criar_token_jwt(usuario_id: str, email: str) -> str:
     exp = datetime.now(timezone.utc) + timedelta(days=_TTL_DAYS)
-    return jwt.encode(
+    token = jwt.encode(
         {"sub": usuario_id, "email": email, "exp": exp},
         _secret(),
         algorithm=_ALGO,
     )
+    return token if isinstance(token, str) else token.decode("utf-8")
 
 
 def decodificar_jwt(token: str) -> dict[str, Any]:

@@ -89,11 +89,13 @@ class ExportIn(BaseModel):
 
 @router.post("/auth/registrar")
 def registrar(body: RegistroIn) -> dict[str, str]:
-    with _conn() as conn:
-        try:
+    try:
+        with _conn() as conn:
             return registrar_usuario(conn, body.email, body.senha, body.nome)
-        except psycopg.errors.UniqueViolation as exc:
-            raise HTTPException(409, "E-mail já cadastrado") from exc
+    except psycopg.errors.UniqueViolation as exc:
+        raise HTTPException(409, "E-mail já cadastrado") from exc
+    except psycopg.Error as exc:
+        raise HTTPException(503, "Banco indisponível para cadastro") from exc
 
 
 @router.post("/auth/login")

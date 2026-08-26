@@ -189,16 +189,29 @@
       });
     });
 
+    async function parseResponse(r) {
+      const text = await r.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch {
+        throw new Error(text.startsWith('Internal') ? 'Erro interno no servidor — tente de novo em instantes' : (text.slice(0, 180) || 'Erro no servidor'));
+      }
+      if (!r.ok) {
+        const d = data.detail;
+        throw new Error(typeof d === 'string' ? d : (Array.isArray(d) ? d.map(x => x.msg || x).join(', ') : 'Erro na requisição'));
+      }
+      return data;
+    }
+
     $('form-login').addEventListener('submit', async e => {
       e.preventDefault();
       $('auth-err').textContent = '';
       try {
-        const d = await fetch(API + '/auth/login', {
+        const r = await fetch(API + '/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: $('login-email').value, senha: $('login-senha').value })
-        }).then(r => r.json().then(j => (r.ok ? j : Promise.reject(new Error(j.detail || 'Erro')))));
-        entrar(d);
+        });
+        entrar(await parseResponse(r));
       } catch (err) { $('auth-err').textContent = err.message; }
     });
 
@@ -206,7 +219,7 @@
       e.preventDefault();
       $('auth-err').textContent = '';
       try {
-        const d = await fetch(API + '/auth/registrar', {
+        const r = await fetch(API + '/auth/registrar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -214,8 +227,8 @@
             email: $('reg-email').value,
             senha: $('reg-senha').value
           })
-        }).then(r => r.json().then(j => (r.ok ? j : Promise.reject(new Error(j.detail || 'Erro')))));
-        entrar(d);
+        });
+        entrar(await parseResponse(r));
       } catch (err) { $('auth-err').textContent = err.message; }
     });
 
