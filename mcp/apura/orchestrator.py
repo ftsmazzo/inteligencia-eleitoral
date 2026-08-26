@@ -20,16 +20,41 @@ def _model() -> str:
     return os.environ.get("APURA_MODEL", "openai/gpt-4o-mini")
 
 
-def _headers() -> dict[str, str]:
-    key = os.environ.get("OPENROUTER_API_KEY", "")
+def _openrouter_key() -> str:
+    key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     if not key:
-        raise RuntimeError("OPENROUTER_API_KEY não configurado")
+        raise RuntimeError("OPENROUTER_API_KEY não configurado no servidor")
+    if not key.startswith("sk-or-"):
+        raise RuntimeError(
+            "OPENROUTER_API_KEY inválida no servidor — gere uma chave em openrouter.ai/keys "
+            "(formato sk-or-v1-...) e atualize a variável no EasyPanel (serviço mcp-api)."
+        )
+    return key
+
+
+def _headers() -> dict[str, str]:
     return {
-        "Authorization": f"Bearer {key}",
+        "Authorization": f"Bearer {_openrouter_key()}",
         "Content-Type": "application/json",
         "HTTP-Referer": os.environ.get("APURA_SITE_URL", "https://inteligencia-eleitoral-brasil.local"),
         "X-Title": "Apura - Inteligencia Eleitoral Brasil",
     }
+
+
+def _erro_openrouter(status: int, body: str) -> str:
+    try:
+        data = json.loads(body)
+        msg = data.get("error", {}).get("message") or data.get("message") or body
+    except json.JSONDecodeError:
+        msg = body
+    if status == 401:
+        return (
+            "OpenRouter recusou a autenticação. Verifique OPENROUTER_API_KEY no EasyPanel "
+            f"(serviço mcp-api): chave válida em openrouter.ai/keys. Detalhe: {msg}"
+        )
+    if status == 402:
+        return "Créditos insuficientes na conta OpenRouter — adicione saldo em openrouter.ai/credits."
+    return f"OpenRouter retornou erro {status}: {msg[:240]}"
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -63,7 +88,7 @@ async def executar_chat(
             yield _sse("status", {"fase": "pensando"})
             r = await _openrouter(messages, MCP_TOOLS, stream=False)
             if r.status_code >= 400:
-                yield _sse("error", {"mensagem": r.text[:500]})
+                yield _sse("error", {"mensagem": _erro_openrouter(r.status_code, r.text)})
                 return
             data = r.json()
             choice = data["choices"][0]["message"]
@@ -100,7 +125,7 @@ async def executar_chat(
             else:
                 sr = await _openrouter(messages, None, stream=True)
                 if sr.status_code >= 400:
-                    yield _sse("error", {"mensagem": sr.text[:500]})
+                    yield _sse("error", {"mensagem": _erro_openrouter(sr.status_code, sr.text)})
                     return
                 full_parts: list[str] = []
                 async for line in sr.aiter_lines():
