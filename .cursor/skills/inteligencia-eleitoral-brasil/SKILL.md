@@ -32,5 +32,5 @@ Não gravar em `Arquitetura/`. `inbox/` só leitura. Promoção de dump → `dat
 ## MCP (quando existir)
 
 Função nomeada só. Sem SQL livre. Catálogo deste produto, não as 247 tools NE9.
-Pacotes: catalogo, nominata, votacao, comparecimento, eleitorado, coligacao, vagas, bem, receita, despesa, eleitos, populacao, cadunico, bolsa_familia.
+Pacotes: catalogo, nominata, votacao, comparecimento, eleitorado, coligacao, vagas, bem, receita, despesa, eleitos, populacao, cadunico, bolsa_familia, deputados_casa, senadores, proposicoes, votos_camara, depara_parlamentar.
 Trilha B / scrap = `indicio`, nunca cifra oficial.

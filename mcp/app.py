@@ -134,6 +134,43 @@ class SocialIn(BaseModel):
     limite: int = 200
 
 
+class DeputadosCasaIn(BaseModel):
+    uf: str | None = None
+    sg_partido: str | None = None
+    nome: str | None = None
+    id_deputado: int | None = None
+    limite: int = 200
+
+
+class SenadoresIn(BaseModel):
+    uf: str | None = None
+    sg_partido: str | None = None
+    nome: str | None = None
+    id_senador: int | None = None
+    limite: int = 200
+
+
+class ProposicoesIn(BaseModel):
+    ano: int
+    sigla_tipo: str | None = None
+    id_deputado: int | None = None
+    limite: int = 100
+
+
+class VotosCamaraIn(BaseModel):
+    ano: int | None = None
+    id_deputado: int | None = None
+    uf: str | None = None
+    limite: int = 100
+
+
+class DeparaParlamentarIn(BaseModel):
+    casa: str | None = None
+    ano_eleicao: int = 2022
+    uf: str | None = None
+    limite: int = 200
+
+
 def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
     row = conn.execute(sql, args).fetchone()
     return row[0] if row else None
@@ -336,6 +373,61 @@ def bolsa_familia(body: SocialIn, authorization: str | None = Header(default=Non
         )
 
 
+@app.post("/v1/deputados_casa")
+def deputados_casa(body: DeputadosCasaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.deputados_casa(%s,%s,%s,%s,%s)",
+            (body.uf, body.sg_partido, body.nome, body.id_deputado, body.limite),
+        )
+
+
+@app.post("/v1/senadores")
+def senadores(body: SenadoresIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.senadores(%s,%s,%s,%s,%s)",
+            (body.uf, body.sg_partido, body.nome, body.id_senador, body.limite),
+        )
+
+
+@app.post("/v1/proposicoes")
+def proposicoes(body: ProposicoesIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.proposicoes(%s,%s,%s,%s)",
+            (body.ano, body.sigla_tipo, body.id_deputado, body.limite),
+        )
+
+
+@app.post("/v1/votos_camara")
+def votos_camara(body: VotosCamaraIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.votos_camara(%s,%s,%s,%s)",
+            (body.ano, body.id_deputado, body.uf, body.limite),
+        )
+
+
+@app.post("/v1/depara_parlamentar")
+def depara_parlamentar(body: DeparaParlamentarIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.depara_parlamentar(%s,%s,%s,%s)",
+            (body.casa, body.ano_eleicao, body.uf, body.limite),
+        )
+
+
 class McpCall(BaseModel):
     method: str
     params: dict[str, Any] = Field(default_factory=dict)
@@ -374,4 +466,14 @@ def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token
         return cadunico(SocialIn(**p), authorization, x_token)
     if name == "bolsa_familia":
         return bolsa_familia(SocialIn(**p), authorization, x_token)
+    if name == "deputados_casa":
+        return deputados_casa(DeputadosCasaIn(**p), authorization, x_token)
+    if name == "senadores":
+        return senadores(SenadoresIn(**p), authorization, x_token)
+    if name == "proposicoes":
+        return proposicoes(ProposicoesIn(**p), authorization, x_token)
+    if name == "votos_camara":
+        return votos_camara(VotosCamaraIn(**p), authorization, x_token)
+    if name == "depara_parlamentar":
+        return depara_parlamentar(DeparaParlamentarIn(**p), authorization, x_token)
     raise HTTPException(400, "tool inexistente neste catálogo")

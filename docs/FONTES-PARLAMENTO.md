@@ -49,18 +49,21 @@ Portal: https://www12.senado.leg.br/dados-abertos · API: https://legis.senado.l
 
 Swagger: https://legis.senado.leg.br/dadosabertos/api-docs/swagger-ui/index.html
 
-## Lacunas honestas (não inventar)
+## O que NÃO faltou no download
 
-1. **Votos nominais do Senado em lote completo** — o `votacao.json` traz um subconjunto (dezenas/centenas de votações, não o espelho Câmara). Completar depois via:
+Na rodada automática **todos os arquivos MVP da Câmara (2023–2026) e as listas do Senado (atual, L56, L57) baixaram**.  
+O arquivo `parlamento_download_faltas.json` ficou **vazio**.
+
+As “lacunas” abaixo **não são downloads que falharam** — são limites da fonte (o Senado não publica o mesmo tipo de dump anual que a Câmara). A Câmara está completa para o MVP.
+
+## Lacunas honestas (limites da fonte, não inventar)
+
+1. **Votos nominais do Senado em lote completo** — o `votacao.json` é um resumo (centenas de votações), não o espelho dos CSVs da Câmara. Completar depois via:
    - por senador: `https://legis.senado.leg.br/dadosabertos/senador/{codigo}/votacoes.json`
-   - catálogo plenário: https://www12.senado.leg.br/dados-abertos/legislativo/plenario/votacoes-nominais/info  
-2. **Matérias Senado em dump anual único** — não há espelho do `proposicoes-{ano}.csv` da Câmara; uso de API de matéria/processo sob demanda.  
-3. **De-para TSE ↔ id Casa** — tabela `parlamentar.depara_tse` nasce vazia; preenchimento é etapa de carga (nome + UF + partido + legislatura), nunca chute silencioso.  
-4. **CEAP / cota parlamentar** — fora deste MVP; se precisar: https://www.camara.leg.br/cota-parlamentar/ (zips `Ano-AAAA.csv.zip` já no inbox como candidato a `br_camara_ceap`).
-
-Script de download: `scripts/baixar_parlamento.py`  
-Log de faltas: `data/staging/parlamento_download_faltas.json`  
-DDL: `sql/patch_parlamento.sql`
+   - catálogo: https://www12.senado.leg.br/dados-abertos/legislativo/plenario/votacoes-nominais/info  
+2. **Matérias Senado em dump anual único** — não há `proposicoes-{ano}.csv` equivalente; API sob demanda.  
+3. **De-para TSE ↔ id Casa** — tabela preenchida na carga com método `uf+nome_norm` (revisar ambíguos).  
+4. **CEAP / cota** — fora do MVP de atuação legislativa.
 
 ## O que fazer se o download automático falhar
 

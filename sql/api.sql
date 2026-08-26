@@ -117,7 +117,12 @@ AS $$
       jsonb_build_object('pacote','eleitos','anos','2014,2016,2018,2020,2022,2024','nota','mapa político; deriva de votacao.ds_sit_tot_turno; exige ano+cargo e (uf ou cod_ibge ou nacional); 2026 fora até haver urna'),
       jsonb_build_object('pacote','populacao','anos','2010,2014,2016,2018,2020,2021,2022,2024,2025','nota','IBGE; censo 2010/2022 e estimativas SIDRA 6579; 2023/2026 sem publicação própria; exige ano+(uf|cod_ibge|nacional)'),
       jsonb_build_object('pacote','cadunico','anomes','202607','nota','Cadastro Único municipal MDS; snapshot; exige anomes opcional+(uf|cod_ibge|nacional)'),
-      jsonb_build_object('pacote','bolsa_familia','anomes','202608','nota','Bolsa Família municipal; snapshot de repasse; exige anomes opcional+(uf|cod_ibge|nacional)')
+      jsonb_build_object('pacote','bolsa_familia','anomes','202608','nota','Bolsa Família municipal; snapshot de repasse; exige anomes opcional+(uf|cod_ibge|nacional)'),
+      jsonb_build_object('pacote','deputados_casa','nota','cadastro Câmara; filtro uf/partido/nome; legislatura via de-para/votos'),
+      jsonb_build_object('pacote','senadores','nota','cadastro Senado L56/L57/atual'),
+      jsonb_build_object('pacote','proposicoes','anos','2023–2026','nota','proposições Câmara; exige ano; autor opcional'),
+      jsonb_build_object('pacote','votos_camara','anos','2023–2026','nota','votos nominais Câmara; exige id_deputado ou uf'),
+      jsonb_build_object('pacote','depara_parlamentar','nota','vínculo Casa↔TSE 2022 (uf+nome); confianca declarada')
     )
   );
 $$;
@@ -1069,6 +1074,231 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION api.deputados_casa(
+  p_uf text DEFAULT NULL,
+  p_sg_partido text DEFAULT NULL,
+  p_nome text DEFAULT NULL,
+  p_id_deputado integer DEFAULT NULL,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, parlamentar, pg_temp
+AS $$
+DECLARE
+  v_lim integer;
+  v_linhas jsonb;
+BEGIN
+  IF p_uf IS NULL AND p_sg_partido IS NULL AND p_nome IS NULL AND p_id_deputado IS NULL THEN
+    RETURN api._envelope_fora('deputados_casa exige uf, partido, nome ou id_deputado');
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT DISTINCT ON (d.id_deputado)
+      d.id_deputado, d.nome, d.nome_civil, d.sigla_sexo,
+      d.id_legislatura_ini, d.id_legislatura_fim, d.uri,
+      v.sg_uf, v.sg_partido, dp.sq_candidato
+    FROM parlamentar.deputado d
+    LEFT JOIN LATERAL (
+      SELECT vv.sg_uf, vv.sg_partido
+      FROM parlamentar.voto vv
+      WHERE vv.id_deputado = d.id_deputado
+      GROUP BY vv.sg_uf, vv.sg_partido
+      ORDER BY count(*) DESC
+      LIMIT 1
+    ) v ON true
+    LEFT JOIN parlamentar.depara_tse dp
+      ON dp.casa = 'CD' AND dp.id_casa = d.id_deputado AND dp.ano_eleicao = 2022
+    WHERE (p_id_deputado IS NULL OR d.id_deputado = p_id_deputado)
+      AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+      AND (p_sg_partido IS NULL OR v.sg_partido = p_sg_partido)
+      AND (
+        p_nome IS NULL
+        OR d.nome ILIKE '%' || p_nome || '%'
+        OR d.nome_civil ILIKE '%' || p_nome || '%'
+      )
+    ORDER BY d.id_deputado, d.nome
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object('status','ok','linhas', v_linhas);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.senadores(
+  p_uf text DEFAULT NULL,
+  p_sg_partido text DEFAULT NULL,
+  p_nome text DEFAULT NULL,
+  p_id_senador integer DEFAULT NULL,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, parlamentar, pg_temp
+AS $$
+DECLARE
+  v_lim integer;
+  v_linhas jsonb;
+BEGIN
+  IF p_uf IS NULL AND p_sg_partido IS NULL AND p_nome IS NULL AND p_id_senador IS NULL THEN
+    RETURN api._envelope_fora('senadores exige uf, partido, nome ou id_senador');
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      s.id_senador, s.nome_parlamentar, s.nome_completo, s.sg_partido, s.sg_uf,
+      s.id_legislatura, s.em_exercicio, s.uri, dp.sq_candidato
+    FROM parlamentar.senador s
+    LEFT JOIN parlamentar.depara_tse dp
+      ON dp.casa = 'SF' AND dp.id_casa = s.id_senador AND dp.ano_eleicao = 2022
+    WHERE (p_id_senador IS NULL OR s.id_senador = p_id_senador)
+      AND (p_uf IS NULL OR s.sg_uf = upper(p_uf))
+      AND (p_sg_partido IS NULL OR s.sg_partido = p_sg_partido)
+      AND (
+        p_nome IS NULL
+        OR s.nome_parlamentar ILIKE '%' || p_nome || '%'
+        OR s.nome_completo ILIKE '%' || p_nome || '%'
+      )
+    ORDER BY s.sg_uf, s.nome_parlamentar
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object('status','ok','linhas', v_linhas);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.proposicoes(
+  p_ano smallint,
+  p_sigla_tipo text DEFAULT NULL,
+  p_id_deputado integer DEFAULT NULL,
+  p_limite integer DEFAULT 100
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, parlamentar, pg_temp
+AS $$
+DECLARE
+  v_lim integer;
+  v_linhas jsonb;
+BEGIN
+  IF p_ano IS NULL OR p_ano NOT IN (2023, 2024, 2025, 2026) THEN
+    RETURN api._envelope_fora('proposicoes ano=' || coalesce(p_ano::text,'') || ' (MVP 2023–2026 Câmara)');
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 100), 1), 500);
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      p.id_proposicao, p.sigla_tipo, p.numero, p.ano, p.ementa,
+      p.data_apresentacao, p.descricao_situacao, p.uri
+    FROM parlamentar.proposicao p
+    WHERE p.ano = p_ano
+      AND (p_sigla_tipo IS NULL OR p.sigla_tipo = upper(p_sigla_tipo))
+      AND (
+        p_id_deputado IS NULL
+        OR EXISTS (
+          SELECT 1 FROM parlamentar.proposicao_autor a
+          WHERE a.id_proposicao = p.id_proposicao AND a.id_deputado = p_id_deputado
+        )
+      )
+    ORDER BY p.data_apresentacao DESC NULLS LAST, p.id_proposicao DESC
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object(
+    'status', 'ok',
+    'nota_metodologica', 'Proposições Câmara dos Deputados; Senado matérias ainda não espelhadas em lote',
+    'linhas', v_linhas
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.votos_camara(
+  p_ano smallint DEFAULT NULL,
+  p_id_deputado integer DEFAULT NULL,
+  p_uf text DEFAULT NULL,
+  p_limite integer DEFAULT 100
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, parlamentar, pg_temp
+AS $$
+DECLARE
+  v_lim integer;
+  v_linhas jsonb;
+BEGIN
+  IF p_id_deputado IS NULL AND p_uf IS NULL THEN
+    RETURN api._envelope_fora('votos_camara exige id_deputado ou uf');
+  END IF;
+  IF p_ano IS NOT NULL AND p_ano NOT IN (2023, 2024, 2025, 2026) THEN
+    RETURN api._envelope_fora('votos_camara ano=' || p_ano::text);
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 100), 1), 500);
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      vt.ano, v.id_votacao, vt.data_votacao, vt.descricao, vt.aprovacao,
+      v.id_deputado, v.voto, v.sg_partido, v.sg_uf
+    FROM parlamentar.voto v
+    JOIN parlamentar.votacao vt ON vt.id_votacao = v.id_votacao
+    WHERE (p_id_deputado IS NULL OR v.id_deputado = p_id_deputado)
+      AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+      AND (p_ano IS NULL OR vt.ano = p_ano)
+    ORDER BY vt.data_votacao DESC NULLS LAST, v.id_votacao
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object('status','ok','linhas', v_linhas);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.depara_parlamentar(
+  p_casa text DEFAULT NULL,
+  p_ano_eleicao smallint DEFAULT 2022,
+  p_uf text DEFAULT NULL,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, parlamentar, eleicao, pg_temp
+AS $$
+DECLARE
+  v_lim integer;
+  v_linhas jsonb;
+BEGIN
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      dp.casa, dp.id_casa, dp.ano_eleicao, dp.sq_candidato, dp.metodo, dp.confianca,
+      COALESCE(d.nome, s.nome_parlamentar) AS nome_casa,
+      c.nm_urna, c.sg_partido, c.sg_uf
+    FROM parlamentar.depara_tse dp
+    LEFT JOIN parlamentar.deputado d ON dp.casa = 'CD' AND d.id_deputado = dp.id_casa
+    LEFT JOIN parlamentar.senador s ON dp.casa = 'SF' AND s.id_senador = dp.id_casa
+    LEFT JOIN eleicao.candidatura c
+      ON c.ano = dp.ano_eleicao AND c.sq_candidato = dp.sq_candidato
+    WHERE (p_casa IS NULL OR dp.casa = upper(p_casa))
+      AND dp.ano_eleicao = COALESCE(p_ano_eleicao, 2022)
+      AND (p_uf IS NULL OR c.sg_uf = upper(p_uf) OR s.sg_uf = upper(p_uf))
+    ORDER BY dp.casa, c.sg_uf, COALESCE(d.nome, s.nome_parlamentar)
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object(
+    'status', 'ok',
+    'nota_metodologica', 'De-para automático uf+nome_norm sobre eleitos 2022; confianca 0.80; revisar casos ambíguos',
+    'linhas', v_linhas
+  );
+END;
+$$;
+
 REVOKE ALL ON FUNCTION api.catalogo() FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.nominata(smallint, text, text, integer, text, bigint, integer, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.votacao(smallint, text, text, integer, boolean, smallint, text, bigint, integer, text, text, integer) FROM PUBLIC;
@@ -1083,3 +1313,8 @@ REVOKE ALL ON FUNCTION api.eleitos(smallint, text, text, integer, boolean, text,
 REVOKE ALL ON FUNCTION api.populacao(smallint, text, integer, boolean, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.cadunico(integer, text, integer, boolean, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.bolsa_familia(integer, text, integer, boolean, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.deputados_casa(text, text, text, integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.senadores(text, text, text, integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.proposicoes(smallint, text, integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.votos_camara(smallint, integer, text, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.depara_parlamentar(text, smallint, text, integer) FROM PUBLIC;
