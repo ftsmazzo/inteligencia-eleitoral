@@ -110,7 +110,10 @@ AS $$
       jsonb_build_object('pacote','comparecimento','anos','2014,2016,2018,2020,2022,2024','nota','detalhe da apuração'),
       jsonb_build_object('pacote','eleitorado','anos','2014–2026','nota','perfil; 2026 é cadastro, não urna'),
       jsonb_build_object('pacote','coligacao','anos','2014,2016,2018,2020,2022,2024,2026','nota','2014/2016 municipal: coligação proporcional; 2018+ federação'),
-      jsonb_build_object('pacote','vagas','anos','2014,2016,2018,2020,2022,2024,2026','nota','cadeiras por cargo×UF (geral) ou cargo×município (municipal)')
+      jsonb_build_object('pacote','vagas','anos','2014,2016,2018,2020,2022,2024,2026','nota','cadeiras por cargo×UF (geral) ou cargo×município (municipal)'),
+      jsonb_build_object('pacote','bem','anos','2014–2026','nota','exige ano+sq_candidato; bens declarados no TSE'),
+      jsonb_build_object('pacote','receita','anos','2014–2026','nota','prestação; exige ano e (sq_candidato ou uf); sem CPF'),
+      jsonb_build_object('pacote','despesa','anos','2014–2026','nota','prestação contratada/declarada; exige ano e (sq_candidato ou uf); sem CPF')
     )
   );
 $$;
@@ -537,6 +540,183 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION api._checar_ano(p_ano smallint, p_pedido text)
+RETURNS jsonb
+LANGUAGE plpgsql STABLE AS $$
+BEGIN
+  IF p_ano IS NULL THEN
+    RETURN api._envelope_fora(p_pedido);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM ref.eleicao e WHERE e.ano = p_ano) THEN
+    RETURN api._envelope_fora(p_pedido);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.bem(
+  p_ano smallint,
+  p_sq_candidato bigint,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, eleicao, pg_temp
+AS $$
+DECLARE
+  v_fora jsonb;
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+BEGIN
+  v_pedido := format('bem ano=%s sq=%s', p_ano, p_sq_candidato);
+  v_fora := api._checar_ano(p_ano, v_pedido);
+  IF v_fora IS NOT NULL THEN
+    RETURN v_fora;
+  END IF;
+  IF p_sq_candidato IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' exige sq_candidato');
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      b.ano, b.sq_candidato, b.nr_ordem, b.cd_tipo_bem, b.ds_tipo_bem, b.ds_bem, b.vr_bem
+    FROM eleicao.bem b
+    WHERE b.ano = p_ano
+      AND b.sq_candidato = p_sq_candidato
+    ORDER BY b.nr_ordem
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object('status','ok','linhas', v_linhas);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.receita(
+  p_ano smallint,
+  p_sq_candidato bigint DEFAULT NULL,
+  p_uf text DEFAULT NULL,
+  p_sg_partido text DEFAULT NULL,
+  p_cargo text DEFAULT NULL,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, eleicao, pg_temp
+AS $$
+DECLARE
+  v_fora jsonb;
+  v_cargo smallint;
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+  v_cargo_nome text;
+BEGIN
+  v_pedido := format('receita ano=%s', p_ano);
+  v_fora := api._checar_ano(p_ano, v_pedido);
+  IF v_fora IS NOT NULL THEN
+    RETURN v_fora;
+  END IF;
+  IF p_sq_candidato IS NULL AND p_uf IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' exige sq_candidato ou uf');
+  END IF;
+  IF p_cargo IS NOT NULL THEN
+    v_cargo := api._resolver_cargo(p_cargo);
+    v_fora := api._checar_recorte(p_ano, v_cargo, false, v_pedido || ' cargo=' || p_cargo);
+    IF v_fora IS NOT NULL THEN
+      RETURN v_fora;
+    END IF;
+    SELECT r.nome INTO v_cargo_nome FROM ref.cargo r WHERE r.cd_cargo = v_cargo;
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      r.ano, r.sq_candidato, r.sg_uf, r.sg_partido, r.nr_candidato, r.ds_cargo, r.nm_candidato,
+      r.sq_receita, r.dt_receita, r.vr_receita, r.ds_fonte, r.ds_origem, r.ds_especie,
+      r.ds_receita, r.nm_doador, r.sg_partido_doador
+    FROM eleicao.receita r
+    WHERE r.ano = p_ano
+      AND (p_sq_candidato IS NULL OR r.sq_candidato = p_sq_candidato)
+      AND (p_uf IS NULL OR r.sg_uf = upper(p_uf))
+      AND (p_sg_partido IS NULL OR r.sg_partido = p_sg_partido)
+      AND (
+        v_cargo_nome IS NULL
+        OR upper(translate(coalesce(r.ds_cargo, ''), 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
+           = upper(translate(v_cargo_nome, 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
+      )
+    ORDER BY r.dt_receita NULLS LAST, r.vr_receita DESC NULLS LAST, r.id
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object('status','ok','linhas', v_linhas);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.despesa(
+  p_ano smallint,
+  p_sq_candidato bigint DEFAULT NULL,
+  p_uf text DEFAULT NULL,
+  p_sg_partido text DEFAULT NULL,
+  p_cargo text DEFAULT NULL,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, eleicao, pg_temp
+AS $$
+DECLARE
+  v_fora jsonb;
+  v_cargo smallint;
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+  v_cargo_nome text;
+BEGIN
+  v_pedido := format('despesa ano=%s', p_ano);
+  v_fora := api._checar_ano(p_ano, v_pedido);
+  IF v_fora IS NOT NULL THEN
+    RETURN v_fora;
+  END IF;
+  IF p_sq_candidato IS NULL AND p_uf IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' exige sq_candidato ou uf');
+  END IF;
+  IF p_cargo IS NOT NULL THEN
+    v_cargo := api._resolver_cargo(p_cargo);
+    v_fora := api._checar_recorte(p_ano, v_cargo, false, v_pedido || ' cargo=' || p_cargo);
+    IF v_fora IS NOT NULL THEN
+      RETURN v_fora;
+    END IF;
+    SELECT r.nome INTO v_cargo_nome FROM ref.cargo r WHERE r.cd_cargo = v_cargo;
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      d.ano, d.sq_candidato, d.sg_uf, d.sg_partido, d.nr_candidato, d.ds_cargo, d.nm_candidato,
+      d.sq_despesa, d.dt_despesa, d.vr_despesa, d.ds_origem, d.ds_despesa, d.nm_fornecedor
+    FROM eleicao.despesa d
+    WHERE d.ano = p_ano
+      AND (p_sq_candidato IS NULL OR d.sq_candidato = p_sq_candidato)
+      AND (p_uf IS NULL OR d.sg_uf = upper(p_uf))
+      AND (p_sg_partido IS NULL OR d.sg_partido = p_sg_partido)
+      AND (
+        v_cargo_nome IS NULL
+        OR upper(translate(coalesce(d.ds_cargo, ''), 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
+           = upper(translate(v_cargo_nome, 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
+      )
+    ORDER BY d.dt_despesa NULLS LAST, d.vr_despesa DESC NULLS LAST, d.id
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object('status','ok','linhas', v_linhas);
+END;
+$$;
+
 REVOKE ALL ON FUNCTION api.catalogo() FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.nominata(smallint, text, text, integer, text, bigint, integer, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.votacao(smallint, text, text, integer, boolean, smallint, text, bigint, integer, text, text, integer) FROM PUBLIC;
@@ -544,3 +724,6 @@ REVOKE ALL ON FUNCTION api.comparecimento(smallint, text, text, integer, boolean
 REVOKE ALL ON FUNCTION api.eleitorado(smallint, text, integer, boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.coligacao(smallint, text, text, integer, text, bigint, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.vagas(smallint, text, text, integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.bem(smallint, bigint, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.receita(smallint, bigint, text, text, text, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.despesa(smallint, bigint, text, text, text, integer) FROM PUBLIC;

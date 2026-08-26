@@ -63,9 +63,10 @@ No mesmo conjunto **Candidatos – AAAA** o TSE publica pacotes irmãos (entrar 
 
 | Id | Recurso no portal | Uso |
 |---|---|---|
-| `br_cand_bens` | Bens de candidatos | Patrimônio declarado; `DS_BEM` sem placa/endereço na API |
-| `br_cand_rede_social` | Redes sociais | Handles/URLs oficiais — base da próxima ferramenta de redes |
-| `br_cand_complementar` | Informações complementares | Campos extras da ficha (quando o zip existir no ano) |
+| `br_cand_bens` | Bens de candidatos | Patrimônio declarado; entra com prestação de contas |
+| `br_cand_contas` | Prestação de contas (candidatos) | Receitas/despesas oficiais |
+| `br_cand_rede_social` | Redes sociais | **Opcional / depois** — anos faltantes quebram o fluxo |
+| `br_cand_complementar` | Informações complementares | **Opcional / depois** |
 | `br_cand_vagas` | Vagas | Já no núcleo de urna |
 | `br_cand_coligacao` | Coligações | Já no núcleo de urna |
 

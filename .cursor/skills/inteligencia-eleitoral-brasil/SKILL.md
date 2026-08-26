@@ -31,4 +31,6 @@ Não gravar em `Arquitetura/`. `inbox/` só leitura. Promoção de dump → `dat
 
 ## MCP (quando existir)
 
-Função nomeada só. Sem SQL livre. Catálogo deste produto, não as 247 tools NE9. Trilha B / scrap = `indicio`, nunca cifra oficial.
+Função nomeada só. Sem SQL livre. Catálogo deste produto, não as 247 tools NE9.
+Pacotes: catalogo, nominata, votacao, comparecimento, eleitorado, coligacao, vagas, bem, receita, despesa.
+Trilha B / scrap = `indicio`, nunca cifra oficial.

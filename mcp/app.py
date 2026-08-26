@@ -93,6 +93,21 @@ class VagasIn(BaseModel):
     limite: int = 200
 
 
+class BemIn(BaseModel):
+    ano: int
+    sq_candidato: int
+    limite: int = 200
+
+
+class ContasIn(BaseModel):
+    ano: int
+    sq_candidato: int | None = None
+    uf: str | None = None
+    sg_partido: str | None = None
+    cargo: str | None = None
+    limite: int = 200
+
+
 def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
     row = conn.execute(sql, args).fetchone()
     return row[0] if row else None
@@ -210,6 +225,39 @@ def vagas(body: VagasIn, authorization: str | None = Header(default=None), x_tok
         )
 
 
+@app.post("/v1/bem")
+def bem(body: BemIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.bem(%s,%s,%s)",
+            (body.ano, body.sq_candidato, body.limite),
+        )
+
+
+@app.post("/v1/receita")
+def receita(body: ContasIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.receita(%s,%s,%s,%s,%s,%s)",
+            (body.ano, body.sq_candidato, body.uf, body.sg_partido, body.cargo, body.limite),
+        )
+
+
+@app.post("/v1/despesa")
+def despesa(body: ContasIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.despesa(%s,%s,%s,%s,%s,%s)",
+            (body.ano, body.sq_candidato, body.uf, body.sg_partido, body.cargo, body.limite),
+        )
+
+
 class McpCall(BaseModel):
     method: str
     params: dict[str, Any] = Field(default_factory=dict)
@@ -234,4 +282,10 @@ def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token
         return coligacao(ColigacaoIn(**p), authorization, x_token)
     if name == "vagas":
         return vagas(VagasIn(**p), authorization, x_token)
+    if name == "bem":
+        return bem(BemIn(**p), authorization, x_token)
+    if name == "receita":
+        return receita(ContasIn(**p), authorization, x_token)
+    if name == "despesa":
+        return despesa(ContasIn(**p), authorization, x_token)
     raise HTTPException(400, "tool inexistente neste catálogo")
