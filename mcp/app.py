@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -15,18 +16,50 @@ app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
 MSG_AUTH = "não autorizado"
 _STATIC = Path(__file__).resolve().parent / "static"
 _GUIA = _STATIC / "guia"
+_PATCH_TOKENS = Path(__file__).resolve().parent / "sql" / "patch_mcp_tokens.sql"
+_TOKENS_READY = False
+
+
+def _ensure_tokens_table() -> None:
+    global _TOKENS_READY
+    if _TOKENS_READY or not _PATCH_TOKENS.exists():
+        return
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        return
+    sql = _PATCH_TOKENS.read_text(encoding="utf-8")
+    with psycopg.connect(url, autocommit=True) as conn:
+        conn.execute(sql)
+    _TOKENS_READY = True
+
+
+def _extract_token(authorization: str | None, x_token: str | None) -> str:
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    if x_token:
+        return x_token.strip()
+    return ""
 
 
 def _token_ok(authorization: str | None, x_token: str | None) -> None:
-    expected = os.environ.get("MCP_TOKEN", "")
-    if not expected:
+    master = os.environ.get("MCP_TOKEN", "")
+    got = _extract_token(authorization, x_token)
+    if not master and not got:
         return
-    got = ""
-    if authorization and authorization.lower().startswith("bearer "):
-        got = authorization[7:].strip()
-    elif x_token:
-        got = x_token
-    if got != expected:
+    if master and got == master:
+        return
+    if not got:
+        raise HTTPException(401, MSG_AUTH)
+    _ensure_tokens_table()
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise HTTPException(401, MSG_AUTH)
+    with psycopg.connect(url) as conn:
+        ok = conn.execute(
+            "SELECT 1 FROM ctl.mcp_token WHERE token = %s AND ativo IS TRUE",
+            (got,),
+        ).fetchone()
+    if not ok:
         raise HTTPException(401, MSG_AUTH)
 
 
@@ -194,6 +227,41 @@ def root() -> RedirectResponse:
 @app.get("/guia")
 def guia() -> FileResponse:
     return FileResponse(_GUIA / "index.html")
+
+
+class GerarTokenIn(BaseModel):
+    rotulo: str = Field(min_length=2, max_length=80)
+
+
+@app.post("/guia/api/gerar-token")
+def guia_gerar_token(body: GerarTokenIn) -> dict[str, str]:
+    if os.environ.get("GUIA_EMIT_TOKEN", "true").lower() in ("0", "false", "no"):
+        raise HTTPException(403, "Emissão de token desativada")
+    _ensure_tokens_table()
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise HTTPException(503, "Indisponível")
+    token = secrets.token_urlsafe(32)
+    with psycopg.connect(url) as conn:
+        conn.execute(
+            "INSERT INTO ctl.mcp_token (token, rotulo) VALUES (%s, %s)",
+            (token, body.rotulo.strip()),
+        )
+        conn.commit()
+    return {
+        "status": "ok",
+        "token": token,
+        "rotulo": body.rotulo.strip(),
+        "aviso": "Copie agora. Este token não será exibido de novo.",
+    }
+
+
+@app.get("/guia/api/skill")
+def guia_skill() -> PlainTextResponse:
+    path = _GUIA / "recursos" / "skill-ia.md"
+    if not path.exists():
+        raise HTTPException(404, "Skill não encontrada")
+    return PlainTextResponse(path.read_text(encoding="utf-8"), media_type="text/plain; charset=utf-8")
 
 
 if _GUIA.is_dir():

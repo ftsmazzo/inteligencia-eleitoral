@@ -215,6 +215,27 @@
       pointer-events: none;
     }
     .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    .token-gen {
+      display: flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-bottom: 20px;
+    }
+    .token-gen input {
+      flex: 1; min-width: 200px; padding: 12px 16px; border-radius: 10px;
+      border: 1px solid var(--line); font-family: inherit; font-size: 0.95rem;
+    }
+    .token-result {
+      background: var(--accent-soft); border: 1px solid #e8d48a; border-radius: 12px;
+      padding: 16px 20px; margin-top: 16px;
+    }
+    .token-result code {
+      display: block; margin-top: 8px; padding: 12px; background: var(--surface);
+      border-radius: 8px; font-size: 0.85rem; word-break: break-all;
+    }
+    .skill-box pre {
+      background: #0c1222; color: #e2e8f0; padding: 20px; border-radius: 12px;
+      overflow: auto; max-height: 480px; font-size: 0.82rem; line-height: 1.5;
+      font-family: "Consolas", "Monaco", monospace;
+    }
   </style>
 </head>
 <body>
@@ -226,9 +247,10 @@
       </a>
       <nav>
         <a href="#o-que-e">O que é</a>
+        <a href="#token">Token</a>
         <a href="#conectar">Conectar</a>
+        <a href="#skill">Skill</a>
         <a href="#perguntas">Perguntas</a>
-        <a href="#recursos">Recursos</a>
       </nav>
       <div class="status-pill"><span class="dot" id="health-dot"></span><span id="health-text">Verificando…</span></div>
     </div>
@@ -241,8 +263,8 @@
           <h1>Dados eleitorais do Brasil, prontos para sua IA</h1>
           <p class="lead">Votos, candidatos, eleitos, contas de campanha, população, CadÚnico, Bolsa Família e Câmara — fontes oficiais, sem inventar número.</p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="#conectar">Conectar agora</a>
-            <a class="btn btn-secondary" href="#recursos">Baixar recursos</a>
+            <a class="btn btn-primary" href="#token">Gerar meu token</a>
+            <a class="btn btn-secondary" href="#conectar">Conectar agora</a>
           </div>
         </div>
         <div class="hero-card">
@@ -286,6 +308,31 @@
       </div>
     </section>
 
+    <section id="token">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Seu token de acesso</h2>
+          <p>Gere aqui um token pessoal para conectar sua IA ao MCP. Guarde-o — não exibimos de novo.</p>
+        </div>
+        <div class="connect-box" style="padding:24px">
+          <div class="token-gen">
+            <div style="flex:1;min-width:200px">
+              <label for="rotulo" style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px">Nome ou equipe</label>
+              <input type="text" id="rotulo" placeholder="Ex.: João · Equipe Fabria" maxlength="80" />
+            </div>
+            <button class="btn btn-primary" type="button" id="gerar-token">Gerar token</button>
+          </div>
+          <div id="token-result" class="token-result" hidden>
+            <strong>Token gerado</strong>
+            <p style="margin-top:8px;font-size:0.9rem;color:var(--muted)" id="token-aviso"></p>
+            <code id="token-novo"></code>
+            <button class="btn btn-secondary" type="button" id="usar-token" style="margin-top:12px">Usar este token abaixo</button>
+          </div>
+          <p style="margin-top:16px;font-size:0.85rem;color:var(--muted)">Quem já tem token mestre (admin) pode colar direto na seção Conectar.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="conectar">
       <div class="wrap">
         <div class="section-head">
@@ -301,8 +348,9 @@
             <button class="btn btn-secondary" type="button" id="toggle-token">Mostrar</button>
           </div>
           <ol class="steps wrap" style="padding:24px 24px 8px">
-            <li>Peça o <strong>token</strong> a quem administra a ferramenta.</li>
+            <li><strong>Gere ou cole</strong> seu token na seção acima.</li>
             <li>Escolha sua IA abaixo e <strong>cole a configuração</strong>.</li>
+            <li>Instale a <strong>Skill</strong> (seção Skill) nas instruções do agente.</li>
             <li>Faça uma pergunta com <strong>ano + cargo + lugar</strong>.</li>
           </ol>
           <div class="tabs" role="tablist">
@@ -326,7 +374,7 @@
             </div>
           </div>
           <div class="tab-panel" id="panel-outras">
-            <p style="color:var(--muted);margin-bottom:16px">Copie a <strong>Skill para IA</strong> (aba Recursos) e cole nas instruções do agente. Informe URL e token:</p>
+            <p style="color:var(--muted);margin-bottom:16px">Copie a <strong>Skill</strong> (seção Skill) e cole nas instruções do agente. Informe URL e token:</p>
             <div class="code-block">
               <button class="copy-btn" data-copy="cfg-url">Copiar URL</button>
               <pre id="cfg-url"></pre>
@@ -362,35 +410,35 @@
       </div>
     </section>
 
-    <section id="recursos">
+    <section id="skill">
       <div class="wrap">
         <div class="section-head">
-          <h2>Recursos para download</h2>
-          <p>Skill, configs e catálogo — prontos para copiar ou anexar.</p>
+          <h2>Skill para IA</h2>
+          <p>Instruções completas para Claude, GPT, Manus, Cursor e outros agentes. Cole nas regras ou anexe como skill.</p>
         </div>
-        <div class="resource-list">
-          <a class="resource" href="recursos/skill-ia.md" download>
-            <div><strong>Skill para IA</strong><span>Claude, GPT, Manus, Cursor — instruções completas</span></div>
+        <div class="skill-box">
+          <div class="code-block">
+            <button class="copy-btn" data-copy="skill-full">Copiar Skill</button>
+            <pre id="skill-full">Carregando skill…</pre>
+          </div>
+        </div>
+        <div class="resource-list" style="margin-top:24px">
+          <a class="resource" href="recursos/skill-ia.md" download id="skill-download">
+            <div><strong>Baixar skill-ia.md</strong><span>Arquivo para importar no Cursor ou anexar ao agente</span></div>
             <span class="resource-dl">Baixar ↓</span>
           </a>
           <a class="resource" href="recursos/mcp-cursor.json" download>
-            <div><strong>Config MCP · Cursor</strong><span>JSON pronto (substitua o token)</span></div>
+            <div><strong>Config MCP · Cursor</strong><span>JSON pronto (token do campo acima)</span></div>
             <span class="resource-dl">Baixar ↓</span>
           </a>
           <a class="resource" href="recursos/mcp-claude.json" download>
-            <div><strong>Config MCP · Claude</strong><span>JSON pronto (substitua o token)</span></div>
+            <div><strong>Config MCP · Claude</strong><span>JSON pronto (token do campo acima)</span></div>
             <span class="resource-dl">Baixar ↓</span>
           </a>
           <a class="resource" href="recursos/catalogo.json" download>
             <div><strong>Catálogo da base</strong><span>Lista formal de pacotes e indicadores</span></div>
             <span class="resource-dl">Baixar ↓</span>
           </a>
-        </div>
-        <div style="margin-top:32px">
-          <div class="code-block">
-            <button class="copy-btn" data-copy="skill-preview">Copiar Skill</button>
-            <pre id="skill-preview" style="max-height:320px">Carregando skill…</pre>
-          </div>
         </div>
       </div>
     </section>
@@ -409,9 +457,23 @@
     const BASE = window.location.origin;
     const MCP = BASE + '/mcp';
 
+    const STORAGE_KEY = 'ie-brasil-mcp-token';
+
     function token() {
       const t = document.getElementById('token').value.trim();
       return t || 'SEU_TOKEN_AQUI';
+    }
+
+    function saveToken(t) {
+      if (t) localStorage.setItem(STORAGE_KEY, t);
+    }
+
+    function loadToken() {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        document.getElementById('token').value = saved;
+        refreshBlocks();
+      }
     }
 
     function mcpConfig() {
@@ -441,8 +503,49 @@
       ].join('\n');
     }
 
-    document.getElementById('token').addEventListener('input', refreshBlocks);
+    document.getElementById('token').addEventListener('input', () => {
+      saveToken(document.getElementById('token').value.trim());
+      refreshBlocks();
+    });
+    loadToken();
     refreshBlocks();
+
+    document.getElementById('gerar-token').addEventListener('click', async () => {
+      const rotulo = document.getElementById('rotulo').value.trim();
+      if (rotulo.length < 2) {
+        alert('Informe seu nome ou equipe (mínimo 2 caracteres).');
+        return;
+      }
+      const btn = document.getElementById('gerar-token');
+      btn.disabled = true;
+      btn.textContent = 'Gerando…';
+      try {
+        const r = await fetch(BASE + '/guia/api/gerar-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rotulo })
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Falha ao gerar');
+        document.getElementById('token-novo').textContent = d.token;
+        document.getElementById('token-aviso').textContent = d.aviso;
+        document.getElementById('token-result').hidden = false;
+      } catch (e) {
+        alert(e.message || 'Não foi possível gerar o token.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Gerar token';
+      }
+    });
+
+    document.getElementById('usar-token').addEventListener('click', () => {
+      const t = document.getElementById('token-novo').textContent.trim();
+      document.getElementById('token').value = t;
+      saveToken(t);
+      refreshBlocks();
+      document.getElementById('conectar').scrollIntoView({ behavior: 'smooth' });
+      showToast();
+    });
 
     document.getElementById('toggle-token').addEventListener('click', () => {
       const inp = document.getElementById('token');
@@ -481,11 +584,15 @@
       document.getElementById('health-text').textContent = 'Verifique conexão';
     });
 
-    fetch('recursos/skill-ia.md').then(r => r.text()).then(t => {
-      document.getElementById('skill-preview').textContent = t;
-    }).catch(() => {
-      document.getElementById('skill-preview').textContent = 'Skill disponível em recursos/skill-ia.md';
-    });
+    function loadSkill(text) {
+      document.getElementById('skill-full').textContent = text;
+    }
+
+    fetch(BASE + '/guia/api/skill')
+      .then(r => r.ok ? r.text() : Promise.reject())
+      .then(loadSkill)
+      .catch(() => fetch('recursos/skill-ia.md').then(r => r.text()).then(loadSkill))
+      .catch(() => loadSkill('Skill indisponível. Baixe skill-ia.md nos links acima.'));
   </script>
 </body>
 </html>
