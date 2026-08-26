@@ -19,6 +19,7 @@ Painel web com chat analítico sobre dados eleitorais oficiais do Brasil.
 | `APURA_JWT_SECRET` | Sim | Segredo para sessões (string longa aleatória) |
 | `APURA_MODEL` | Não | Modelo OpenRouter (padrão: `openai/gpt-4o-mini`) |
 | `APURA_SITE_URL` | Não | URL pública (header OpenRouter) |
+| `POSTGRES_ADMIN_URL` | Recomendada | Superusuário Postgres para criar tabelas Apura (DDL) |
 | `AGENTE_DATABASE_URL` | Sim | Já usada pelo MCP |
 | `MCP_INTERNAL_URL` | Não | Padrão `http://127.0.0.1:8000` |
 

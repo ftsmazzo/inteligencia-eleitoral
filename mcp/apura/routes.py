@@ -30,13 +30,19 @@ def _db_url() -> str | None:
     return os.environ.get("DATABASE_URL") or os.environ.get("AGENTE_DATABASE_URL")
 
 
+def _ddl_url() -> str | None:
+    return os.environ.get("POSTGRES_ADMIN_URL") or _db_url()
+
+
 def _ensure_schema() -> None:
     global _READY
-    if _READY or not _PATCH.exists():
+    if _READY:
         return
-    url = _db_url()
+    if not _PATCH.exists():
+        raise HTTPException(503, "Schema Apura indisponível")
+    url = _ddl_url()
     if not url:
-        return
+        raise HTTPException(503, "Banco indisponível")
     with psycopg.connect(url, autocommit=True) as conn:
         conn.execute(_PATCH.read_text(encoding="utf-8"))
     _READY = True

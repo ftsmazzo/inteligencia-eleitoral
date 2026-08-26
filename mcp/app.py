@@ -30,11 +30,15 @@ def _db_url() -> str | None:
     return os.environ.get("DATABASE_URL") or os.environ.get("AGENTE_DATABASE_URL")
 
 
+def _ddl_url() -> str | None:
+    return os.environ.get("POSTGRES_ADMIN_URL") or _db_url()
+
+
 def _ensure_tokens_table() -> None:
     global _TOKENS_READY
     if _TOKENS_READY or not _PATCH_TOKENS.exists():
         return
-    url = _db_url()
+    url = _ddl_url()
     if not url:
         return
     sql = _PATCH_TOKENS.read_text(encoding="utf-8")
