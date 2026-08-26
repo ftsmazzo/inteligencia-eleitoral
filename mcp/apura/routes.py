@@ -261,6 +261,10 @@ async def chat(
                     payload = json.loads(line[6:])
                     final_content = payload.get("conteudo", "")
                     final_dados = payload.get("dados")
+                    if payload.get("relatorio_html"):
+                        base = dict(final_dados) if isinstance(final_dados, dict) else {}
+                        base["relatorio_html"] = payload["relatorio_html"]
+                        final_dados = base
         if final_content:
             with _db() as conn:
                 conn.execute(

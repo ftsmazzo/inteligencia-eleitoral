@@ -1,23 +1,37 @@
-"""Orquestrador OpenRouter + MCP com streaming SSE."""
+"""Orquestrador (tools + MCP) + redator expert (resposta final)."""
 from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
 
+from apura.export import exportar_html
 from apura.mcp_client import chamar_mcp, resumir_resultado
-from apura.prompt import SYSTEM
+from apura.prompt import SYSTEM_ORCHESTRATOR, SYSTEM_WRITER
 from apura.tools import MCP_TOOLS
 
 _OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
 _MAX_TOOL_ROUNDS = 6
+_RELATORIO_RE = re.compile(
+    r"relat[oó]rio|em\s+html|formato\s+html|exporte?\s+(?:em\s+)?html|monte?\s+(?:um\s+)?html",
+    re.I,
+)
 
 
-def _model() -> str:
-    return os.environ.get("APURA_MODEL", "openai/gpt-4o-mini")
+def _orchestrator_model() -> str:
+    return (
+        os.environ.get("APURA_ORCHESTRATOR_MODEL")
+        or os.environ.get("APURA_MODEL")
+        or "openai/gpt-4o-mini"
+    )
+
+
+def _writer_model() -> str:
+    return os.environ.get("APURA_WRITER_MODEL") or "openai/gpt-4o"
 
 
 def _openrouter_key() -> str:
@@ -61,8 +75,87 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def _openrouter(messages: list[dict], tools: list[dict] | None = None, stream: bool = False) -> Any:
-    body: dict[str, Any] = {"model": _model(), "messages": messages, "temperature": 0.4}
+def _ultima_pergunta(historico: list[dict[str, str]]) -> str:
+    for h in reversed(historico):
+        if h.get("papel") == "user":
+            return h.get("conteudo", "").strip()
+    return ""
+
+
+def _historico_redator(historico: list[dict[str, str]]) -> str:
+    linhas: list[str] = []
+    for h in historico[-8:]:
+        papel = "Usuário" if h.get("papel") == "user" else "Apura"
+        linhas.append(f"{papel}: {(h.get('conteudo') or '')[:900]}")
+    return "\n".join(linhas)
+
+
+def _compactar_consultas(tool_log: list[dict[str, Any]]) -> str:
+    if not tool_log:
+        return "(Nenhuma consulta à base nesta rodada.)"
+    partes: list[str] = []
+    for tr in tool_log:
+        partes.append(f"## {tr.get('tool', '?')} — params: {json.dumps(tr.get('params', {}), ensure_ascii=False)}")
+        res = tr.get("result")
+        if not isinstance(res, dict):
+            partes.append(str(res)[:1500])
+            continue
+        status = res.get("status", "")
+        if status == "fora_do_recorte":
+            partes.append(f"status: fora_do_recorte | {res.get('mensagem', '')}")
+            continue
+        if status == "vazio":
+            partes.append("status: vazio | sem linhas neste recorte")
+            continue
+        nota = res.get("nota_metodologica") or res.get("mensagem") or ""
+        if nota:
+            partes.append(f"nota: {nota}")
+        linhas = res.get("linhas")
+        if isinstance(linhas, list):
+            partes.append(json.dumps(linhas, ensure_ascii=False, default=str)[:10000])
+        else:
+            partes.append(resumir_resultado(res, max_chars=6000))
+    return "\n\n".join(partes)
+
+
+def _notas_orquestrador(content: str | None) -> str:
+    if not content:
+        return ""
+    text = content.strip()
+    if text.startswith("PENDENTE:"):
+        return text
+    if text == "SEM_DADOS":
+        return "SEM_DADOS"
+    return ""
+
+
+def _pediu_relatorio_html(mensagem: str) -> bool:
+    return bool(_RELATORIO_RE.search(mensagem or ""))
+
+
+def _entrada_redator(
+    pergunta: str,
+    historico: list[dict[str, str]],
+    tool_log: list[dict[str, Any]],
+    notas: str,
+) -> str:
+    return (
+        f"PERGUNTA_ATUAL:\n{pergunta}\n\n"
+        f"HISTORICO_RECENTE:\n{_historico_redator(historico)}\n\n"
+        f"PENDENTE_ORQUESTRADOR:\n{notas or '(nenhum)'}\n\n"
+        f"DADOS_OFICIAIS:\n{_compactar_consultas(tool_log)}"
+    )
+
+
+async def _openrouter(
+    messages: list[dict],
+    *,
+    model: str,
+    tools: list[dict] | None = None,
+    stream: bool = False,
+    temperature: float = 0.3,
+) -> Any:
+    body: dict[str, Any] = {"model": model, "messages": messages, "temperature": temperature}
     if tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
@@ -72,30 +165,51 @@ async def _openrouter(messages: list[dict], tools: list[dict] | None = None, str
         return await client.post(_OPENROUTER, headers=_headers(), json=body)
 
 
+async def _stream_resposta(model: str, messages: list[dict], temperature: float = 0.55) -> AsyncIterator[str]:
+    sr = await _openrouter(messages, model=model, stream=True, temperature=temperature)
+    if sr.status_code >= 400:
+        raise RuntimeError(_erro_openrouter(sr.status_code, sr.text))
+    async for line in sr.aiter_lines():
+        if not line.startswith("data: "):
+            continue
+        payload = line[6:].strip()
+        if payload == "[DONE]":
+            break
+        try:
+            chunk = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        delta = chunk["choices"][0].get("delta", {})
+        text = delta.get("content") or ""
+        if text:
+            yield text
+
+
 async def executar_chat(
     historico: list[dict[str, str]],
     mcp_token: str,
 ) -> AsyncIterator[str]:
-    """Gera eventos SSE: status, token, done, error."""
-    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM}]
+    """Gera eventos SSE: status, token, done (opcional relatorio_html), error."""
+    pergunta = _ultima_pergunta(historico)
+    orch_messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_ORCHESTRATOR}]
     for h in historico:
-        messages.append({"role": h["papel"], "content": h["conteudo"]})
+        orch_messages.append({"role": h["papel"], "content": h["conteudo"]})
 
     tool_log: list[dict[str, Any]] = []
+    notas = ""
 
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
-            yield _sse("status", {"fase": "pensando"})
-            r = await _openrouter(messages, MCP_TOOLS, stream=False)
+            yield _sse("status", {"fase": "planejando"})
+            r = await _openrouter(orch_messages, model=_orchestrator_model(), tools=MCP_TOOLS, stream=False)
             if r.status_code >= 400:
                 yield _sse("error", {"mensagem": _erro_openrouter(r.status_code, r.text)})
                 return
-            data = r.json()
-            choice = data["choices"][0]["message"]
+            choice = r.json()["choices"][0]["message"]
             tool_calls = choice.get("tool_calls") or []
 
             if tool_calls:
-                messages.append(choice)
+                orch_messages.append(choice)
                 for tc in tool_calls:
                     fn = tc.get("function", {})
                     name = fn.get("name", "")
@@ -106,7 +220,7 @@ async def executar_chat(
                     yield _sse("status", {"fase": "consultando", "tool": name})
                     result = await chamar_mcp(name, args, mcp_token)
                     tool_log.append({"tool": name, "params": args, "result": result})
-                    messages.append(
+                    orch_messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": tc["id"],
@@ -115,46 +229,30 @@ async def executar_chat(
                     )
                 continue
 
-            # Resposta final
-            yield _sse("status", {"fase": "redigindo"})
-            full = choice.get("content") or ""
-            if full:
-                chunk_size = 36
-                for i in range(0, len(full), chunk_size):
-                    yield _sse("token", {"text": full[i : i + chunk_size]})
-            else:
-                sr = await _openrouter(messages, None, stream=True)
-                if sr.status_code >= 400:
-                    yield _sse("error", {"mensagem": _erro_openrouter(sr.status_code, sr.text)})
-                    return
-                full_parts: list[str] = []
-                async for line in sr.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    payload = line[6:].strip()
-                    if payload == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(payload)
-                    except json.JSONDecodeError:
-                        continue
-                    delta = chunk["choices"][0].get("delta", {})
-                    text = delta.get("content") or ""
-                    if text:
-                        full_parts.append(text)
-                        yield _sse("token", {"text": text})
-                full = "".join(full_parts)
-
-            yield _sse(
-                "done",
-                {
-                    "conteudo": full,
-                    "dados": {"tool_results": tool_log} if tool_log else None,
-                },
-            )
+            notas = _notas_orquestrador(choice.get("content"))
+            break
+        else:
+            yield _sse("error", {"mensagem": "Limite de consultas atingido nesta mensagem."})
             return
 
-        yield _sse("error", {"mensagem": "Limite de consultas atingido nesta mensagem."})
+        yield _sse("status", {"fase": "redigindo"})
+        writer_messages = [
+            {"role": "system", "content": SYSTEM_WRITER},
+            {"role": "user", "content": _entrada_redator(pergunta, historico, tool_log, notas)},
+        ]
+        full_parts: list[str] = []
+        async for token in _stream_resposta(_writer_model(), writer_messages):
+            full_parts.append(token)
+            yield _sse("token", {"text": token})
+        full = "".join(full_parts)
+
+        dados = {"tool_results": tool_log} if tool_log else None
+        done: dict[str, Any] = {"conteudo": full, "dados": dados}
+        if _pediu_relatorio_html(pergunta) and tool_log:
+            titulo = pergunta[:80] or "Relatório Apura"
+            done["relatorio_html"] = exportar_html(dados, full, titulo)
+        yield _sse("done", done)
+
     except RuntimeError as exc:
         yield _sse("error", {"mensagem": str(exc)})
     except Exception as exc:

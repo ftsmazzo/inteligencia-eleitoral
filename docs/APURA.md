@@ -7,9 +7,22 @@ Painel web com chat analítico sobre dados eleitorais oficiais do Brasil.
 ## O que é
 
 - Chat humanizado com streaming e indicador “digitando”
-- Orquestrador OpenRouter + consultas MCP (números nunca inventados)
+- Orquestrador OpenRouter (tools + MCP) + **redator expert** em modelo separado
 - Login, histórico de conversas por usuário
-- Exportação **Excel** e **HTML** quando a resposta inclui dados tabulares
+- Exportação **Excel** e **HTML**; relatório HTML **inline** quando o usuário pedir
+
+## Arquitetura (dois modelos)
+
+| Papel | Variável | Padrão | Função |
+|---|---|---|---|
+| **Orquestrador** | `APURA_ORCHESTRATOR_MODEL` | `openai/gpt-4o-mini` | Entende a pergunta, chama tools MCP, compacta JSON |
+| **Redator** | `APURA_WRITER_MODEL` | `openai/gpt-4o` | Responde ao usuário com tom expert (sem chamar MCP) |
+| **MCP** | — | — | Postgres `api.*` — **sem IA** |
+
+O redator recebe só a pergunta + dados já consultados (economia de tokens no modelo caro).
+Relatório HTML **inline** aparece quando o usuário pedir (ex.: “monte um relatório em HTML”).
+
+Sugestões OpenRouter para redator: `openai/gpt-4o`, `anthropic/claude-sonnet-4`, `google/gemini-2.5-pro-preview`.
 
 ## Variáveis de ambiente (EasyPanel · serviço `mcp-api`)
 
@@ -17,7 +30,9 @@ Painel web com chat analítico sobre dados eleitorais oficiais do Brasil.
 |---|---|---|
 | `OPENROUTER_API_KEY` | Sim | Chave em [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `APURA_JWT_SECRET` | Sim | Segredo para sessões (string longa aleatória) |
-| `APURA_MODEL` | Não | Modelo OpenRouter (padrão: `openai/gpt-4o-mini`) |
+| `APURA_MODEL` | Não | Modelo legado; usado se orchestrator/writer não forem definidos |
+| `APURA_ORCHESTRATOR_MODEL` | Não | Modelo barato para tool calling (padrão: `openai/gpt-4o-mini`) |
+| `APURA_WRITER_MODEL` | Não | Modelo expert para redação (padrão: `openai/gpt-4o`) |
 | `APURA_SITE_URL` | Não | URL pública (header OpenRouter) |
 | `POSTGRES_ADMIN_URL` | Recomendada | Superusuário Postgres para criar tabelas Apura (DDL) |
 | `AGENTE_DATABASE_URL` | Sim | Já usada pelo MCP |

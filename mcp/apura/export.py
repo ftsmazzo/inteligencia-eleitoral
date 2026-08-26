@@ -68,15 +68,21 @@ def exportar_html(
         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='utf-8'>",
         f"<title>{esc(titulo)}</title>",
         "<style>",
-        "body{font-family:system-ui,sans-serif;max-width:960px;margin:40px auto;padding:0 24px;color:#0c1222}",
-        "h1{font-size:1.6rem;color:#0d4f4a}table{border-collapse:collapse;width:100%;margin:24px 0;font-size:0.9rem}",
+        "body{font-family:system-ui,sans-serif;max-width:960px;margin:40px auto;padding:0 24px;color:#0c1222;line-height:1.6}",
+        "h1{font-size:1.6rem;color:#0d4f4a;border-bottom:2px solid #e6f4f2;padding-bottom:12px}",
+        "h2{font-size:1.1rem;color:#0d4f4a;margin:28px 0 12px}",
+        "table{border-collapse:collapse;width:100%;margin:16px 0;font-size:0.88rem}",
         "th,td{border:1px solid #e2e8f0;padding:8px 10px;text-align:left}",
-        "th{background:#e6f4f2}.prose{line-height:1.65;color:#334155;white-space:pre-wrap}",
+        "th{background:#e6f4f2;position:sticky;top:0}",
+        "tr:nth-child(even){background:#f8fafc}",
+        ".prose{line-height:1.65;color:#334155;white-space:pre-wrap;margin:20px 0}",
+        ".meta{color:#64748b;font-size:0.85rem;margin-top:32px}",
         "</style></head><body>",
         f"<h1>{esc(titulo)}</h1>",
         f"<p class='prose'>{esc(conteudo_md)}</p>",
     ]
     if rows:
+        parts.append("<h2>Dados consultados</h2>")
         keys: list[str] = []
         seen: set[str] = set()
         for row in rows:

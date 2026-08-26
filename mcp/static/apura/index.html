@@ -112,6 +112,9 @@
     .hint { text-align: center; font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
     .app-err { text-align: center; color: #b91c1c; font-size: 0.85rem; min-height: 1.2em; margin-bottom: 8px; }
     .composer.loading { opacity: .55; pointer-events: none; }
+    .relatorio-box { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fafbfc; }
+    .relatorio-box summary { cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: 0.85rem; color: var(--brand); background: var(--brand-light); }
+    .relatorio-frame { width: 100%; min-height: 420px; border: none; background: #fff; display: block; }
   </style>
 </head>
 <body>
@@ -324,6 +327,21 @@
       el.innerHTML = formatText(texto);
     }
 
+    function appendRelatorio(bubble, html) {
+      const box = document.createElement('details');
+      box.className = 'relatorio-box';
+      box.open = true;
+      const sum = document.createElement('summary');
+      sum.textContent = 'Relatório HTML (clique para recolher)';
+      const frame = document.createElement('iframe');
+      frame.className = 'relatorio-frame';
+      frame.srcdoc = html;
+      frame.title = 'Relatório Apura';
+      box.appendChild(sum);
+      box.appendChild(frame);
+      bubble.appendChild(box);
+    }
+
     function appendMsg(papel, texto, id, dados) {
       const wrap = document.createElement('div');
       wrap.className = 'msg ' + papel;
@@ -349,6 +367,9 @@
         }
         bubble.appendChild(actions);
       }
+      if (papel === 'assistant' && dados?.relatorio_html) {
+        appendRelatorio(bubble, dados.relatorio_html);
+      }
       wrap.appendChild(av);
       wrap.appendChild(bubble);
       $('messages').appendChild(wrap);
@@ -360,7 +381,12 @@
       const el = document.createElement('div');
       el.className = 'typing';
       el.id = 'typing';
-      const labels = { pensando: 'Apura está pensando', consultando: 'Consultando a base oficial', redigindo: 'Apura está digitando' };
+      const labels = {
+        planejando: 'Planejando consultas…',
+        consultando: 'Consultando a base oficial…',
+        redigindo: 'Redigindo análise…',
+        pensando: 'Apura está pensando…'
+      };
       el.innerHTML = '<div class="avatar" style="background:var(--brand-light);color:var(--brand);font-size:.75rem;font-weight:700">Ap</div><div><span>' + (labels[fase] || labels.pensando) + '</span><div class="dots"><span></span><span></span><span></span></div></div>';
       $('messages').appendChild(el);
       scrollBottom();
@@ -462,7 +488,11 @@
               const msgs = await api('/sessoes/' + sessaoId + '/mensagens');
               const last = msgs.filter(m => m.papel === 'assistant').pop();
               $('messages').lastElementChild?.remove();
-              if (last) appendMsg('assistant', last.conteudo, last.id, last.dados);
+              if (last) {
+                const dados = last.dados || {};
+                if (payload.relatorio_html) dados.relatorio_html = payload.relatorio_html;
+                appendMsg('assistant', last.conteudo, last.id, dados);
+              }
               if ($('chat-titulo').textContent === 'Nova conversa') {
                 $('chat-titulo').textContent = text.slice(0, 60) + (text.length > 60 ? '…' : '');
               }
