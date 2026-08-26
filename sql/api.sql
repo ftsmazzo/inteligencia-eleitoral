@@ -114,7 +114,8 @@ AS $$
       jsonb_build_object('pacote','bem','anos','2014–2026','nota','exige ano+sq_candidato; bens declarados no TSE'),
       jsonb_build_object('pacote','receita','anos','2014–2026','nota','prestação; exige ano e (sq_candidato ou uf); sem CPF'),
       jsonb_build_object('pacote','despesa','anos','2014–2026','nota','prestação contratada/declarada; exige ano e (sq_candidato ou uf); sem CPF'),
-      jsonb_build_object('pacote','eleitos','anos','2014,2016,2018,2020,2022,2024','nota','mapa político; deriva de votacao.ds_sit_tot_turno; exige ano+cargo e (uf ou cod_ibge ou nacional); 2026 fora até haver urna')
+      jsonb_build_object('pacote','eleitos','anos','2014,2016,2018,2020,2022,2024','nota','mapa político; deriva de votacao.ds_sit_tot_turno; exige ano+cargo e (uf ou cod_ibge ou nacional); 2026 fora até haver urna'),
+      jsonb_build_object('pacote','populacao','anos','2010,2014,2016,2018,2020,2021,2022,2024,2025','nota','IBGE; censo 2010/2022 e estimativas SIDRA 6579; 2023/2026 sem publicação própria; exige ano+(uf|cod_ibge|nacional)')
     )
   );
 $$;
@@ -841,6 +842,80 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION api.populacao(
+  p_ano smallint,
+  p_uf text DEFAULT NULL,
+  p_cod_ibge integer DEFAULT NULL,
+  p_nacional boolean DEFAULT false,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, contexto, pg_temp
+AS $$
+DECLARE
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+  v_total bigint;
+  v_fonte text;
+  v_anos_ok smallint[] := ARRAY[2010, 2014, 2016, 2018, 2020, 2021, 2022, 2024, 2025];
+BEGIN
+  v_pedido := format('populacao ano=%s', p_ano);
+  IF p_ano IS NULL OR p_ano <> ALL (v_anos_ok) THEN
+    RETURN api._envelope_fora(
+      v_pedido || ' (IBGE: censo 2010/2022; estimativas 2014/2016/2018/2020/2021/2024/2025; sem 2023/2026 inventado)'
+    );
+  END IF;
+  IF COALESCE(p_nacional, false) IS NOT TRUE
+     AND p_uf IS NULL AND p_cod_ibge IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' sem uf/cod_ibge/nacional');
+  END IF;
+  IF p_cod_ibge IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM ref.municipio m WHERE m.cod_ibge = p_cod_ibge
+  ) THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Município inexistente neste recorte.','linhas','[]'::jsonb);
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+
+  SELECT COALESCE(SUM(p.qt_populacao), 0), MAX(p.ds_fonte)
+    INTO v_total, v_fonte
+  FROM contexto.populacao_mun p
+  JOIN ref.municipio m ON m.cod_ibge = p.cod_ibge
+  WHERE p.ano = p_ano
+    AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+    AND (p_cod_ibge IS NULL OR p.cod_ibge = p_cod_ibge);
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.qt_populacao DESC, t.nome), '[]'::jsonb)
+    INTO v_linhas
+  FROM (
+    SELECT
+      p.ano, p.cod_ibge, m.nome, m.sg_uf, p.qt_populacao, p.ds_fonte
+    FROM contexto.populacao_mun p
+    JOIN ref.municipio m ON m.cod_ibge = p.cod_ibge
+    WHERE p.ano = p_ano
+      AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+      AND (p_cod_ibge IS NULL OR p.cod_ibge = p_cod_ibge)
+    ORDER BY p.qt_populacao DESC, m.nome
+    LIMIT v_lim
+  ) t;
+
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object(
+    'status', 'ok',
+    'ano', p_ano,
+    'ds_fonte', v_fonte,
+    'qt_populacao_total', v_total,
+    'nota_metodologica', CASE
+      WHEN p_ano IN (2010, 2022) THEN 'Censo Demográfico IBGE'
+      ELSE 'Estimativa populacional IBGE (SIDRA 6579), referência 1º julho'
+    END,
+    'linhas', v_linhas
+  );
+END;
+$$;
+
 REVOKE ALL ON FUNCTION api.catalogo() FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.nominata(smallint, text, text, integer, text, bigint, integer, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.votacao(smallint, text, text, integer, boolean, smallint, text, bigint, integer, text, text, integer) FROM PUBLIC;
@@ -852,3 +927,4 @@ REVOKE ALL ON FUNCTION api.bem(smallint, bigint, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.receita(smallint, bigint, text, text, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.despesa(smallint, bigint, text, text, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.eleitos(smallint, text, text, integer, boolean, text, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.populacao(smallint, text, integer, boolean, integer) FROM PUBLIC;

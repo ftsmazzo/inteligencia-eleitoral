@@ -34,7 +34,7 @@ Percentual `validos` vs `soma_dois` só na função. UF/Brasil = soma, nunca rat
 
 ## MCP (poucas tools)
 
-`catalogo`, `votacao`, `comparecimento`, `nominata`, `eleitorado`, `coligacao`, `vagas`, `bem`, `receita`, `despesa`, `eleitos`.  
+`catalogo`, `votacao`, `comparecimento`, `nominata`, `eleitorado`, `coligacao`, `vagas`, `bem`, `receita`, `despesa`, `eleitos`, `populacao`.  
 `votacao`/`eleitos` exigem `ano` + `cargo` + (`uf` ou `cod_ibge`), salvo totais nacionais explícitos. Sem SQL livre. Fora do recorte: texto seco da spec.
 
 ## Desempenho

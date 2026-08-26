@@ -122,8 +122,10 @@ Só se o MVP incluir cruzamento eleitorado × população. Janela da fonte, não
 
 | Id | Fonte | Link |
 |---|---|---|
-| `br_mun_censo` | IBGE Censo 2010 e 2022 | [SIDRA](https://sidra.ibge.gov.br/) |
-| `br_mun_estimativas` | Estimativas populacionais | [SIDRA](https://sidra.ibge.gov.br/) / [IBGE estimativas](https://www.ibge.gov.br/estatisticas/sociais/populacao/9103-estimativas-de-populacao.html) |
+| `br_mun_censo` | IBGE Censo 2010 e 2022 | [SIDRA](https://sidra.ibge.gov.br/) tabelas 1378 (2010) e 4709 (2022) |
+| `br_mun_estimativas` | Estimativas populacionais | [SIDRA 6579](https://sidra.ibge.gov.br/tabela/6579) · anos sem censo (ex.: 2014–2021, 2024–2025). **Sem inventar 2023/2026.** |
+
+Tabela canônica: `contexto.populacao_mun` (`ds_fonte` = `censo` \| `estimativa`). API: `api.populacao`.
 
 ---
 
