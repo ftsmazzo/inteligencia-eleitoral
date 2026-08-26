@@ -1,0 +1,99 @@
+"""Autenticação JWT e senhas do Apura."""
+from __future__ import annotations
+
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import jwt
+import psycopg
+from fastapi import HTTPException
+from passlib.context import CryptContext
+
+_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_ALGO = "HS256"
+_TTL_DAYS = 14
+
+
+def _secret() -> str:
+    s = os.environ.get("APURA_JWT_SECRET") or os.environ.get("MCP_TOKEN", "")
+    if not s:
+        raise HTTPException(503, "APURA_JWT_SECRET não configurado")
+    return s
+
+
+def hash_senha(senha: str) -> str:
+    return _pwd.hash(senha)
+
+
+def verificar_senha(senha: str, senha_hash: str) -> bool:
+    return _pwd.verify(senha, senha_hash)
+
+
+def criar_token_jwt(usuario_id: str, email: str) -> str:
+    exp = datetime.now(timezone.utc) + timedelta(days=_TTL_DAYS)
+    return jwt.encode(
+        {"sub": usuario_id, "email": email, "exp": exp},
+        _secret(),
+        algorithm=_ALGO,
+    )
+
+
+def decodificar_jwt(token: str) -> dict[str, Any]:
+    try:
+        return jwt.decode(token, _secret(), algorithms=[_ALGO])
+    except jwt.PyJWTError as exc:
+        raise HTTPException(401, "Sessão inválida ou expirada") from exc
+
+
+def gerar_mcp_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def registrar_usuario(conn: psycopg.Connection, email: str, senha: str, nome: str) -> dict[str, str]:
+    email = email.strip().lower()
+    mcp_tok = gerar_mcp_token()
+    uid = conn.execute(
+        """
+        INSERT INTO ctl.apura_usuario (email, nome, senha_hash, mcp_token)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id::text
+        """,
+        (email, nome.strip(), hash_senha(senha), mcp_tok),
+    ).fetchone()[0]
+    conn.execute(
+        "INSERT INTO ctl.mcp_token (token, rotulo) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+        (mcp_tok, f"apura:{email}"),
+    )
+    conn.commit()
+    return {"id": uid, "email": email, "token": criar_token_jwt(uid, email)}
+
+
+def login_usuario(conn: psycopg.Connection, email: str, senha: str) -> dict[str, str]:
+    row = conn.execute(
+        """
+        SELECT id::text, email, senha_hash, nome
+        FROM ctl.apura_usuario
+        WHERE email = %s AND ativo IS TRUE
+        """,
+        (email.strip().lower(),),
+    ).fetchone()
+    if not row or not verificar_senha(senha, row[2]):
+        raise HTTPException(401, "E-mail ou senha incorretos")
+    return {
+        "id": row[0],
+        "email": row[1],
+        "nome": row[3],
+        "token": criar_token_jwt(row[0], row[1]),
+    }
+
+
+def usuario_por_id(conn: psycopg.Connection, usuario_id: str) -> tuple[str, str, str]:
+    row = conn.execute(
+        "SELECT id::text, email, mcp_token FROM ctl.apura_usuario WHERE id = %s AND ativo IS TRUE",
+        (usuario_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(401, "Usuário não encontrado")
+    return row[0], row[1], row[2]

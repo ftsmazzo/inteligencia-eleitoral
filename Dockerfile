@@ -3,8 +3,10 @@ WORKDIR /app
 COPY mcp/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY mcp/app.py /app/app.py
+COPY mcp/apura /app/apura
 COPY mcp/static /app/static
 COPY sql/patch_mcp_tokens.sql /app/sql/patch_mcp_tokens.sql
+COPY sql/patch_apura.sql /app/sql/patch_apura.sql
 ENV PORT=8000
 EXPOSE 8000
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
