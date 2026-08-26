@@ -50,7 +50,7 @@ def _ensure_schema() -> None:
 
 def _conn() -> psycopg.Connection:
     _ensure_schema()
-    url = _db_url()
+    url = _ddl_url() or _db_url()
     if not url:
         raise HTTPException(503, "Banco indisponível")
     return psycopg.connect(url)
