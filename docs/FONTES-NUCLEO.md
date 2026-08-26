@@ -109,7 +109,7 @@ Id: `br_cand_contas` — receitas/despesas do candidato; doador identificado só
 
 Governador, prefeito, vereador, deputados, senadores **eleitos** saem da votação + situação de candidatura dos conjuntos das seções 1 e 2. Não há fonte oficial separada “lista de vereadores” além do TSE.
 
-Atuação parlamentar (proposições, votos) é **módulo posterior**, Câmara/Senado, fora do núcleo de urna:
+Atuação parlamentar (proposições, votos) é **módulo posterior**, Câmara/Senado, fora do núcleo de urna — ver **`docs/FONTES-PARLAMENTO.md`**:
 
 - [Dados Abertos Câmara](https://dadosabertos.camara.leg.br/)  
 - [Dados Abertos Senado](https://www12.senado.leg.br/dados-abertos)
