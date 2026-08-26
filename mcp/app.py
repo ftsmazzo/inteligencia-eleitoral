@@ -1,6 +1,7 @@
 """MCP / REST fino: só funções api.* . Sem SQL livre."""
 from __future__ import annotations
 
+import html as html_module
 import os
 import secrets
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import Any
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -18,13 +19,19 @@ _STATIC = Path(__file__).resolve().parent / "static"
 _GUIA = _STATIC / "guia"
 _PATCH_TOKENS = Path(__file__).resolve().parent / "sql" / "patch_mcp_tokens.sql"
 _TOKENS_READY = False
+_SKILL_PLACEHOLDER = "__SKILL_CONTENT__"
+_NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
+
+def _db_url() -> str | None:
+    return os.environ.get("DATABASE_URL") or os.environ.get("AGENTE_DATABASE_URL")
 
 
 def _ensure_tokens_table() -> None:
     global _TOKENS_READY
     if _TOKENS_READY or not _PATCH_TOKENS.exists():
         return
-    url = os.environ.get("DATABASE_URL")
+    url = _db_url()
     if not url:
         return
     sql = _PATCH_TOKENS.read_text(encoding="utf-8")
@@ -51,7 +58,7 @@ def _token_ok(authorization: str | None, x_token: str | None) -> None:
     if not got:
         raise HTTPException(401, MSG_AUTH)
     _ensure_tokens_table()
-    url = os.environ.get("DATABASE_URL")
+    url = _db_url()
     if not url:
         raise HTTPException(401, MSG_AUTH)
     with psycopg.connect(url) as conn:
@@ -224,9 +231,19 @@ def root() -> RedirectResponse:
     return RedirectResponse(url="/guia", status_code=302)
 
 
+def _skill_text() -> str:
+    path = _GUIA / "recursos" / "skill-ia.md"
+    if not path.exists():
+        return "Skill indisponível. Baixe skill-ia.md nos links acima."
+    return path.read_text(encoding="utf-8")
+
+
 @app.get("/guia")
-def guia() -> FileResponse:
-    return FileResponse(_GUIA / "index.html")
+def guia() -> HTMLResponse:
+    html = (_GUIA / "index.html").read_text(encoding="utf-8")
+    skill = html_module.escape(_skill_text(), quote=False)
+    html = html.replace(_SKILL_PLACEHOLDER, skill)
+    return HTMLResponse(html, media_type="text/html; charset=utf-8", headers=_NO_CACHE)
 
 
 class GerarTokenIn(BaseModel):
@@ -238,7 +255,7 @@ def guia_gerar_token(body: GerarTokenIn) -> dict[str, str]:
     if os.environ.get("GUIA_EMIT_TOKEN", "true").lower() in ("0", "false", "no"):
         raise HTTPException(403, "Emissão de token desativada")
     _ensure_tokens_table()
-    url = os.environ.get("DATABASE_URL")
+    url = _db_url()
     if not url:
         raise HTTPException(503, "Indisponível")
     token = secrets.token_urlsafe(32)
@@ -258,10 +275,7 @@ def guia_gerar_token(body: GerarTokenIn) -> dict[str, str]:
 
 @app.get("/guia/api/skill")
 def guia_skill() -> PlainTextResponse:
-    path = _GUIA / "recursos" / "skill-ia.md"
-    if not path.exists():
-        raise HTTPException(404, "Skill não encontrada")
-    return PlainTextResponse(path.read_text(encoding="utf-8"), media_type="text/plain; charset=utf-8")
+    return PlainTextResponse(_skill_text(), media_type="text/plain; charset=utf-8", headers=_NO_CACHE)
 
 
 if _GUIA.is_dir():
