@@ -213,13 +213,33 @@ CREATE TABLE eleicao.coligacao (
   ano               smallint NOT NULL,
   cd_cargo          smallint NOT NULL,
   sg_uf             char(2) NOT NULL,
-  cd_municipio_tse  integer,
+  cd_municipio_tse  integer NOT NULL DEFAULT 0,
   sq_coligacao      bigint NOT NULL,
   nm_coligacao      text,
   ds_composicao     text,
-  sg_partido        text,
-  PRIMARY KEY (ano, sq_coligacao, sg_partido)
+  sg_partido        text NOT NULL,
+  PRIMARY KEY (ano, cd_cargo, sg_uf, cd_municipio_tse, sq_coligacao, sg_partido)
 );
+
+CREATE INDEX idx_colig_ano_cargo_uf ON eleicao.coligacao (ano, sg_uf, cd_cargo);
+CREATE INDEX idx_colig_partido ON eleicao.coligacao (ano, sg_partido, cd_cargo);
+
+COMMENT ON COLUMN eleicao.coligacao.cd_municipio_tse IS
+  'Código TSE do município; 0 = escopo UF ou BR (cargos gerais).';
+
+CREATE TABLE eleicao.vagas (
+  ano               smallint NOT NULL,
+  cd_cargo          smallint NOT NULL,
+  sg_uf             char(2) NOT NULL,
+  cd_municipio_tse  integer NOT NULL DEFAULT 0,
+  qt_vagas          integer NOT NULL,
+  PRIMARY KEY (ano, cd_cargo, sg_uf, cd_municipio_tse)
+);
+
+CREATE INDEX idx_vagas_ano_uf_cargo ON eleicao.vagas (ano, sg_uf, cd_cargo);
+
+COMMENT ON COLUMN eleicao.vagas.cd_municipio_tse IS
+  'Código TSE do município; 0 = escopo UF ou BR (cargos gerais).';
 
 -- ---------------------------------------------------------------------
 -- CTL

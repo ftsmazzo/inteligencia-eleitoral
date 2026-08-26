@@ -75,6 +75,24 @@ class EleitoradoIn(BaseModel):
     nacional: bool = False
 
 
+class ColigacaoIn(BaseModel):
+    ano: int
+    cargo: str
+    uf: str | None = None
+    cod_ibge: int | None = None
+    sg_partido: str | None = None
+    sq_coligacao: int | None = None
+    limite: int = 200
+
+
+class VagasIn(BaseModel):
+    ano: int
+    cargo: str
+    uf: str | None = None
+    cod_ibge: int | None = None
+    limite: int = 200
+
+
 def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
     row = conn.execute(sql, args).fetchone()
     return row[0] if row else None
@@ -162,6 +180,36 @@ def eleitorado(body: EleitoradoIn, authorization: str | None = Header(default=No
         )
 
 
+@app.post("/v1/coligacao")
+def coligacao(body: ColigacaoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.coligacao(%s,%s,%s,%s,%s,%s,%s)",
+            (
+                body.ano,
+                body.cargo,
+                body.uf,
+                body.cod_ibge,
+                body.sg_partido,
+                body.sq_coligacao,
+                body.limite,
+            ),
+        )
+
+
+@app.post("/v1/vagas")
+def vagas(body: VagasIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.vagas(%s,%s,%s,%s,%s)",
+            (body.ano, body.cargo, body.uf, body.cod_ibge, body.limite),
+        )
+
+
 class McpCall(BaseModel):
     method: str
     params: dict[str, Any] = Field(default_factory=dict)
@@ -182,4 +230,8 @@ def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token
         return comparecimento(ComparecimentoIn(**p), authorization, x_token)
     if name == "eleitorado":
         return eleitorado(EleitoradoIn(**p), authorization, x_token)
+    if name == "coligacao":
+        return coligacao(ColigacaoIn(**p), authorization, x_token)
+    if name == "vagas":
+        return vagas(VagasIn(**p), authorization, x_token)
     raise HTTPException(400, "tool inexistente neste catálogo")

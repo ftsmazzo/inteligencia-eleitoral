@@ -50,6 +50,8 @@ def main() -> None:
             "GRANT EXECUTE ON FUNCTION api.votacao(smallint, text, text, integer, boolean, smallint, text, bigint, integer, text, text, integer) TO agente",
             "GRANT EXECUTE ON FUNCTION api.comparecimento(smallint, text, text, integer, boolean, smallint) TO agente",
             "GRANT EXECUTE ON FUNCTION api.eleitorado(smallint, text, integer, boolean) TO agente",
+            "GRANT EXECUTE ON FUNCTION api.coligacao(smallint, text, text, integer, text, bigint, integer) TO agente",
+            "GRANT EXECUTE ON FUNCTION api.vagas(smallint, text, text, integer, integer) TO agente",
         ):
             conn.execute(stmt)
         print("api+agente ok")

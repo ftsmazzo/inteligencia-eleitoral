@@ -108,7 +108,9 @@ AS $$
       jsonb_build_object('pacote','nominata','anos','2014–2026','nota','2026 sem resultado de urna'),
       jsonb_build_object('pacote','votacao','anos','2014,2016,2018,2020,2022,2024','nota','exige ano+cargo e (uf ou cod_ibge ou nacional=true)'),
       jsonb_build_object('pacote','comparecimento','anos','2014,2016,2018,2020,2022,2024','nota','detalhe da apuração'),
-      jsonb_build_object('pacote','eleitorado','anos','2014–2026','nota','perfil; 2026 é cadastro, não urna')
+      jsonb_build_object('pacote','eleitorado','anos','2014–2026','nota','perfil; 2026 é cadastro, não urna'),
+      jsonb_build_object('pacote','coligacao','anos','2014,2016,2018,2020,2022,2024,2026','nota','2014/2016 municipal: coligação proporcional; 2018+ federação'),
+      jsonb_build_object('pacote','vagas','anos','2014,2016,2018,2020,2022,2024,2026','nota','cadeiras por cargo×UF (geral) ou cargo×município (municipal)')
     )
   );
 $$;
@@ -403,8 +405,142 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION api.coligacao(
+  p_ano smallint,
+  p_cargo text,
+  p_uf text DEFAULT NULL,
+  p_cod_ibge integer DEFAULT NULL,
+  p_sg_partido text DEFAULT NULL,
+  p_sq_coligacao bigint DEFAULT NULL,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, eleicao, pg_temp
+AS $$
+DECLARE
+  v_cargo smallint;
+  v_fora jsonb;
+  v_tse integer;
+  v_mun integer;
+  v_filtra_mun boolean := false;
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+  v_nota text;
+BEGIN
+  v_pedido := format('coligacao ano=%s cargo=%s', p_ano, p_cargo);
+  v_cargo := api._resolver_cargo(p_cargo);
+  v_fora := api._checar_recorte(p_ano, v_cargo, false, v_pedido);
+  IF v_fora IS NOT NULL THEN
+    RETURN v_fora;
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  IF p_cod_ibge IS NOT NULL THEN
+    SELECT m.cd_municipio_tse INTO v_tse FROM ref.municipio m WHERE m.cod_ibge = p_cod_ibge;
+    IF v_tse IS NULL THEN
+      RETURN jsonb_build_object('status','vazio','mensagem','Município inexistente neste recorte.','linhas','[]'::jsonb);
+    END IF;
+    v_mun := v_tse;
+    v_filtra_mun := true;
+  ELSIF v_cargo IN (11, 12, 13) AND p_uf IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' municipal exige uf ou cod_ibge');
+  ELSIF v_cargo NOT IN (11, 12, 13) THEN
+    v_mun := 0;
+    v_filtra_mun := true;
+  END IF;
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      c.ano, c.cd_cargo, r.nome AS cargo, c.sg_uf, c.cd_municipio_tse,
+      c.sq_coligacao, c.nm_coligacao, c.ds_composicao, c.sg_partido
+    FROM eleicao.coligacao c
+    JOIN ref.cargo r ON r.cd_cargo = c.cd_cargo
+    WHERE c.ano = p_ano
+      AND c.cd_cargo = v_cargo
+      AND (p_uf IS NULL OR c.sg_uf = upper(p_uf))
+      AND (NOT v_filtra_mun OR c.cd_municipio_tse = v_mun)
+      AND (p_sg_partido IS NULL OR c.sg_partido = p_sg_partido)
+      AND (p_sq_coligacao IS NULL OR c.sq_coligacao = p_sq_coligacao)
+    ORDER BY c.sg_uf, c.cd_municipio_tse, c.nm_coligacao, c.sg_partido
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  v_nota := CASE
+    WHEN p_ano = 2014 THEN 'coligação proporcional (regra pré-2018)'
+    WHEN p_ano = 2016 AND v_cargo = 13 THEN 'coligação proporcional municipal'
+    WHEN p_ano >= 2018 THEN 'sem coligação proporcional em dep.; federação/partido'
+    ELSE NULL
+  END;
+  RETURN jsonb_build_object('status','ok','nota_metodologica', v_nota, 'linhas', v_linhas);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION api.vagas(
+  p_ano smallint,
+  p_cargo text,
+  p_uf text DEFAULT NULL,
+  p_cod_ibge integer DEFAULT NULL,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, eleicao, pg_temp
+AS $$
+DECLARE
+  v_cargo smallint;
+  v_fora jsonb;
+  v_tse integer;
+  v_mun integer;
+  v_filtra_mun boolean := false;
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+BEGIN
+  v_pedido := format('vagas ano=%s cargo=%s', p_ano, p_cargo);
+  v_cargo := api._resolver_cargo(p_cargo);
+  v_fora := api._checar_recorte(p_ano, v_cargo, false, v_pedido);
+  IF v_fora IS NOT NULL THEN
+    RETURN v_fora;
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  IF p_cod_ibge IS NOT NULL THEN
+    SELECT m.cd_municipio_tse INTO v_tse FROM ref.municipio m WHERE m.cod_ibge = p_cod_ibge;
+    IF v_tse IS NULL THEN
+      RETURN jsonb_build_object('status','vazio','mensagem','Município inexistente neste recorte.','linhas','[]'::jsonb);
+    END IF;
+    v_mun := v_tse;
+    v_filtra_mun := true;
+  ELSIF v_cargo IN (11, 12, 13) AND p_uf IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' municipal exige uf ou cod_ibge');
+  ELSIF v_cargo NOT IN (11, 12, 13) THEN
+    v_mun := 0;
+    v_filtra_mun := true;
+  END IF;
+  SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb) INTO v_linhas
+  FROM (
+    SELECT
+      v.ano, v.cd_cargo, r.nome AS cargo, v.sg_uf, v.cd_municipio_tse, v.qt_vagas
+    FROM eleicao.vagas v
+    JOIN ref.cargo r ON r.cd_cargo = v.cd_cargo
+    WHERE v.ano = p_ano
+      AND v.cd_cargo = v_cargo
+      AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+      AND (NOT v_filtra_mun OR v.cd_municipio_tse = v_mun)
+    ORDER BY v.sg_uf, v.cd_municipio_tse
+    LIMIT v_lim
+  ) t;
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object('status','ok','linhas', v_linhas);
+END;
+$$;
+
 REVOKE ALL ON FUNCTION api.catalogo() FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.nominata(smallint, text, text, integer, text, bigint, integer, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.votacao(smallint, text, text, integer, boolean, smallint, text, bigint, integer, text, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.comparecimento(smallint, text, text, integer, boolean, smallint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.eleitorado(smallint, text, integer, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.coligacao(smallint, text, text, integer, text, bigint, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.vagas(smallint, text, text, integer, integer) FROM PUBLIC;

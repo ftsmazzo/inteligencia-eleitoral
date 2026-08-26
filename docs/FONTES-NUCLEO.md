@@ -57,7 +57,19 @@ Ids de produto (partição por `ano` + `cargo`, não uma tabela `ne9_*` por carg
 | 2024 | Candidatos 2024 | [candidatos-2024](https://dadosabertos.tse.jus.br/dataset/candidatos-2024) |
 | 2026 | Candidatos 2026 (camada viva) | [candidatos-2026](https://dadosabertos.tse.jus.br/dataset/candidatos-2026) |
 
-Id: `br_cand_nominata` — situação, partido, cargo, bens se o arquivo trouxer (sem CPF completo; `DS_BEM` com placa/endereço fora).
+Id: `br_cand_nominata` — situação, partido, cargo (sem CPF completo na API).
+
+No mesmo conjunto **Candidatos – AAAA** o TSE publica pacotes irmãos (entrar no próximo bloco após a urna):
+
+| Id | Recurso no portal | Uso |
+|---|---|---|
+| `br_cand_bens` | Bens de candidatos | Patrimônio declarado; `DS_BEM` sem placa/endereço na API |
+| `br_cand_rede_social` | Redes sociais | Handles/URLs oficiais — base da próxima ferramenta de redes |
+| `br_cand_complementar` | Informações complementares | Campos extras da ficha (quando o zip existir no ano) |
+| `br_cand_vagas` | Vagas | Já no núcleo de urna |
+| `br_cand_coligacao` | Coligações | Já no núcleo de urna |
+
+Fotos, certidões e notas fiscais: só se houver demanda explícita (peso/PII). Motivo de cassação: útil como metadado de situação, não como cifra de urna.
 
 DivulgaCand (consulta pontual, não substitui o zip): [divulgacandcontas.tse.jus.br](https://divulgacandcontas.tse.jus.br/)
 
