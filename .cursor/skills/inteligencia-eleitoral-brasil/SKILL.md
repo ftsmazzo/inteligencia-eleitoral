@@ -1,36 +1,31 @@
 ---
 name: inteligencia-eleitoral-brasil
 description: >-
-  Recorte e recusa da Inteligência Eleitoral Brasil (não a campanha NE9).
-  Use ao consultar urna, candidato, município, TSE, cargo, presidente a
-  vereador, MCP desta base, ou ao recusar pergunta fora de 2014–2026 federal /
-  2016–2024 municipal.
+  Consulta dados eleitorais oficiais do Brasil via MCP HTTP. Use para votos,
+  candidatos, eleitos, contas, população, CadÚnico, Bolsa e Câmara (2014–2024 +
+  candidatura 2026). Nunca invente cifra. Recuse fora do recorte.
 ---
 
-# Inteligência Eleitoral Brasil
+# Inteligência Eleitoral Brasil (Cursor)
 
-Spec: `docs/SPEC-BRASIL.md`. Fontes: `docs/FONTES-NUCLEO.md`.
+**Skill completa:** leia e siga `docs/SKILL-INTELIGENCIA-ELEITORAL.md`  
+**Guia do usuário:** `docs/GUIA-USUARIO.md`  
+**Spec:** `docs/SPEC-BRASIL.md`
+
+## MCP
+
+URL: `https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/mcp`  
+Config copiável: `docs/config/mcp-cursor.json` (substituir `SEU_TOKEN_AQUI`)
 
 ## Recorte
 
-- Brasil (não default Nordeste).
-- Cargos: presidente, governador, senador, deputado federal, deputado estadual, prefeito, vereador.
-- Federais/estaduais: 2014, 2018, 2022 (resultado). 2026 = candidatura viva; resultado só após urna oficial.
-- Municipais: 2016, 2020, 2024.
-- Quebra 2014 vs 2018+: coligação proporcional. Percentual: válidos ≠ soma de dois.
+Brasil · presidente a vereador · gerais 2014/2018/2022 + 2026 candidatura · municipais 2016/2020/2024.
 
-## Fora do recorte
+Fora do recorte → texto seco da skill completa. Sem estimativa.
 
-Não estimar. Não usar MCP/skill da campanha Ary. Texto seco:
+## Regras
 
-> Fora do recorte. O escopo da solicitação não faz parte do recorte desta ferramenta, que é: Brasil; cargos de presidente a vereador; eleições federais/estaduais 2014, 2018 e 2022 (resultado) e 2026 (candidatura, resultado após a urna); eleições municipais 2016, 2020 e 2024. Pedido: [resumir o que pediram]. Dado inexistente neste recorte.
-
-## Pastas
-
-Não gravar em `Arquitetura/`. `inbox/` só leitura. Promoção de dump → `data/raw/`.
-
-## MCP (quando existir)
-
-Função nomeada só. Sem SQL livre. Catálogo deste produto, não as 247 tools NE9.
-Pacotes: catalogo, nominata, votacao, comparecimento, eleitorado, coligacao, vagas, bem, receita, despesa, eleitos, populacao, cadunico, bolsa_familia, deputados_casa, senadores, proposicoes, votos_camara, depara_parlamentar.
-Trilha B / scrap = `indicio`, nunca cifra oficial.
+- Número só via tools MCP (`catalogo`, `nominata`, `votacao`, …).
+- Lista vazia = inexistente, não zero.
+- Não usar campanha NE9 nem `Arquitetura/` como fonte.
+- `inbox/` só leitura; canônico em `data/`.

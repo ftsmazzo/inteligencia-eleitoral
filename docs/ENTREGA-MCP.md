@@ -2,6 +2,9 @@
 
 Versão 0.1 · 26/08/2026
 
+**Guia simples para o usuário:** `docs/GUIA-USUARIO.md`  
+**Skill para IAs (Claude, GPT, Manus, Cursor):** `docs/SKILL-INTELIGENCIA-ELEITORAL.md`
+
 A pessoa designada **não recebe login do Postgres**. Acesso só via HTTP(S) com token.
 
 ## Endpoints
@@ -39,6 +42,8 @@ Fora do recorte: resposta seca (`docs/SPEC-BRASIL.md`). Sem estimativa.
 
 Corpo: `{ "method": "<tool>", "params": { … } }`
 
+**Cargos:** use `deputado_federal`, não `dep_federal`.
+
 ### 1. Catálogo
 
 ```json
@@ -52,7 +57,7 @@ Corpo: `{ "method": "<tool>", "params": { … } }`
   "method": "nominata",
   "params": {
     "ano": 2022,
-    "cargo": "dep_federal",
+    "cargo": "deputado_federal",
     "uf": "SP",
     "sg_partido": "PL",
     "limite": 5

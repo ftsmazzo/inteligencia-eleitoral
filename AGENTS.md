@@ -13,3 +13,6 @@ Fora desse recorte: resposta seca em SPEC-BRASIL.md. Sem estimativa.
 Dump sujo: `inbox/` (somente leitura). Canônico: `data/` (`data/README.md`).
 
 Entrega MCP: `docs/ENTREGA-MCP.md`.
+
+Guia do usuário (conexão MCP + exemplos): `docs/GUIA-USUARIO.md`.  
+Skill portátil (Claude, GPT, Manus, Cursor): `docs/SKILL-INTELIGENCIA-ELEITORAL.md`.
