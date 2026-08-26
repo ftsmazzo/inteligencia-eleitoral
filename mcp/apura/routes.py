@@ -168,6 +168,8 @@ def criar_sessao(body: SessaoIn, user: tuple[str, str, str] = Depends(_usuario_a
         raise HTTPException(400, "Usuário não encontrado para criar conversa") from exc
     except psycopg.Error as exc:
         raise HTTPException(503, f"Não foi possível criar conversa ({exc.pgcode or 'erro'})") from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Erro ao criar conversa: {type(exc).__name__}: {exc}") from exc
     return {"id": sid, "titulo": titulo}
 
 

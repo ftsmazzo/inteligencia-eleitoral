@@ -9,7 +9,7 @@ from typing import Any
 
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -17,6 +17,18 @@ from apura.routes import pagina_apura, router as apura_router
 
 app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
 app.include_router(apura_router)
+
+
+@app.exception_handler(Exception)
+async def apura_erro_generico(_request, exc: Exception) -> JSONResponse:
+    if isinstance(exc, HTTPException):
+        detail = exc.detail
+        if not isinstance(detail, str):
+            detail = str(detail)
+        return JSONResponse(status_code=exc.status_code, content={"detail": detail})
+    return JSONResponse(status_code=500, content={"detail": f"{type(exc).__name__}: {exc}"})
+
+
 MSG_AUTH = "não autorizado"
 _STATIC = Path(__file__).resolve().parent / "static"
 _GUIA = _STATIC / "guia"
