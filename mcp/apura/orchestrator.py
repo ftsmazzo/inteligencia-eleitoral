@@ -28,7 +28,7 @@ def _headers() -> dict[str, str]:
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "HTTP-Referer": os.environ.get("APURA_SITE_URL", "https://inteligencia-eleitoral-brasil.local"),
-        "X-Title": "Apura · Inteligência Eleitoral Brasil",
+        "X-Title": "Apura - Inteligencia Eleitoral Brasil",
     }
 
 
