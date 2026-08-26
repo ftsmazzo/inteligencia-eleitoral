@@ -1,0 +1,196 @@
+{
+  "produto": "Inteligência Eleitoral Brasil",
+  "versao": "0.2",
+  "gerado_em": "2026-08-26",
+  "spec": "docs/SPEC-BRASIL.md",
+  "fontes": "docs/FONTES-NUCLEO.md",
+  "recorte": {
+    "territorio": "Brasil (27 UF + DF)",
+    "cargos": "presidente a vereador",
+    "urnas_gerais": [
+      2014,
+      2018,
+      2022
+    ],
+    "urnas_municipais": [
+      2016,
+      2020,
+      2024
+    ],
+    "candidatura_viva": 2026
+  },
+  "nucleo_eleitoral_ok": true,
+  "auditoria_falhas": 0,
+  "pacotes_mcp": [
+    {
+      "nota": "este objeto",
+      "pacote": "catalogo"
+    },
+    {
+      "anos": "2014–2026",
+      "nota": "2026 sem resultado de urna",
+      "pacote": "nominata"
+    },
+    {
+      "anos": "2014,2016,2018,2020,2022,2024",
+      "nota": "exige ano+cargo e (uf ou cod_ibge ou nacional=true)",
+      "pacote": "votacao"
+    },
+    {
+      "anos": "2014,2016,2018,2020,2022,2024",
+      "nota": "detalhe da apuração",
+      "pacote": "comparecimento"
+    },
+    {
+      "anos": "2014–2026",
+      "nota": "perfil; 2026 é cadastro, não urna",
+      "pacote": "eleitorado"
+    },
+    {
+      "anos": "2014,2016,2018,2020,2022,2024,2026",
+      "nota": "2014/2016 municipal: coligação proporcional; 2018+ federação",
+      "pacote": "coligacao"
+    },
+    {
+      "anos": "2014,2016,2018,2020,2022,2024,2026",
+      "nota": "cadeiras por cargo×UF (geral) ou cargo×município (municipal)",
+      "pacote": "vagas"
+    },
+    {
+      "anos": "2014–2026",
+      "nota": "exige ano+sq_candidato; bens declarados no TSE",
+      "pacote": "bem"
+    },
+    {
+      "anos": "2014–2026",
+      "nota": "prestação; exige ano e (sq_candidato ou uf); sem CPF",
+      "pacote": "receita"
+    },
+    {
+      "anos": "2014–2026",
+      "nota": "prestação contratada/declarada; exige ano e (sq_candidato ou uf); sem CPF",
+      "pacote": "despesa"
+    },
+    {
+      "anos": "2014,2016,2018,2020,2022,2024",
+      "nota": "mapa político; deriva de votacao.ds_sit_tot_turno; exige ano+cargo e (uf ou cod_ibge ou nacional); 2026 fora até haver urna",
+      "pacote": "eleitos"
+    },
+    {
+      "anos": "2010,2014,2016,2018,2020,2021,2022,2024,2025",
+      "nota": "IBGE; censo 2010/2022 e estimativas SIDRA 6579; 2023/2026 sem publicação própria; exige ano+(uf|cod_ibge|nacional)",
+      "pacote": "populacao"
+    },
+    {
+      "nota": "Cadastro Único municipal MDS; snapshot; exige anomes opcional+(uf|cod_ibge|nacional)",
+      "anomes": "202607",
+      "pacote": "cadunico"
+    },
+    {
+      "nota": "Bolsa Família municipal; snapshot de repasse; exige anomes opcional+(uf|cod_ibge|nacional)",
+      "anomes": "202608",
+      "pacote": "bolsa_familia"
+    },
+    {
+      "nota": "cadastro Câmara; filtro uf/partido/nome; legislatura via de-para/votos",
+      "pacote": "deputados_casa"
+    },
+    {
+      "nota": "cadastro Senado L56/L57/atual",
+      "pacote": "senadores"
+    },
+    {
+      "anos": "2023–2026",
+      "nota": "proposições Câmara; exige ano; autor opcional",
+      "pacote": "proposicoes"
+    },
+    {
+      "anos": "2023–2026",
+      "nota": "votos nominais Câmara; exige id_deputado ou uf",
+      "pacote": "votos_camara"
+    },
+    {
+      "nota": "vínculo Casa↔TSE 2022 (uf+nome); confianca declarada",
+      "pacote": "depara_parlamentar"
+    }
+  ],
+  "indicadores": [
+    {
+      "id": "coligacao_proporcional",
+      "nome": "Coligação proporcional",
+      "unidade": "metadado",
+      "nao_confundir_com": "federação 2018+"
+    },
+    {
+      "id": "pct_validos",
+      "nome": "Percentual sobre votos válidos",
+      "unidade": "percentual",
+      "nao_confundir_com": "pct sobre aptos ou soma_dois — usar base_pct"
+    },
+    {
+      "id": "qt_aptos",
+      "nome": "Eleitores aptos (detalhe urna)",
+      "unidade": "pessoas",
+      "nao_confundir_com": "qt_eleitores cadastro"
+    },
+    {
+      "id": "qt_comparecimento",
+      "nome": "Comparecimento",
+      "unidade": "pessoas",
+      "nao_confundir_com": "qt_eleitores perfil"
+    },
+    {
+      "id": "qt_eleitores",
+      "nome": "Eleitores no perfil TSE",
+      "unidade": "pessoas",
+      "nao_confundir_com": "comparecimento; aptos no dia"
+    },
+    {
+      "id": "qt_familias_bolsa",
+      "nome": "Famílias beneficiárias Bolsa Família",
+      "unidade": "famílias",
+      "nao_confundir_com": "famílias CadÚnico"
+    },
+    {
+      "id": "qt_familias_cadunico",
+      "nome": "Famílias CadÚnico",
+      "unidade": "famílias",
+      "nao_confundir_com": "beneficiários Bolsa; eleitores"
+    },
+    {
+      "id": "qt_populacao",
+      "nome": "População residente",
+      "unidade": "pessoas",
+      "nao_confundir_com": "eleitores; famílias CadÚnico"
+    },
+    {
+      "id": "qt_votos",
+      "nome": "Votos nominais na urna",
+      "unidade": "votos",
+      "nao_confundir_com": "qt_eleitores; qt_aptos; pct de pesquisa"
+    },
+    {
+      "id": "vr_bem_candidato",
+      "nome": "Patrimônio declarado (bens)",
+      "unidade": "BRL",
+      "nao_confundir_com": "receita/despesa de campanha"
+    },
+    {
+      "id": "vr_repassado_bolsa",
+      "nome": "Valor repassado Bolsa Família",
+      "unidade": "BRL",
+      "nao_confundir_com": "despesa de campanha"
+    }
+  ],
+  "fora_por_spec": [
+    "urna 2026 resultado até apuração oficial",
+    "população 2023/2026 sem publicação IBGE",
+    "rede_social e complementar TSE (opcional FONTES §2)",
+    "trilha B clipping",
+    "catálogo NE9 Arquitetura/"
+  ],
+  "parlamento_parcial": [
+    "Senado: votos/proposições sem dump anual",
+    "de-para SF revisado na carga"
+  ]
+}

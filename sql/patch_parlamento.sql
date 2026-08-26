@@ -84,5 +84,25 @@ CREATE TABLE IF NOT EXISTS parlamentar.depara_tse (
   PRIMARY KEY (casa, id_casa, ano_eleicao)
 );
 
+CREATE TABLE IF NOT EXISTS parlamentar.proposicao_tema (
+  id_proposicao         bigint NOT NULL,
+  cod_tema              integer NOT NULL,
+  tema                  text,
+  relevancia            text,
+  PRIMARY KEY (id_proposicao, cod_tema)
+);
+
+CREATE INDEX IF NOT EXISTS idx_prop_tema_cod ON parlamentar.proposicao_tema (cod_tema);
+
+CREATE TABLE IF NOT EXISTS parlamentar.orientacao (
+  id_votacao            text NOT NULL,
+  sigla_bancada         text NOT NULL DEFAULT '',
+  orientacao            text,
+  sigla_orgao           text,
+  PRIMARY KEY (id_votacao, sigla_bancada)
+);
+
+CREATE INDEX IF NOT EXISTS idx_orient_vot ON parlamentar.orientacao (id_votacao);
+
 COMMENT ON SCHEMA parlamentar IS 'Atuação Câmara/Senado; não misturar com eleicao.*';
 COMMENT ON TABLE parlamentar.depara_tse IS 'Vínculo oficial Casa↔TSE; vazio até carga com método explícito.';

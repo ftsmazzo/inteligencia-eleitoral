@@ -23,9 +23,34 @@ def norm(s: str | None) -> str:
     s = unicodedata.normalize("NFKD", s)
     s = "".join(c for c in s if not unicodedata.combining(c))
     s = s.upper().strip()
+    for prefix in ("DR ", "DRA ", "SR ", "SRA ", "PROF ", "DEP ", "SEN "):
+        if s.startswith(prefix):
+            s = s[len(prefix) :]
     s = re.sub(r"[^A-Z0-9 ]+", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+
+def tokens(s: str | None) -> set[str]:
+    t = norm(s)
+    return {w for w in t.split() if len(w) > 1}
+
+
+def names_match(a: str | None, b: str | None) -> bool:
+    na, nb = norm(a), norm(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    ta, tb = tokens(a), tokens(b)
+    if not ta or not tb:
+        return False
+    if ta <= tb or tb <= ta:
+        return True
+    # sobrenome único + primeiro nome
+    if ta & tb and len(ta & tb) >= 2:
+        return True
+    return False
 
 
 def as_int(v: str | None) -> int | None:
@@ -327,6 +352,67 @@ def load_votos(conn: psycopg.Connection) -> int:
     return n
 
 
+def load_temas(conn: psycopg.Connection) -> int:
+    n = 0
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE parlamentar.proposicao_tema")
+        with cur.copy(
+            """
+            COPY parlamentar.proposicao_tema (id_proposicao, cod_tema, tema, relevancia)
+            FROM STDIN
+            """
+        ) as copy:
+            for ano in ANOS:
+                path = RAW / "br_camara_proposicoes_temas" / f"ano={ano}" / "origem.csv"
+                if not path.exists():
+                    continue
+                with path.open(encoding="utf-8-sig", newline="") as f:
+                    for row in csv.DictReader(f, delimiter=";"):
+                        uri = row.get("uriProposicao") or ""
+                        m = re.search(r"/proposicoes/(\d+)", uri)
+                        pid = as_int(m.group(1) if m else row.get("id"))
+                        cod = as_int(row.get("codTema"))
+                        if pid is None or cod is None:
+                            continue
+                        copy.write_row((pid, cod, row.get("tema"), row.get("relevancia")))
+                        n += 1
+    print("proposicao_tema", n, flush=True)
+    return n
+
+
+def load_orientacoes(conn: psycopg.Connection) -> int:
+    n = 0
+    with conn.cursor() as cur:
+        cur.execute("TRUNCATE parlamentar.orientacao")
+        with cur.copy(
+            """
+            COPY parlamentar.orientacao (id_votacao, sigla_bancada, orientacao, sigla_orgao)
+            FROM STDIN
+            """
+        ) as copy:
+            for ano in ANOS:
+                path = RAW / "br_camara_votacoes_orientacoes" / f"ano={ano}" / "origem.csv"
+                if not path.exists():
+                    continue
+                with path.open(encoding="utf-8-sig", newline="") as f:
+                    for row in csv.DictReader(f, delimiter=";"):
+                        vid = (row.get("idVotacao") or "").strip()
+                        if not vid:
+                            continue
+                        banc = (row.get("siglaBancada") or "").strip()
+                        copy.write_row(
+                            (
+                                vid,
+                                banc,
+                                row.get("orientacao"),
+                                row.get("siglaOrgao"),
+                            )
+                        )
+                        n += 1
+    print("orientacao", n, flush=True)
+    return n
+
+
 def build_depara(conn: psycopg.Connection) -> int:
     """Liga eleitos 2022 (dep fed / senador) a ids da Casa por UF + nome normalizado."""
     with conn.cursor() as cur:
@@ -395,10 +481,11 @@ def build_depara(conn: psycopg.Connection) -> int:
 
         # senadores titulares L57
         cur.execute(
-            "SELECT id_senador, nome_parlamentar, nome_completo, sg_uf FROM parlamentar.senador"
+            "SELECT id_senador, nome_parlamentar, nome_completo, sg_uf, sg_partido FROM parlamentar.senador"
         )
+        sen_rows = cur.fetchall()
         sidx: dict[tuple[str, str], int] = {}
-        for i, np, nc, uf in cur.fetchall():
+        for i, np, nc, uf, _sp in sen_rows:
             if not uf:
                 continue
             for label in (np, nc):
@@ -421,19 +508,29 @@ def build_depara(conn: psycopg.Connection) -> int:
         ns = 0
         for sq, uf, urna, completo in cur.fetchall():
             hit = None
+            metodo = "uf+nome_norm"
+            conf = 0.80
             for label in (urna, completo):
                 hit = sidx.get((uf, norm(label)))
                 if hit:
                     break
             if not hit:
+                cands = [(sid, np, nc, sp) for sid, np, nc, su, sp in sen_rows if su == uf]
+                for sid, np, nc, _sp in cands:
+                    if names_match(urna, np) or names_match(urna, nc) or names_match(completo, np):
+                        hit = sid
+                        metodo = "uf+tokens"
+                        conf = 0.65
+                        break
+            if not hit:
                 continue
             cur.execute(
                 """
                 INSERT INTO parlamentar.depara_tse (casa, id_casa, ano_eleicao, sq_candidato, metodo, confianca)
-                VALUES ('SF', %s, 2022, %s, 'uf+nome_norm', 0.80)
+                VALUES ('SF', %s, 2022, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 """,
-                (hit, sq),
+                (hit, sq, metodo, conf),
             )
             ns += 1
     print("depara CD", n, "SF", ns, flush=True)
@@ -452,6 +549,8 @@ def main() -> None:
         load_autores(conn)
         load_votacoes(conn)
         load_votos(conn)
+        load_temas(conn)
+        load_orientacoes(conn)
         build_depara(conn)
         conn.commit()
     print("CARGA_PARLAMENTO_FIM", flush=True)

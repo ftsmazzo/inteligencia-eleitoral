@@ -32,10 +32,13 @@ Schemas:
 
 Percentual `validos` vs `soma_dois` só na função. UF/Brasil = soma, nunca rateio.
 
-## MCP (poucas tools)
+## MCP (tools)
 
-`catalogo`, `votacao`, `comparecimento`, `nominata`, `eleitorado`, `coligacao`, `vagas`, `bem`, `receita`, `despesa`, `eleitos`, `populacao`, `cadunico`, `bolsa_familia`.  
-`votacao`/`eleitos` exigem `ano` + `cargo` + (`uf` ou `cod_ibge`), salvo totais nacionais explícitos. Sem SQL livre. Fora do recorte: texto seco da spec.
+`catalogo`, `votacao`, `comparecimento`, `nominata`, `eleitorado`, `coligacao`, `vagas`, `bem`, `receita`, `despesa`, `eleitos`, `populacao`, `cadunico`, `bolsa_familia`, `deputados_casa`, `senadores`, `proposicoes`, `votos_camara`, `depara_parlamentar`.
+
+Catálogo formal: `docs/catalogo_nucleo.json` (gerar com `python scripts/gerar_catalogo_nucleo.py`).
+
+Dados parlamentares extras carregados (sem tool dedicada ainda): `parlamentar.proposicao_tema`, `parlamentar.orientacao`.
 
 ## Desempenho
 
