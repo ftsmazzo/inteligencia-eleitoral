@@ -43,8 +43,11 @@ def _ensure_schema() -> None:
     url = _ddl_url()
     if not url:
         raise HTTPException(503, "Banco indisponível")
-    with psycopg.connect(url, autocommit=True) as conn:
-        conn.execute(_PATCH.read_text(encoding="utf-8"))
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            conn.execute(_PATCH.read_text(encoding="utf-8"))
+    except psycopg.Error as exc:
+        raise HTTPException(503, f"Falha ao preparar banco Apura ({exc.pgcode or 'erro'})") from exc
     _READY = True
 
 
