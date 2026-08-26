@@ -101,12 +101,16 @@ def registrar(body: RegistroIn) -> dict[str, str]:
     try:
         with _conn() as conn:
             return registrar_usuario(conn, body.email, body.senha, body.nome)
+    except HTTPException:
+        raise
     except psycopg.errors.UniqueViolation as exc:
         raise HTTPException(409, "E-mail já cadastrado") from exc
     except psycopg.errors.InsufficientPrivilege as exc:
         raise HTTPException(503, "Permissão insuficiente no banco — contacte o administrador") from exc
     except psycopg.Error as exc:
         raise HTTPException(503, f"Banco indisponível para cadastro ({exc.pgcode or 'erro'})") from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Erro ao criar conta: {type(exc).__name__}") from exc
 
 
 @router.post("/auth/login")

@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt
 import jwt
 import psycopg
-from fastapi import HTTPException
 
 _ALGO = "HS256"
 _TTL_DAYS = 14
@@ -18,7 +18,7 @@ _TTL_DAYS = 14
 def _secret() -> str:
     s = os.environ.get("APURA_JWT_SECRET") or os.environ.get("MCP_TOKEN", "")
     if not s:
-        raise HTTPException(503, "APURA_JWT_SECRET não configurado")
+        raise ValueError("APURA_JWT_SECRET não configurado")
     return s
 
 
@@ -43,7 +43,8 @@ def criar_token_jwt(usuario_id: str, email: str) -> str:
 def decodificar_jwt(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, _secret(), algorithms=[_ALGO])
-    except jwt.PyJWTError as exc:
+    except (jwt.PyJWTError, ValueError) as exc:
+        from fastapi import HTTPException
         raise HTTPException(401, "Sessão inválida ou expirada") from exc
 
 
@@ -54,14 +55,14 @@ def gerar_mcp_token() -> str:
 def registrar_usuario(conn: psycopg.Connection, email: str, senha: str, nome: str) -> dict[str, str]:
     email = email.strip().lower()
     mcp_tok = gerar_mcp_token()
-    uid = conn.execute(
+    uid = str(uuid.uuid4())
+    conn.execute(
         """
-        INSERT INTO ctl.apura_usuario (email, nome, senha_hash, mcp_token)
-        VALUES (%s, %s, %s, %s)
-        RETURNING id::text
+        INSERT INTO ctl.apura_usuario (id, email, nome, senha_hash, mcp_token)
+        VALUES (%s::uuid, %s, %s, %s, %s)
         """,
-        (email, nome.strip(), hash_senha(senha), mcp_tok),
-    ).fetchone()[0]
+        (uid, email, nome.strip(), hash_senha(senha), mcp_tok),
+    )
     conn.execute(
         "INSERT INTO ctl.mcp_token (token, rotulo) VALUES (%s, %s) ON CONFLICT DO NOTHING",
         (mcp_tok, f"apura:{email}"),
@@ -71,6 +72,7 @@ def registrar_usuario(conn: psycopg.Connection, email: str, senha: str, nome: st
 
 
 def login_usuario(conn: psycopg.Connection, email: str, senha: str) -> dict[str, str]:
+    from fastapi import HTTPException
     row = conn.execute(
         """
         SELECT id::text, email, senha_hash, nome
@@ -90,6 +92,7 @@ def login_usuario(conn: psycopg.Connection, email: str, senha: str) -> dict[str,
 
 
 def usuario_por_id(conn: psycopg.Connection, usuario_id: str) -> tuple[str, str, str]:
+    from fastapi import HTTPException
     row = conn.execute(
         "SELECT id::text, email, mcp_token FROM ctl.apura_usuario WHERE id = %s AND ativo IS TRUE",
         (usuario_id,),
