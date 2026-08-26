@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import psycopg
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -23,7 +25,9 @@ from apura.orchestrator import executar_chat
 router = APIRouter(prefix="/apura/api", tags=["apura"])
 _STATIC = Path(__file__).resolve().parents[1] / "static" / "apura"
 _PATCH = Path(__file__).resolve().parents[1] / "sql" / "patch_apura.sql"
-_READY = False
+_PATCH_TOKENS = Path(__file__).resolve().parents[1] / "sql" / "patch_mcp_tokens.sql"
+_SCHEMA_VER = 2
+_READY_VER = 0
 
 
 def _db_url() -> str | None:
@@ -35,8 +39,8 @@ def _ddl_url() -> str | None:
 
 
 def _ensure_schema() -> None:
-    global _READY
-    if _READY:
+    global _READY_VER
+    if _READY_VER >= _SCHEMA_VER:
         return
     if not _PATCH.exists():
         raise HTTPException(503, "Schema Apura indisponível")
@@ -45,18 +49,22 @@ def _ensure_schema() -> None:
         raise HTTPException(503, "Banco indisponível")
     try:
         with psycopg.connect(url, autocommit=True) as conn:
+            if _PATCH_TOKENS.exists():
+                conn.execute(_PATCH_TOKENS.read_text(encoding="utf-8"))
             conn.execute(_PATCH.read_text(encoding="utf-8"))
     except psycopg.Error as exc:
         raise HTTPException(503, f"Falha ao preparar banco Apura ({exc.pgcode or 'erro'})") from exc
-    _READY = True
+    _READY_VER = _SCHEMA_VER
 
 
-def _conn() -> psycopg.Connection:
+@contextmanager
+def _db() -> Iterator[psycopg.Connection]:
     _ensure_schema()
     url = _ddl_url() or _db_url()
     if not url:
         raise HTTPException(503, "Banco indisponível")
-    return psycopg.connect(url)
+    with psycopg.connect(url) as conn:
+        yield conn
 
 
 def _bearer(authorization: str | None) -> str:
@@ -68,7 +76,7 @@ def _bearer(authorization: str | None) -> str:
 def _usuario_atual(authorization: str | None = Header(default=None)) -> tuple[str, str, str]:
     payload = decodificar_jwt(_bearer(authorization))
     uid = payload["sub"]
-    with _conn() as conn:
+    with _db() as conn:
         return usuario_por_id(conn, uid)
 
 
@@ -99,7 +107,7 @@ class ExportIn(BaseModel):
 @router.post("/auth/registrar")
 def registrar(body: RegistroIn) -> dict[str, str]:
     try:
-        with _conn() as conn:
+        with _db() as conn:
             return registrar_usuario(conn, body.email, body.senha, body.nome)
     except HTTPException:
         raise
@@ -115,7 +123,7 @@ def registrar(body: RegistroIn) -> dict[str, str]:
 
 @router.post("/auth/login")
 def login(body: LoginIn) -> dict[str, str]:
-    with _conn() as conn:
+    with _db() as conn:
         return login_usuario(conn, body.email, body.senha)
 
 
@@ -126,12 +134,12 @@ def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
 
 @router.get("/sessoes")
 def listar_sessoes(user: tuple[str, str, str] = Depends(_usuario_atual)) -> list[dict[str, Any]]:
-    with _conn() as conn:
+    with _db() as conn:
         rows = conn.execute(
             """
             SELECT id::text, titulo, criado_em, atualizado_em
             FROM ctl.apura_sessao
-            WHERE usuario_id = %s
+            WHERE usuario_id = %s::uuid
             ORDER BY atualizado_em DESC
             LIMIT 50
             """,
@@ -145,22 +153,27 @@ def listar_sessoes(user: tuple[str, str, str] = Depends(_usuario_atual)) -> list
 
 @router.post("/sessoes")
 def criar_sessao(body: SessaoIn, user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
-    with _conn() as conn:
-        sid = conn.execute(
-            """
-            INSERT INTO ctl.apura_sessao (usuario_id, titulo)
-            VALUES (%s, %s)
-            RETURNING id::text
-            """,
-            (user[0], body.titulo.strip()),
-        ).fetchone()[0]
-        conn.commit()
-    return {"id": sid, "titulo": body.titulo.strip()}
+    sid = str(uuid.uuid4())
+    titulo = body.titulo.strip()
+    try:
+        with _db() as conn:
+            conn.execute(
+                """
+                INSERT INTO ctl.apura_sessao (id, usuario_id, titulo)
+                VALUES (%s::uuid, %s::uuid, %s)
+                """,
+                (sid, user[0], titulo),
+            )
+    except psycopg.errors.ForeignKeyViolation as exc:
+        raise HTTPException(400, "Usuário não encontrado para criar conversa") from exc
+    except psycopg.Error as exc:
+        raise HTTPException(503, f"Não foi possível criar conversa ({exc.pgcode or 'erro'})") from exc
+    return {"id": sid, "titulo": titulo}
 
 
 @router.get("/sessoes/{sessao_id}/mensagens")
 def listar_mensagens(sessao_id: str, user: tuple[str, str, str] = Depends(_usuario_atual)) -> list[dict[str, Any]]:
-    with _conn() as conn:
+    with _db() as conn:
         ok = conn.execute(
             "SELECT 1 FROM ctl.apura_sessao WHERE id = %s AND usuario_id = %s",
             (sessao_id, user[0]),
@@ -194,40 +207,44 @@ async def chat(
     user: tuple[str, str, str] = Depends(_usuario_atual),
 ) -> StreamingResponse:
     uid, _, mcp_token = user
-    with _conn() as conn:
-        ok = conn.execute(
-            "SELECT titulo FROM ctl.apura_sessao WHERE id = %s AND usuario_id = %s",
-            (body.sessao_id, uid),
-        ).fetchone()
-        if not ok:
-            raise HTTPException(404, "Conversa não encontrada")
-        conn.execute(
-            """
-            INSERT INTO ctl.apura_mensagem (sessao_id, papel, conteudo)
-            VALUES (%s, 'user', %s)
-            """,
-            (body.sessao_id, body.mensagem.strip()),
-        )
-        if ok[0] == "Nova conversa":
-            titulo = body.mensagem.strip()[:60] + ("…" if len(body.mensagem.strip()) > 60 else "")
+    try:
+        with _db() as conn:
+            ok = conn.execute(
+                "SELECT titulo FROM ctl.apura_sessao WHERE id = %s::uuid AND usuario_id = %s::uuid",
+                (body.sessao_id, uid),
+            ).fetchone()
+            if not ok:
+                raise HTTPException(404, "Conversa não encontrada")
             conn.execute(
-                "UPDATE ctl.apura_sessao SET titulo = %s, atualizado_em = now() WHERE id = %s",
-                (titulo, body.sessao_id),
+                """
+                INSERT INTO ctl.apura_mensagem (sessao_id, papel, conteudo)
+                VALUES (%s::uuid, 'user', %s)
+                """,
+                (body.sessao_id, body.mensagem.strip()),
             )
-        else:
-            conn.execute(
-                "UPDATE ctl.apura_sessao SET atualizado_em = now() WHERE id = %s",
+            if ok[0] == "Nova conversa":
+                titulo = body.mensagem.strip()[:60] + ("…" if len(body.mensagem.strip()) > 60 else "")
+                conn.execute(
+                    "UPDATE ctl.apura_sessao SET titulo = %s, atualizado_em = now() WHERE id = %s::uuid",
+                    (titulo, body.sessao_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE ctl.apura_sessao SET atualizado_em = now() WHERE id = %s::uuid",
+                    (body.sessao_id,),
+                )
+            hist_rows = conn.execute(
+                """
+                SELECT papel, conteudo FROM ctl.apura_mensagem
+                WHERE sessao_id = %s::uuid AND papel IN ('user', 'assistant')
+                ORDER BY criado_em
+                """,
                 (body.sessao_id,),
-            )
-        hist_rows = conn.execute(
-            """
-            SELECT papel, conteudo FROM ctl.apura_mensagem
-            WHERE sessao_id = %s AND papel IN ('user', 'assistant')
-            ORDER BY criado_em
-            """,
-            (body.sessao_id,),
-        ).fetchall()
-        conn.commit()
+            ).fetchall()
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(503, f"Falha ao preparar mensagem ({exc.pgcode or 'erro'})") from exc
 
     historico = [{"papel": r[0], "conteudo": r[1]} for r in hist_rows]
 
@@ -243,15 +260,14 @@ async def chat(
                     final_content = payload.get("conteudo", "")
                     final_dados = payload.get("dados")
         if final_content:
-            with _conn() as conn:
+            with _db() as conn:
                 conn.execute(
                     """
                     INSERT INTO ctl.apura_mensagem (sessao_id, papel, conteudo, dados_json)
-                    VALUES (%s, 'assistant', %s, %s)
+                    VALUES (%s::uuid, 'assistant', %s, %s)
                     """,
                     (body.sessao_id, final_content, json.dumps(final_dados) if final_dados else None),
                 )
-                conn.commit()
 
     return StreamingResponse(
         stream_and_save(),
@@ -262,7 +278,7 @@ async def chat(
 
 @router.post("/export/xlsx")
 def export_xlsx(body: ExportIn, user: tuple[str, str, str] = Depends(_usuario_atual)) -> Response:
-    with _conn() as conn:
+    with _db() as conn:
         row = conn.execute(
             """
             SELECT m.conteudo, m.dados_json, s.titulo
@@ -285,7 +301,7 @@ def export_xlsx(body: ExportIn, user: tuple[str, str, str] = Depends(_usuario_at
 
 @router.post("/export/html")
 def export_html_route(body: ExportIn, user: tuple[str, str, str] = Depends(_usuario_atual)) -> Response:
-    with _conn() as conn:
+    with _db() as conn:
         row = conn.execute(
             """
             SELECT m.conteudo, m.dados_json, s.titulo

@@ -67,7 +67,6 @@ def registrar_usuario(conn: psycopg.Connection, email: str, senha: str, nome: st
         "INSERT INTO ctl.mcp_token (token, rotulo) VALUES (%s, %s) ON CONFLICT DO NOTHING",
         (mcp_tok, f"apura:{email}"),
     )
-    conn.commit()
     return {"id": uid, "email": email, "token": criar_token_jwt(uid, email)}
 
 

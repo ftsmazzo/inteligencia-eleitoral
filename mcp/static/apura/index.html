@@ -97,6 +97,8 @@
     .composer .btn-send { background: var(--brand); color: #fff; border-radius: 12px; padding: 12px 18px; align-self: flex-end; }
     .composer .btn-send:disabled { opacity: .5; cursor: not-allowed; }
     .hint { text-align: center; font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
+    .app-err { text-align: center; color: #b91c1c; font-size: 0.85rem; min-height: 1.2em; margin-bottom: 8px; }
+    .composer.loading { opacity: .55; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -147,7 +149,8 @@
         <a href="/guia" target="_blank" rel="noopener">Guia · Token MCP</a>
       </header>
       <div class="messages" id="messages"></div>
-      <div class="composer">
+      <div class="composer" id="composer">
+        <p class="app-err" id="app-err"></p>
         <div class="composer-inner">
           <textarea id="input-msg" rows="1" placeholder="Pergunte sobre eleições, candidatos, votos, contexto…"></textarea>
           <button type="button" class="btn btn-send" id="btn-send" disabled>Enviar</button>
@@ -162,6 +165,7 @@
     let jwt = localStorage.getItem('apura_jwt') || '';
     let sessaoId = '';
     let streaming = false;
+    let appReady = false;
 
     const $ = id => document.getElementById(id);
 
@@ -238,7 +242,7 @@
       $('auth-screen').classList.add('hidden');
       $('app-screen').classList.remove('hidden');
       $('user-email').textContent = d.email || '';
-      initApp();
+      initApp().catch(err => { $('app-err').textContent = err.message; });
     }
 
     $('btn-sair').addEventListener('click', () => {
@@ -248,8 +252,20 @@
     });
 
     async function initApp() {
-      await carregarSessoes();
-      if (!sessaoId) await novaSessao();
+      appReady = false;
+      $('composer').classList.add('loading');
+      $('app-err').textContent = '';
+      try {
+        await carregarSessoes();
+        if (!sessaoId) await novaSessao();
+        appReady = true;
+      } catch (err) {
+        $('app-err').textContent = err.message || 'Não foi possível iniciar o chat';
+        throw err;
+      } finally {
+        $('composer').classList.remove('loading');
+        syncSendBtn();
+      }
     }
 
     async function carregarSessoes() {
@@ -334,10 +350,14 @@
     }
 
     const input = $('input-msg');
+    function syncSendBtn() {
+      $('btn-send').disabled = !appReady || !input.value.trim() || streaming;
+    }
+
     input.addEventListener('input', () => {
       input.style.height = 'auto';
       input.style.height = Math.min(input.scrollHeight, 140) + 'px';
-      $('btn-send').disabled = !input.value.trim() || streaming;
+      syncSendBtn();
     });
 
     input.addEventListener('keydown', e => {
@@ -348,9 +368,14 @@
 
     async function enviar() {
       const text = input.value.trim();
-      if (!text || streaming || !sessaoId) return;
+      if (!text || streaming) return;
+      if (!appReady || !sessaoId) {
+        $('app-err').textContent = 'Aguarde o chat carregar ou recarregue a página.';
+        return;
+      }
       streaming = true;
-      $('btn-send').disabled = true;
+      syncSendBtn();
+      $('app-err').textContent = '';
       input.value = '';
       input.style.height = 'auto';
       appendMsg('user', text);
@@ -418,10 +443,11 @@
         }
       } catch (err) {
         removeTyping();
+        $('app-err').textContent = err.message;
         appendMsg('assistant', 'Não foi possível completar: ' + err.message);
       } finally {
         streaming = false;
-        $('btn-send').disabled = !input.value.trim();
+        syncSendBtn();
       }
       scrollBottom();
     }
@@ -441,10 +467,11 @@
     }
 
     if (jwt) {
-      api('/auth/eu').then(() => {
+      api('/auth/eu').then(u => {
         $('auth-screen').classList.add('hidden');
         $('app-screen').classList.remove('hidden');
-        initApp();
+        $('user-email').textContent = u.email || '';
+        initApp().catch(err => { $('app-err').textContent = err.message; });
       }).catch(() => localStorage.removeItem('apura_jwt'));
     }
   </script>
