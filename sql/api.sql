@@ -113,7 +113,8 @@ AS $$
       jsonb_build_object('pacote','vagas','anos','2014,2016,2018,2020,2022,2024,2026','nota','cadeiras por cargo×UF (geral) ou cargo×município (municipal)'),
       jsonb_build_object('pacote','bem','anos','2014–2026','nota','exige ano+sq_candidato; bens declarados no TSE'),
       jsonb_build_object('pacote','receita','anos','2014–2026','nota','prestação; exige ano e (sq_candidato ou uf); sem CPF'),
-      jsonb_build_object('pacote','despesa','anos','2014–2026','nota','prestação contratada/declarada; exige ano e (sq_candidato ou uf); sem CPF')
+      jsonb_build_object('pacote','despesa','anos','2014–2026','nota','prestação contratada/declarada; exige ano e (sq_candidato ou uf); sem CPF'),
+      jsonb_build_object('pacote','eleitos','anos','2014,2016,2018,2020,2022,2024','nota','mapa político; deriva de votacao.ds_sit_tot_turno; exige ano+cargo e (uf ou cod_ibge ou nacional); 2026 fora até haver urna')
     )
   );
 $$;
@@ -717,6 +718,129 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION api._eh_eleito(p_sit text)
+RETURNS boolean
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT p_sit IS NOT NULL
+    AND (
+      p_sit = 'ELEITO'
+      OR p_sit = 'ELEITO POR QP'
+      OR p_sit ~* '^ELEITO POR M'
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION api.eleitos(
+  p_ano smallint,
+  p_cargo text,
+  p_uf text DEFAULT NULL,
+  p_cod_ibge integer DEFAULT NULL,
+  p_nacional boolean DEFAULT false,
+  p_sg_partido text DEFAULT NULL,
+  p_limite integer DEFAULT 200
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, ref, eleicao, pg_temp
+AS $$
+DECLARE
+  v_cargo smallint;
+  v_fora jsonb;
+  v_tse integer;
+  v_lim integer;
+  v_linhas jsonb;
+  v_pedido text;
+BEGIN
+  v_pedido := format('eleitos ano=%s cargo=%s', p_ano, p_cargo);
+  v_cargo := api._resolver_cargo(p_cargo);
+  v_fora := api._checar_recorte(p_ano, v_cargo, true, v_pedido);
+  IF v_fora IS NOT NULL THEN
+    RETURN v_fora;
+  END IF;
+  IF COALESCE(p_nacional, false) IS NOT TRUE
+     AND p_uf IS NULL AND p_cod_ibge IS NULL THEN
+    RETURN api._envelope_fora(v_pedido || ' sem uf/cod_ibge/nacional');
+  END IF;
+  IF v_cargo IN (11, 12, 13) AND COALESCE(p_nacional, false) IS TRUE THEN
+    RETURN api._envelope_fora(v_pedido || ' municipal não admite nacional');
+  END IF;
+  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  IF p_cod_ibge IS NOT NULL THEN
+    SELECT m.cd_municipio_tse INTO v_tse FROM ref.municipio m WHERE m.cod_ibge = p_cod_ibge;
+    IF v_tse IS NULL THEN
+      RETURN jsonb_build_object('status','vazio','mensagem','Município inexistente neste recorte.','linhas','[]'::jsonb);
+    END IF;
+  END IF;
+
+  SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.qt_votos DESC NULLS LAST, t.nm_urna), '[]'::jsonb)
+    INTO v_linhas
+  FROM (
+    SELECT
+      p_ano AS ano,
+      v_cargo AS cd_cargo,
+      r.nome AS cargo,
+      e.sg_uf,
+      e.cd_municipio_tse,
+      m.cod_ibge,
+      m.nome AS nm_municipio,
+      e.sq_candidato,
+      e.nr_candidato,
+      e.nm_urna,
+      e.nm_candidato,
+      e.sg_partido,
+      e.nr_turno,
+      e.ds_sit_tot_turno,
+      e.qt_votos
+    FROM (
+      SELECT DISTINCT ON (a.sq_candidato)
+        a.sq_candidato,
+        a.nr_turno,
+        a.nr_candidato,
+        a.nm_urna,
+        a.sg_partido,
+        a.ds_sit_tot_turno,
+        a.sg_uf,
+        a.qt_votos,
+        c.nm_candidato,
+        CASE WHEN v_cargo IN (11, 12, 13) THEN c.cd_municipio_tse END AS cd_municipio_tse
+      FROM (
+        SELECT
+          v.sq_candidato,
+          v.nr_turno,
+          MAX(v.nr_candidato) AS nr_candidato,
+          MAX(v.nm_urna) AS nm_urna,
+          MAX(v.sg_partido) AS sg_partido,
+          MAX(v.ds_sit_tot_turno) AS ds_sit_tot_turno,
+          MAX(v.sg_uf) AS sg_uf,
+          SUM(v.qt_votos)::bigint AS qt_votos
+        FROM eleicao.votacao v
+        WHERE v.ano = p_ano
+          AND v.cd_cargo = v_cargo
+          AND api._eh_eleito(v.ds_sit_tot_turno)
+          AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+          AND (v_tse IS NULL OR v.cd_municipio_tse = v_tse)
+          AND (p_sg_partido IS NULL OR v.sg_partido = p_sg_partido)
+        GROUP BY v.sq_candidato, v.nr_turno
+      ) a
+      LEFT JOIN eleicao.candidatura c
+        ON c.ano = p_ano AND c.sq_candidato = a.sq_candidato
+      ORDER BY a.sq_candidato, a.nr_turno DESC
+    ) e
+    JOIN ref.cargo r ON r.cd_cargo = v_cargo
+    LEFT JOIN ref.municipio m ON m.cd_municipio_tse = e.cd_municipio_tse
+    ORDER BY e.qt_votos DESC NULLS LAST, e.nm_urna
+    LIMIT v_lim
+  ) t;
+
+  IF v_linhas = '[]'::jsonb THEN
+    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+  END IF;
+  RETURN jsonb_build_object(
+    'status', 'ok',
+    'nota_metodologica', 'eleito = ds_sit_tot_turno ELEITO / ELEITO POR QP / ELEITO POR MÉDIA; não é lista cadastral à parte',
+    'linhas', v_linhas
+  );
+END;
+$$;
+
 REVOKE ALL ON FUNCTION api.catalogo() FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.nominata(smallint, text, text, integer, text, bigint, integer, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.votacao(smallint, text, text, integer, boolean, smallint, text, bigint, integer, text, text, integer) FROM PUBLIC;
@@ -727,3 +851,4 @@ REVOKE ALL ON FUNCTION api.vagas(smallint, text, text, integer, integer) FROM PU
 REVOKE ALL ON FUNCTION api.bem(smallint, bigint, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.receita(smallint, bigint, text, text, text, integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION api.despesa(smallint, bigint, text, text, text, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION api.eleitos(smallint, text, text, integer, boolean, text, integer) FROM PUBLIC;

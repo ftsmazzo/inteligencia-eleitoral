@@ -55,6 +55,7 @@ def main() -> None:
             "GRANT EXECUTE ON FUNCTION api.bem(smallint, bigint, integer) TO agente",
             "GRANT EXECUTE ON FUNCTION api.receita(smallint, bigint, text, text, text, integer) TO agente",
             "GRANT EXECUTE ON FUNCTION api.despesa(smallint, bigint, text, text, text, integer) TO agente",
+            "GRANT EXECUTE ON FUNCTION api.eleitos(smallint, text, text, integer, boolean, text, integer) TO agente",
         ):
             conn.execute(stmt)
         print("api+agente ok")

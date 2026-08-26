@@ -108,6 +108,16 @@ class ContasIn(BaseModel):
     limite: int = 200
 
 
+class EleitosIn(BaseModel):
+    ano: int
+    cargo: str
+    uf: str | None = None
+    cod_ibge: int | None = None
+    nacional: bool = False
+    sg_partido: str | None = None
+    limite: int = 200
+
+
 def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
     row = conn.execute(sql, args).fetchone()
     return row[0] if row else None
@@ -258,6 +268,25 @@ def despesa(body: ContasIn, authorization: str | None = Header(default=None), x_
         )
 
 
+@app.post("/v1/eleitos")
+def eleitos(body: EleitosIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.eleitos(%s,%s,%s,%s,%s,%s,%s)",
+            (
+                body.ano,
+                body.cargo,
+                body.uf,
+                body.cod_ibge,
+                body.nacional,
+                body.sg_partido,
+                body.limite,
+            ),
+        )
+
+
 class McpCall(BaseModel):
     method: str
     params: dict[str, Any] = Field(default_factory=dict)
@@ -288,4 +317,6 @@ def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token
         return receita(ContasIn(**p), authorization, x_token)
     if name == "despesa":
         return despesa(ContasIn(**p), authorization, x_token)
+    if name == "eleitos":
+        return eleitos(EleitosIn(**p), authorization, x_token)
     raise HTTPException(400, "tool inexistente neste catálogo")
