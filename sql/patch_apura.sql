@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS ctl.apura_mensagem (
 
 CREATE INDEX IF NOT EXISTS idx_apura_mensagem_sessao ON ctl.apura_mensagem (sessao_id, criado_em);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.apura_usuario TO agente;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.apura_sessao TO agente;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.apura_mensagem TO agente;
+ALTER TABLE ctl.apura_usuario OWNER TO agente;
+ALTER TABLE ctl.apura_sessao OWNER TO agente;
+ALTER TABLE ctl.apura_mensagem OWNER TO agente;
 
 COMMENT ON TABLE ctl.apura_usuario IS 'Usuários do painel Apura; cada um tem token MCP próprio.';
