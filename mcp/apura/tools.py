@@ -198,10 +198,11 @@ MCP_TOOLS: list[dict] = [
             "name": "consultar_clima",
             "description": (
                 "Radar Eleitoral: clima de redes/notícias sob demanda. "
-                "Cada item traz fonte, quando/data_hora e rotulo (ex.: UOL · 27/08 07:56) — o redator deve citar. "
-                "Passe q=nome ou tema (Flávio, Lula, segurança), canal (instagram|news|x…), "
-                "janela_horas (24 ou 168). Não depende de candidato pré-configurado. "
-                "Sempre indício — não use como cifra eleitoral."
+                "Obrigatório para Instagram/@conta, X, news, ‘o que está saindo’. "
+                "Instagram só retorna perfis cadastrados no painel; vazio ≠ sem acesso. "
+                "Cada item: fonte, quando/data_hora, rotulo. url pode ser null (não cole url_raw). "
+                "Passe q=nome ou handle sem @, canal (instagram|news|x…), "
+                "janela_horas (24 ou 168). Sempre indício — não use como cifra eleitoral."
             ),
             "parameters": {
                 "type": "object",

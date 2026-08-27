@@ -36,6 +36,22 @@ def _unescape(s: str) -> str:
     return html_module.unescape(re.sub(r"\s+", " ", s or "")).strip()
 
 
+def _sanitizar_url(it: dict[str, Any]) -> dict[str, Any]:
+    """Evita URLs monstro (Google News RSS) estourarem o chat do Apura."""
+    u = it.get("url")
+    if not isinstance(u, str) or not u.strip():
+        it["url"] = None
+        return it
+    u = u.strip()
+    monstro = "news.google.com" in u or len(u) > 140
+    if monstro:
+        it["url_raw"] = u
+        it["url"] = None  # redator/UI: sem link longo
+    else:
+        it["url"] = u
+    return it
+
+
 def _parse_articles(html: str) -> list[dict[str, Any]]:
     itens: list[dict[str, Any]] = []
     for block in re.finditer(r"<article class=['\"]item['\"][^>]*>(.*?)</article>", html, re.I | re.S):
@@ -59,29 +75,28 @@ def _parse_articles(html: str) -> list[dict[str, Any]]:
             m_q = re.search(r"\b(\d{1,2}/\d{1,2}\s+\d{1,2}:\d{2})\b", meta_txt)
             quando = m_q.group(1) if m_q else None
         rotulo = " · ".join(p for p in (fonte, quando) if p) or meta_txt or None
-        itens.append(
-            {
-                "titulo": _unescape(m_title.group(1)) if m_title else "",
-                "url": m_link.group(1) if m_link else None,
-                "canal": canal,
-                "fonte": fonte,
-                "origem": origem,
-                "alvo": alvo,
-                "quando": quando,
-                "data_hora": quando,  # alias explícito p/ redator (como no Radar)
-                "rotulo": rotulo,  # "UOL · 27/08 07:56"
-                "tipo": next((b for b in badges if b in {
-                    "ataque", "defesa", "escandalo", "escândalo", "rotina",
-                    "oportunidade", "boato", "cobertura", "mobilizacao", "mobilização",
-                }), badges[2] if len(badges) > 2 else None),
-                "tom": badges[0] if badges else None,
-                "urgencia": badges[1] if len(badges) > 1 else None,
-                "badges": badges,
-                "clima_score": int(m_clima.group(1)) if m_clima else None,
-                "risco": _unescape(m_clima.group(2)) if m_clima else None,
-                "resumo": _unescape(m_p.group(1)) if m_p else "",
-            }
-        )
+        item = {
+            "titulo": _unescape(m_title.group(1)) if m_title else "",
+            "url": m_link.group(1) if m_link else None,
+            "canal": canal,
+            "fonte": fonte,
+            "origem": origem,
+            "alvo": alvo,
+            "quando": quando,
+            "data_hora": quando,
+            "rotulo": rotulo,
+            "tipo": next((b for b in badges if b in {
+                "ataque", "defesa", "escandalo", "escândalo", "rotina",
+                "oportunidade", "boato", "cobertura", "mobilizacao", "mobilização",
+            }), badges[2] if len(badges) > 2 else None),
+            "tom": badges[0] if badges else None,
+            "urgencia": badges[1] if len(badges) > 1 else None,
+            "badges": badges,
+            "clima_score": int(m_clima.group(1)) if m_clima else None,
+            "risco": _unescape(m_clima.group(2)) if m_clima else None,
+            "resumo": _unescape(m_p.group(1)) if m_p else "",
+        }
+        itens.append(_sanitizar_url(item))
     return itens
 
 
@@ -110,7 +125,7 @@ def _normalizar_item_json(raw: dict[str, Any]) -> dict[str, Any]:
     it["data_hora"] = quando
     if not it.get("rotulo"):
         it["rotulo"] = " · ".join(p for p in (fonte, quando) if p) or None
-    return it
+    return _sanitizar_url(it)
 
 
 def _filter_janela(itens: list[dict[str, Any]], janela_horas: int | None) -> list[dict[str, Any]]:
@@ -150,9 +165,19 @@ async def consultar_clima(
     limite: int = 20,
 ) -> dict[str, Any]:
     """Consulta sob demanda: 'notícia do Flávio esta semana', 'Instagram do Lula', etc."""
+    # Normaliza @handle → texto de busca
+    if q:
+        q = q.strip()
+        if q.startswith("@"):
+            q = q.lstrip("@").strip()
+        # "instagram.com/lulaoficial" → lulaoficial
+        m_ig = re.search(r"(?:instagram\.com/)?@?([A-Za-z0-9._]+)/?$", q)
+        if m_ig and " " not in q and ("instagram" in q.lower() or q.count("/") >= 1):
+            q = m_ig.group(1)
+
     params: dict[str, Any] = {"page": max(1, page)}
     if q:
-        params["q"] = q.strip()
+        params["q"] = q
     if canal:
         params["canal"] = canal.strip().lower()
     if origem:
@@ -199,13 +224,21 @@ async def consultar_clima(
         "Camada C (Radar): clima de redes/notícias. nivel=indicio — "
         "não use cifra do texto como fato eleitoral. "
         "Em cada item use fonte + data_hora/quando (campo rotulo) ao citar, como no painel Radar. "
-        "Consulta livre por q/canal/tipo/janela; campaign_id só se quiser escopo de uma campanha do painel."
+        "Se url estiver null, NÃO invente nem cole url_raw (links Google News são omitidos de propósito). "
+        "Instagram só retorna perfis/alvos cadastrados nas campanhas do painel Radar."
     )
     if not itens:
+        msg = "Nenhum item no Radar para este filtro."
+        if (canal or "").lower() == "instagram":
+            msg = (
+                "Nenhum post de Instagram no Radar para este filtro. "
+                "O painel só monitora perfis cadastrados nas campanhas ativas — "
+                "se @/perfil não estiver cadastrado, o resultado é vazio (não é falha de acesso)."
+            )
         return {
             "status": "vazio",
             "nivel": "indicio",
-            "mensagem": "Nenhum item no Radar para este filtro.",
+            "mensagem": msg,
             "nota_metodologica": nota,
             "modo": modo,
             "filtro": params,

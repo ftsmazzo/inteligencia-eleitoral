@@ -102,6 +102,13 @@
     .msg.user .avatar { background: #1e293b; color: #fff; }
     .bubble { padding: 14px 18px; border-radius: 18px; line-height: 1.65; font-size: 0.95rem;
       white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+    .bubble a.msg-link {
+      color: #1a5f8a;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      word-break: normal;
+      overflow-wrap: normal;
+    }
     .bubble-text h3, .bubble h3 { font-size: 1rem; font-weight: 700; margin: 1em 0 0.5em; color: var(--brand); }
     .bubble-text h3:first-child, .bubble h3:first-child { margin-top: 0; }
     .bubble-text strong, .bubble strong { font-weight: 700; }
@@ -720,7 +727,16 @@
       const esc = texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       return esc
         .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        // Markdown [texto](url) → link curto (só o rótulo visível)
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, href) => {
+          const safe = href.replace(/"/g, '');
+          const lab = label || 'Leia mais';
+          return '<a class="msg-link" href="' + safe + '" target="_blank" rel="noopener noreferrer">' + lab + '</a>';
+        })
+        // URL crua monstro (Google News etc.): esconde do texto
+        .replace(/(https?:\/\/(?:news\.google\.com|www\.google\.com\/url)[^\s<]+)/g, '')
+        .replace(/(https?:\/\/[^\s<]{120,})/g, '<a class="msg-link" href="$1" target="_blank" rel="noopener noreferrer">abrir link</a>');
     }
 
     function setBubbleContent(el, texto) {

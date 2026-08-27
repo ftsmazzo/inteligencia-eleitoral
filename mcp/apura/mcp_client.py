@@ -121,6 +121,16 @@ async def chamar_mcp(tool_name: str, params: dict[str, Any], mcp_token: str) -> 
 
 
 def resumir_resultado(result: Any, max_chars: int = 12000) -> str:
+    # Remove url_raw monstro antes de mandar ao redator (evita colar no chat).
+    if isinstance(result, dict) and isinstance(result.get("itens"), list):
+        limpo = dict(result)
+        itens = []
+        for it in limpo["itens"]:
+            if isinstance(it, dict):
+                it = {k: v for k, v in it.items() if k != "url_raw"}
+            itens.append(it)
+        limpo["itens"] = itens
+        result = limpo
     text = json.dumps(result, ensure_ascii=False, default=str)
     if len(text) <= max_chars:
         return text
