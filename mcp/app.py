@@ -34,9 +34,11 @@ _STATIC = Path(__file__).resolve().parent / "static"
 _GUIA = _STATIC / "guia"
 _PATCH_TOKENS = Path(__file__).resolve().parent / "sql" / "patch_mcp_tokens.sql"
 _PATCH_PARTIDO = Path(__file__).resolve().parent / "sql" / "patch_partido_linha.sql"
+_PATCH_ACERVO = Path(__file__).resolve().parent / "sql" / "patch_acervo.sql"
 _API_SQL = Path(__file__).resolve().parent / "sql" / "api.sql"
 _TOKENS_READY = False
 _API_PARTIDO_READY = False
+_ACERVO_READY = False
 _SKILL_PLACEHOLDER = "__SKILL_CONTENT__"
 _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
@@ -120,10 +122,32 @@ def _ensure_partido_linha() -> None:
         _API_PARTIDO_READY = False
 
 
+def _ensure_acervo() -> None:
+    global _ACERVO_READY
+    if _ACERVO_READY:
+        return
+    url = _ddl_url()
+    if not url or not _PATCH_ACERVO.exists():
+        return
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            _run_sql_script(conn, _PATCH_ACERVO.read_text(encoding="utf-8"))
+            try:
+                conn.execute(
+                    "GRANT EXECUTE ON FUNCTION api.consultar_acervo(text, smallint, text, text, text, date, integer) TO agente"
+                )
+            except psycopg.Error:
+                pass
+        _ACERVO_READY = True
+    except Exception:
+        _ACERVO_READY = False
+
+
 @app.on_event("startup")
 def _startup_ddl() -> None:
     _ensure_tokens_table()
     _ensure_partido_linha()
+    _ensure_acervo()
 
 
 def _extract_token(authorization: str | None, x_token: str | None) -> str:
@@ -302,6 +326,30 @@ class DeparaParlamentarIn(BaseModel):
     limite: int = 200
 
 
+class AcervoIn(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    ano_eleicao: int | None = None
+    tipo: str | None = None
+    uf: str | None = None
+    sg_partido: str | None = None
+    vigente_em: str | None = None
+    limite: int = 8
+
+
+class ClimaIn(BaseModel):
+    """Consulta livre ao Radar — alvo/tema sob demanda, sem candidatura travada."""
+
+    q: str | None = Field(default=None, max_length=200, description="Alvo/tema: Flávio, Lula, segurança…")
+    canal: str | None = Field(default=None, description="instagram|news|x|facebook|youtube|tiktok|site")
+    origem: str | None = Field(default=None, description="clima|oficial")
+    tipo: str | None = Field(default=None, description="ataque|defesa|oportunidade|rotina|…")
+    urgencia: str | None = None
+    janela_horas: int | None = Field(default=168, description="24=dia, 168=semana")
+    campaign_id: int | None = Field(default=None, description="Opcional: escopo de campanha do painel")
+    page: int = 1
+    limite: int = 20
+
+
 def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
     row = conn.execute(sql, args).fetchone()
     return row[0] if row else None
@@ -311,7 +359,12 @@ def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
 def health() -> dict[str, str]:
     _ensure_tokens_table()
     _ensure_partido_linha()
-    return {"status": "ok", "partido_linha": "ready" if _API_PARTIDO_READY else "pending"}
+    _ensure_acervo()
+    return {
+        "status": "ok",
+        "partido_linha": "ready" if _API_PARTIDO_READY else "pending",
+        "acervo": "ready" if _ACERVO_READY else "pending",
+    }
 
 
 @app.get("/")
@@ -623,13 +676,51 @@ def depara_parlamentar(body: DeparaParlamentarIn, authorization: str | None = He
         )
 
 
+@app.post("/v1/acervo")
+def acervo(body: AcervoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_acervo()
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.consultar_acervo(%s,%s,%s,%s,%s,%s::date,%s)",
+            (
+                body.query,
+                body.ano_eleicao,
+                body.tipo,
+                body.uf,
+                body.sg_partido,
+                body.vigente_em,
+                body.limite,
+            ),
+        )
+
+
+@app.post("/v1/clima")
+async def clima(body: ClimaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    from radar_client import consultar_clima
+
+    return await consultar_clima(
+        q=body.q,
+        canal=body.canal,
+        origem=body.origem,
+        tipo=body.tipo,
+        urgencia=body.urgencia,
+        janela_horas=body.janela_horas,
+        campaign_id=body.campaign_id,
+        page=body.page,
+        limite=body.limite,
+    )
+
+
 class McpCall(BaseModel):
     method: str
     params: dict[str, Any] = Field(default_factory=dict)
 
 
 @app.post("/mcp")
-def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+async def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token)
     name = body.method
     p = body.params
@@ -671,4 +762,8 @@ def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token
         return votos_camara(VotosCamaraIn(**p), authorization, x_token)
     if name == "depara_parlamentar":
         return depara_parlamentar(DeparaParlamentarIn(**p), authorization, x_token)
+    if name == "acervo":
+        return acervo(AcervoIn(**p), authorization, x_token)
+    if name == "clima":
+        return await clima(ClimaIn(**p), authorization, x_token)
     raise HTTPException(400, "tool inexistente neste catálogo")

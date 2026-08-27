@@ -36,7 +36,10 @@ Fora do recorte: resposta seca (`docs/SPEC-BRASIL.md`). Sem estimativa.
 
 ## Tools disponíveis
 
-`catalogo`, `nominata`, `votacao`, `comparecimento`, `eleitorado`, `coligacao`, `vagas`, `bem`, `receita`, `despesa`, `eleitos`, `populacao`, `cadunico`, `bolsa_familia`, `deputados_casa`, `senadores`, `proposicoes`, `votos_camara`, `depara_parlamentar`.
+`catalogo`, `nominata`, `votacao`, `comparecimento`, `eleitorado`, `coligacao`, `vagas`, `bem`, `receita`, `despesa`, `eleitos`, `populacao`, `cadunico`, `bolsa_familia`, `deputados_casa`, `senadores`, `proposicoes`, `votos_camara`, `depara_parlamentar`, `acervo`, `clima`.
+
+- **acervo** — Trilha B (planos/programas/notas com vigência). Cifra no texto = pista.
+- **clima** — Radar sob demanda (`q`, `canal`, `janela_horas`). Sempre `nivel=indicio`. Não exige candidato pré-configurado.
 
 ## Exemplos MCP (`POST /mcp`)
 
@@ -130,6 +133,34 @@ Corpo: `{ "method": "<tool>", "params": { … } }`
   "params": {
     "uf": "SP",
     "sg_partido": "PT",
+    "limite": 5
+  }
+}
+```
+
+### Clima (Radar) — notícia do Flávio na semana
+
+```json
+{
+  "method": "clima",
+  "params": {
+    "q": "Flávio",
+    "canal": "news",
+    "janela_horas": 168,
+    "limite": 10
+  }
+}
+```
+
+### Acervo — plano/programa (quando houver carga)
+
+```json
+{
+  "method": "acervo",
+  "params": {
+    "query": "segurança pública",
+    "ano_eleicao": 2022,
+    "tipo": "plano_governo",
     "limite": 5
   }
 }

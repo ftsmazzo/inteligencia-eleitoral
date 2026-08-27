@@ -1,15 +1,12 @@
 -- Acervo (Trilha B) · documentos semânticos com temporalidade.
+-- MVP: busca lexical (tsvector). Embedding vetorial em fase posterior.
 -- Números no texto NÃO são fato; cifra só via api.* (Trilha A).
--- Requer extensão vector (pgvector) no Postgres.
-
-CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE SCHEMA IF NOT EXISTS acervo;
 
 CREATE TABLE IF NOT EXISTS acervo.documento (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tipo              text NOT NULL,
-  -- plano_governo | programa_partido | nota_tse | legislacao | ficha_territorio | outro
   titulo            text NOT NULL,
   descricao         text NOT NULL DEFAULT '',
   nivel             text NOT NULL DEFAULT 'referencia'
@@ -44,10 +41,6 @@ CREATE INDEX IF NOT EXISTS idx_acervo_doc_uf ON acervo.documento (sg_uf) WHERE s
 CREATE INDEX IF NOT EXISTS idx_acervo_doc_partido ON acervo.documento (sg_partido) WHERE sg_partido IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_acervo_doc_tags ON acervo.documento USING gin (tags);
 
-COMMENT ON TABLE acervo.documento IS 'Metadados do acervo semântico (Trilha B). Temporalidade obrigatória para consulta.';
-COMMENT ON COLUMN acervo.documento.nivel IS 'referencia=oficial/técnico; indicio=nunca vira cifra.';
-
--- Dimensão do embedding: ajustar e reindexar se trocar o modelo (documentar em meta).
 CREATE TABLE IF NOT EXISTS acervo.chunk (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   documento_id      uuid NOT NULL REFERENCES acervo.documento(id) ON DELETE CASCADE,
@@ -55,7 +48,6 @@ CREATE TABLE IF NOT EXISTS acervo.chunk (
   secao             text NOT NULL DEFAULT '',
   texto             text NOT NULL,
   token_count       integer,
-  embedding         vector(1536),
   meta              jsonb NOT NULL DEFAULT '{}'::jsonb,
   criado_em         timestamptz NOT NULL DEFAULT now()
 );
@@ -63,9 +55,6 @@ CREATE TABLE IF NOT EXISTS acervo.chunk (
 CREATE INDEX IF NOT EXISTS idx_acervo_chunk_doc ON acervo.chunk (documento_id, ord);
 CREATE INDEX IF NOT EXISTS idx_acervo_chunk_texto ON acervo.chunk USING gin (to_tsvector('portuguese', texto));
 
-COMMENT ON TABLE acervo.chunk IS 'Trechos indexados (lexical + vetorial). Embedding NULL até a carga com modelo.';
-
--- Busca lexical com filtro temporal (funciona sem embedding).
 CREATE OR REPLACE FUNCTION api.consultar_acervo(
   p_query text,
   p_ano_eleicao smallint DEFAULT NULL,
@@ -121,7 +110,7 @@ BEGIN
       AND (
         p_sg_partido IS NULL
         OR d.sg_partido IS NULL
-        OR upper(d.sg_partido) = ANY (COALESCE(api.siglas_equivalentes(p_sg_partido), ARRAY[upper(p_sg_partido)]))
+        OR upper(d.sg_partido) = ANY (COALESCE(api.siglas_equivalentes(p_sg_partido), ARRAY[upper(btrim(p_sg_partido))]))
       )
       AND (d.vigencia_inicio IS NULL OR d.vigencia_inicio <= p_vigente_em)
       AND (d.vigencia_fim IS NULL OR d.vigencia_fim >= p_vigente_em)
@@ -135,7 +124,7 @@ BEGIN
       'status', 'vazio',
       'nivel', 'referencia',
       'mensagem', 'Nenhum trecho no acervo para este filtro temporal/temático.',
-      'nota_metodologica', 'Busca lexical (tsvector). Embedding vetorial entra na fase 2. Cifra no trecho é pista, não fato.',
+      'nota_metodologica', 'Busca lexical. Cifra no trecho é pista, não fato. Acervo ainda pode estar vazio (fase de carga).',
       'itens', v_linhas
     );
   END IF;
@@ -152,5 +141,3 @@ $$;
 GRANT USAGE ON SCHEMA acervo TO agente;
 GRANT SELECT ON ALL TABLES IN SCHEMA acervo TO agente;
 GRANT EXECUTE ON FUNCTION api.consultar_acervo(text, smallint, text, text, text, date, integer) TO agente;
-
-COMMENT ON FUNCTION api.consultar_acervo IS 'Acervo semântico (lexical + filtro temporal). Radar/clima é conector HTTP separado (consultar_clima).';

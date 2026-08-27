@@ -122,7 +122,9 @@ AS $$
       jsonb_build_object('pacote','senadores','nota','cadastro Senado L56/L57/atual'),
       jsonb_build_object('pacote','proposicoes','anos','2023–2026','nota','proposições Câmara; exige ano; autor opcional'),
       jsonb_build_object('pacote','votos_camara','anos','2023–2026','nota','votos nominais Câmara; exige id_deputado ou uf'),
-      jsonb_build_object('pacote','depara_parlamentar','nota','vínculo Casa↔TSE 2022 (uf+nome); confianca declarada')
+      jsonb_build_object('pacote','depara_parlamentar','nota','vínculo Casa↔TSE 2022 (uf+nome); confianca declarada'),
+      jsonb_build_object('pacote','acervo','nota','Trilha B: planos/programas/notas com vigência; cifra no texto é pista'),
+      jsonb_build_object('pacote','clima','nota','Radar: consulta livre q/canal/tipo/janela_horas; nivel=indicio; campaign_id opcional')
     )
   );
 $$;

@@ -59,18 +59,18 @@ O Radar já faz coleta multi-canal (Instagram, X, Facebook, YouTube, TikTok, not
 
 ### Como usar no produto Brasil
 
-Não copiar o banco do Radar para `data/`. Expor um **conector**:
+**Consulta livre, não travada em candidato.** O MCP `clima` recebe o que a pergunta pedir:
 
-```
-consultar_clima(
-  campaign_id?,   # obrigatório se multi-campanha
-  janela_horas,   # ex.: 24, 168
-  alvos?,         # candidatos/temas
-  canais?,        # news, instagram, …
-  tipo?,          # ataque, oportunidade, …
-  urgencia_min?
-) → itens com nivel=indicio + metadados
-```
+| Pedido do usuário | Params típicos |
+|---|---|
+| “notícia do Flávio esta semana” | `q=Flávio`, `canal=news`, `janela_horas=168` |
+| “Instagram do Lula” | `q=Lula`, `canal=instagram`, `janela_horas=72` |
+| “ataques em segurança nas últimas 24h” | `q=segurança`, `tipo=ataque`, `janela_horas=24` |
+| “o que saiu de novo sobre o PL” | `q=PL`, `janela_horas=48` |
+
+`campaign_id` é **opcional** — só quando quiser isolar o stream de uma campanha do [painel Radar](https://inteligencia-eleitora-painel.kxryyk.easypanel.host/). O default é varrer o stream ativo com filtros livres.
+
+Não copiar o banco do Radar para `data/`. O conector HTTP lê o painel (JSON se existir; hoje HTML dos `<article class=item>`).
 
 ### Papel na narrativa
 
@@ -101,7 +101,7 @@ consultar_clima(
 | Tool | Camada | Params essenciais |
 |---|---|---|
 | `consultar_acervo` | B | `query`, `ano_eleicao?`, `tipo?`, `uf?`, `vigente_em?`, `limite` |
-| `consultar_clima` | C | `campaign_id?`, `janela_horas`, `alvos?`, `canais?`, `tipo?` |
+| `consultar_clima` | C | `q?`, `canal?`, `origem?`, `tipo?`, `janela_horas?`, `campaign_id?` (opcional) |
 
 Resposta sempre com:
 

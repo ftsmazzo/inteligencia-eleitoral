@@ -170,6 +170,53 @@ MCP_TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_acervo",
+            "description": (
+                "Acervo semântico (planos de governo, programas, notas TSE) com filtro temporal. "
+                "Cifra no texto é pista, não fato. Use para programa/narrativa/compromisso."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "ano_eleicao": {"type": "integer"},
+                    "tipo": {"type": "string", "description": "plano_governo|programa_partido|nota_tse|…"},
+                    "uf": {"type": "string"},
+                    "sg_partido": {"type": "string"},
+                    "limite": {"type": "integer", "default": 8},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_clima",
+            "description": (
+                "Radar Eleitoral: clima de redes/notícias sob demanda. "
+                "Passe q=nome ou tema (Flávio, Lula, segurança), canal (instagram|news|x…), "
+                "janela_horas (24 ou 168). Não depende de candidato pré-configurado. "
+                "Sempre indício — não use como cifra eleitoral."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "q": {"type": "string", "description": "Alvo ou tema livre"},
+                    "canal": {"type": "string", "description": "instagram|news|x|facebook|youtube|tiktok|site"},
+                    "origem": {"type": "string", "description": "clima|oficial"},
+                    "tipo": {"type": "string"},
+                    "urgencia": {"type": "string"},
+                    "janela_horas": {"type": "integer", "description": "24=dia, 168=semana"},
+                    "campaign_id": {"type": "integer", "description": "Opcional"},
+                    "limite": {"type": "integer", "default": 20},
+                },
+            },
+        },
+    },
 ]
 
 TOOL_TO_MCP: dict[str, str] = {
@@ -182,4 +229,6 @@ TOOL_TO_MCP: dict[str, str] = {
     "consultar_cadunico": "cadunico",
     "consultar_bolsa_familia": "bolsa_familia",
     "consultar_deputados_casa": "deputados_casa",
+    "consultar_acervo": "acervo",
+    "consultar_clima": "clima",
 }
