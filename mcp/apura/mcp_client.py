@@ -31,7 +31,12 @@ async def _post_mcp(method: str, params: dict[str, Any], mcp_token: str) -> Any:
         return r.json()
 
 
-def _merge_resultados(resultados: list[Any], *, nota_extra: str) -> dict[str, Any]:
+def _merge_resultados(
+    resultados: list[Any],
+    *,
+    nota_extra: str,
+    ufs_esperadas: list[str] | None = None,
+) -> dict[str, Any]:
     linhas: list[Any] = []
     notas: list[str] = []
     status = "vazio"
@@ -46,7 +51,6 @@ def _merge_resultados(resultados: list[Any], *, nota_extra: str) -> dict[str, An
             notas.append(str(res["nota_metodologica"]))
         for row in res.get("linhas") or []:
             linhas.append(row)
-    # dedupe por sq_candidato+ano+sg_partido se houver
     seen: set[str] = set()
     uniq: list[Any] = []
     for row in linhas:
@@ -58,11 +62,19 @@ def _merge_resultados(resultados: list[Any], *, nota_extra: str) -> dict[str, An
             continue
         seen.add(key)
         uniq.append(row)
+
+    ufs_com_dado = {str(r.get("sg_uf")) for r in uniq if isinstance(r, dict) and r.get("sg_uf")}
+    zeros = [u for u in (ufs_esperadas or []) if u not in ufs_com_dado]
+    if zeros:
+        notas.append("UFs com zero eleitos neste filtro: " + ",".join(zeros))
+
     out: dict[str, Any] = {
         "status": status if uniq else "vazio",
         "mensagem": None if uniq else "Zero eleitos neste recorte (filtro expandido; base existe).",
         "linhas": uniq,
         "nota_metodologica": " | ".join(dict.fromkeys([*notas, nota_extra])),
+        "ufs_consultadas": ufs_esperadas or sorted(ufs_com_dado),
+        "ufs_com_zero": zeros,
     }
     return out
 
@@ -102,7 +114,7 @@ async def chamar_mcp(tool_name: str, params: dict[str, Any], mcp_token: str) -> 
         nota = f"expansão automática região={regiao_label} UFs={','.join(ufs)}"
         if partido and len(siglas) > 1:
             nota += f" | partido pedido={partido} equivalentes={','.join(siglas)} (API)"
-        return _merge_resultados(list(resultados), nota_extra=nota)
+        return _merge_resultados(list(resultados), nota_extra=nota, ufs_esperadas=list(ufs))
 
     # Sem região: 1 call (partido expandido no SQL)
     return await _post_mcp(method, params, mcp_token)

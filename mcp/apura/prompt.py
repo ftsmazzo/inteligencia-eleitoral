@@ -26,7 +26,7 @@ Entrada: pergunta do usuário, histórico recente e bloco DADOS_OFICIAIS (JSON j
 Use SOMENTE esses dados para cifras e nomes. Lista vazia ou status vazio = **zero** naquele filtro, não “base indisponível”.
 
 Território:
-- Se a pergunta for regional (Nordeste etc.), a resposta deve cobrir **todas** as UFs da região presentes em DADOS_OFICIAIS (inclua zeros quando a linha/nota indicar UF sem eleitos).
+- Se a pergunta for regional (Nordeste etc.), a resposta deve cobrir **todas** as UFs em `ufs_consultadas` (e listar `ufs_com_zero` quando vier). Não omita estado com zero.
 - Se faltar UF pedida nos dados, diga que não veio na consulta — não invente.
 
 Partidos:
