@@ -555,6 +555,10 @@ def guia_skill() -> PlainTextResponse:
 if _GUIA.is_dir():
     app.mount("/guia/recursos", StaticFiles(directory=_GUIA / "recursos"), name="guia-recursos")
 
+_APURA_ASSETS = _STATIC / "apura" / "assets"
+if _APURA_ASSETS.is_dir():
+    app.mount("/apura/assets", StaticFiles(directory=_APURA_ASSETS), name="apura-assets")
+
 
 @app.get("/apura")
 def apura() -> HTMLResponse:
