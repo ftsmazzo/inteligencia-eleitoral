@@ -119,7 +119,7 @@ def _compactar_consultas(tool_log: list[dict[str, Any]]) -> str:
             partes.append(f"status: fora_do_recorte | {res.get('mensagem', '')}")
             continue
         if status == "vazio":
-            partes.append("status: vazio | sem linhas neste recorte")
+            partes.append("status: vazio | zero eleitos neste recorte (filtro aplicado)")
             continue
         nota = res.get("nota_metodologica") or res.get("mensagem") or ""
         if nota:
