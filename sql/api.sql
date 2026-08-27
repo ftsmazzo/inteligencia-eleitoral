@@ -172,9 +172,9 @@ BEGIN
     JOIN ref.cargo r ON r.cd_cargo = c.cd_cargo
     WHERE c.ano = p_ano
       AND c.cd_cargo = v_cargo
-      AND (p_uf IS NULL OR c.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, c.sg_uf))
       AND (v_tse IS NULL OR c.cd_municipio_tse = v_tse)
-      AND (p_sg_partido IS NULL OR c.sg_partido = p_sg_partido)
+      AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, c.sg_partido))
       AND (p_sq_candidato IS NULL OR c.sq_candidato = p_sq_candidato)
       AND (p_nr_candidato IS NULL OR c.nr_candidato = p_nr_candidato)
       AND (p_nm_urna IS NULL OR c.nm_urna ILIKE '%' || p_nm_urna || '%')
@@ -244,7 +244,7 @@ BEGIN
   WHERE d.ano = p_ano
     AND d.cd_cargo = v_cargo
     AND d.nr_turno = COALESCE(p_turno, 1)
-    AND (p_uf IS NULL OR d.sg_uf = upper(p_uf))
+    AND (p_uf IS NULL OR api.uf_match(p_uf, d.sg_uf))
     AND (v_tse IS NULL OR d.cd_municipio_tse = v_tse);
 
   WITH agg AS (
@@ -259,9 +259,9 @@ BEGIN
     WHERE v.ano = p_ano
       AND v.cd_cargo = v_cargo
       AND v.nr_turno = COALESCE(p_turno, 1)
-      AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, v.sg_uf))
       AND (v_tse IS NULL OR v.cd_municipio_tse = v_tse)
-      AND (p_sg_partido IS NULL OR v.sg_partido = p_sg_partido)
+      AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, v.sg_partido))
       AND (p_sq_candidato IS NULL OR v.sq_candidato = p_sq_candidato)
       AND (p_nr_candidato IS NULL OR v.nr_candidato = p_nr_candidato)
       AND (p_nm_urna IS NULL OR v.nm_urna ILIKE '%' || p_nm_urna || '%')
@@ -290,9 +290,9 @@ BEGIN
         WHERE v.ano = p_ano
           AND v.cd_cargo = v_cargo
           AND v.nr_turno = COALESCE(p_turno, 1)
-          AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+          AND (p_uf IS NULL OR api.uf_match(p_uf, v.sg_uf))
           AND (v_tse IS NULL OR v.cd_municipio_tse = v_tse)
-          AND (p_sg_partido IS NULL OR v.sg_partido = p_sg_partido)
+          AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, v.sg_partido))
           AND (p_sq_candidato IS NULL OR v.sq_candidato = p_sq_candidato)
           AND (p_nr_candidato IS NULL OR v.nr_candidato = p_nr_candidato)
           AND (p_nm_urna IS NULL OR v.nm_urna ILIKE '%' || p_nm_urna || '%')
@@ -362,7 +362,7 @@ BEGIN
   WHERE d.ano = p_ano
     AND d.cd_cargo = v_cargo
     AND d.nr_turno = COALESCE(p_turno, 1)
-    AND (p_uf IS NULL OR d.sg_uf = upper(p_uf))
+    AND (p_uf IS NULL OR api.uf_match(p_uf, d.sg_uf))
     AND (v_tse IS NULL OR d.cd_municipio_tse = v_tse);
   IF v_row.qt_aptos IS NULL THEN
     RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas','[]'::jsonb);
@@ -403,7 +403,7 @@ BEGIN
   SELECT SUM(e.qt_eleitores) INTO v_total
   FROM eleicao.eleitorado e
   WHERE e.ano = p_ano
-    AND (p_uf IS NULL OR e.sg_uf = upper(p_uf))
+    AND (p_uf IS NULL OR api.uf_match(p_uf, e.sg_uf))
     AND (v_tse IS NULL OR e.cd_municipio_tse = v_tse);
   IF v_total IS NULL THEN
     RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas','[]'::jsonb);
@@ -469,9 +469,9 @@ BEGIN
     JOIN ref.cargo r ON r.cd_cargo = c.cd_cargo
     WHERE c.ano = p_ano
       AND c.cd_cargo = v_cargo
-      AND (p_uf IS NULL OR c.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, c.sg_uf))
       AND (NOT v_filtra_mun OR c.cd_municipio_tse = v_mun)
-      AND (p_sg_partido IS NULL OR c.sg_partido = p_sg_partido)
+      AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, c.sg_partido))
       AND (p_sq_coligacao IS NULL OR c.sq_coligacao = p_sq_coligacao)
     ORDER BY c.sg_uf, c.cd_municipio_tse, c.nm_coligacao, c.sg_partido
     LIMIT v_lim
@@ -537,7 +537,7 @@ BEGIN
     JOIN ref.cargo r ON r.cd_cargo = v.cd_cargo
     WHERE v.ano = p_ano
       AND v.cd_cargo = v_cargo
-      AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, v.sg_uf))
       AND (NOT v_filtra_mun OR v.cd_municipio_tse = v_mun)
     ORDER BY v.sg_uf, v.cd_municipio_tse
     LIMIT v_lim
@@ -648,8 +648,8 @@ BEGIN
     FROM eleicao.receita r
     WHERE r.ano = p_ano
       AND (p_sq_candidato IS NULL OR r.sq_candidato = p_sq_candidato)
-      AND (p_uf IS NULL OR r.sg_uf = upper(p_uf))
-      AND (p_sg_partido IS NULL OR r.sg_partido = p_sg_partido)
+      AND (p_uf IS NULL OR api.uf_match(p_uf, r.sg_uf))
+      AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, r.sg_partido))
       AND (
         v_cargo_nome IS NULL
         OR upper(translate(coalesce(r.ds_cargo, ''), 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
@@ -709,8 +709,8 @@ BEGIN
     FROM eleicao.despesa d
     WHERE d.ano = p_ano
       AND (p_sq_candidato IS NULL OR d.sq_candidato = p_sq_candidato)
-      AND (p_uf IS NULL OR d.sg_uf = upper(p_uf))
-      AND (p_sg_partido IS NULL OR d.sg_partido = p_sg_partido)
+      AND (p_uf IS NULL OR api.uf_match(p_uf, d.sg_uf))
+      AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, d.sg_partido))
       AND (
         v_cargo_nome IS NULL
         OR upper(translate(coalesce(d.ds_cargo, ''), 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
@@ -756,6 +756,8 @@ DECLARE
   v_lim integer;
   v_linhas jsonb;
   v_pedido text;
+  v_siglas text[];
+  v_nota text;
 BEGIN
   v_pedido := format('eleitos ano=%s cargo=%s', p_ano, p_cargo);
   v_cargo := api._resolver_cargo(p_cargo);
@@ -770,7 +772,23 @@ BEGIN
   IF v_cargo IN (11, 12, 13) AND COALESCE(p_nacional, false) IS TRUE THEN
     RETURN api._envelope_fora(v_pedido || ' municipal não admite nacional');
   END IF;
-  v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  IF api.eh_regiao(p_uf) THEN
+    v_lim := LEAST(GREATEST(COALESCE(p_limite, 500), 1), 500);
+  ELSE
+    v_lim := LEAST(GREATEST(COALESCE(p_limite, 200), 1), 500);
+  END IF;
+  v_siglas := api.siglas_equivalentes(p_sg_partido);
+  v_nota := 'eleito = ds_sit_tot_turno ELEITO / ELEITO POR QP / ELEITO POR MÉDIA; não é lista cadastral à parte';
+  IF p_sg_partido IS NOT NULL AND v_siglas IS NOT NULL AND array_length(v_siglas, 1) > 1 THEN
+    v_nota := v_nota || format(
+      ' | filtro partido expandido: pedido=%s equivalentes=%s (sigla na urna pode mudar no tempo; ver ref.partido_linha)',
+      upper(btrim(p_sg_partido)),
+      array_to_string(v_siglas, ',')
+    );
+  END IF;
+  IF api.eh_regiao(p_uf) THEN
+    v_nota := v_nota || format(' | região %s = UFs %s', upper(btrim(p_uf)), array_to_string(api.ufs_da_regiao(p_uf), ','));
+  END IF;
   IF p_cod_ibge IS NOT NULL THEN
     SELECT m.cd_municipio_tse INTO v_tse FROM ref.municipio m WHERE m.cod_ibge = p_cod_ibge;
     IF v_tse IS NULL THEN
@@ -823,9 +841,9 @@ BEGIN
         WHERE v.ano = p_ano
           AND v.cd_cargo = v_cargo
           AND api._eh_eleito(v.ds_sit_tot_turno)
-          AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+          AND (p_uf IS NULL OR api.uf_match(p_uf, v.sg_uf))
           AND (v_tse IS NULL OR v.cd_municipio_tse = v_tse)
-          AND (p_sg_partido IS NULL OR v.sg_partido = p_sg_partido)
+          AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, v.sg_partido))
         GROUP BY v.sq_candidato, v.nr_turno
       ) a
       LEFT JOIN eleicao.candidatura c
@@ -839,11 +857,17 @@ BEGIN
   ) t;
 
   IF v_linhas = '[]'::jsonb THEN
-    RETURN jsonb_build_object('status','vazio','mensagem','Dado inexistente neste recorte.','linhas', v_linhas);
+    RETURN jsonb_build_object(
+      'status','vazio',
+      'mensagem','Zero eleitos neste recorte (filtro aplicado; base existe).',
+      'nota_metodologica', v_nota,
+      'linhas', v_linhas
+    );
   END IF;
   RETURN jsonb_build_object(
     'status', 'ok',
-    'nota_metodologica', 'eleito = ds_sit_tot_turno ELEITO / ELEITO POR QP / ELEITO POR MÉDIA; não é lista cadastral à parte',
+    'nota_metodologica', v_nota,
+    'siglas_equivalentes', to_jsonb(COALESCE(v_siglas, ARRAY[]::text[])),
     'linhas', v_linhas
   );
 END;
@@ -889,7 +913,7 @@ BEGIN
   FROM contexto.populacao_mun p
   JOIN ref.municipio m ON m.cod_ibge = p.cod_ibge
   WHERE p.ano = p_ano
-    AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+    AND (p_uf IS NULL OR api.uf_match(p_uf, m.sg_uf))
     AND (p_cod_ibge IS NULL OR p.cod_ibge = p_cod_ibge);
 
   SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.qt_populacao DESC, t.nome), '[]'::jsonb)
@@ -900,7 +924,7 @@ BEGIN
     FROM contexto.populacao_mun p
     JOIN ref.municipio m ON m.cod_ibge = p.cod_ibge
     WHERE p.ano = p_ano
-      AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, m.sg_uf))
       AND (p_cod_ibge IS NULL OR p.cod_ibge = p_cod_ibge)
     ORDER BY p.qt_populacao DESC, m.nome
     LIMIT v_lim
@@ -965,7 +989,7 @@ BEGIN
   FROM contexto.cadunico_mun c
   JOIN ref.municipio m ON m.cod_ibge = c.cod_ibge
   WHERE c.anomes = v_anomes
-    AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+    AND (p_uf IS NULL OR api.uf_match(p_uf, m.sg_uf))
     AND (p_cod_ibge IS NULL OR c.cod_ibge = p_cod_ibge);
 
   SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.qt_familias DESC NULLS LAST, t.nome), '[]'::jsonb)
@@ -979,7 +1003,7 @@ BEGIN
     FROM contexto.cadunico_mun c
     JOIN ref.municipio m ON m.cod_ibge = c.cod_ibge
     WHERE c.anomes = v_anomes
-      AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, m.sg_uf))
       AND (p_cod_ibge IS NULL OR c.cod_ibge = p_cod_ibge)
     ORDER BY c.qt_familias DESC NULLS LAST, m.nome
     LIMIT v_lim
@@ -1042,7 +1066,7 @@ BEGIN
   FROM contexto.bolsa_familia_mun b
   JOIN ref.municipio m ON m.cod_ibge = b.cod_ibge
   WHERE b.anomes = v_anomes
-    AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+    AND (p_uf IS NULL OR api.uf_match(p_uf, m.sg_uf))
     AND (p_cod_ibge IS NULL OR b.cod_ibge = p_cod_ibge);
 
   SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.vr_repassado DESC NULLS LAST, t.nome), '[]'::jsonb)
@@ -1054,7 +1078,7 @@ BEGIN
     FROM contexto.bolsa_familia_mun b
     JOIN ref.municipio m ON m.cod_ibge = b.cod_ibge
     WHERE b.anomes = v_anomes
-      AND (p_uf IS NULL OR m.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, m.sg_uf))
       AND (p_cod_ibge IS NULL OR b.cod_ibge = p_cod_ibge)
     ORDER BY b.vr_repassado DESC NULLS LAST, m.nome
     LIMIT v_lim
@@ -1110,8 +1134,8 @@ BEGIN
     LEFT JOIN parlamentar.depara_tse dp
       ON dp.casa = 'CD' AND dp.id_casa = d.id_deputado AND dp.ano_eleicao = 2022
     WHERE (p_id_deputado IS NULL OR d.id_deputado = p_id_deputado)
-      AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
-      AND (p_sg_partido IS NULL OR v.sg_partido = p_sg_partido)
+      AND (p_uf IS NULL OR api.uf_match(p_uf, v.sg_uf))
+      AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, v.sg_partido))
       AND (
         p_nome IS NULL
         OR d.nome ILIKE '%' || p_nome || '%'
@@ -1154,8 +1178,8 @@ BEGIN
     LEFT JOIN parlamentar.depara_tse dp
       ON dp.casa = 'SF' AND dp.id_casa = s.id_senador AND dp.ano_eleicao = 2022
     WHERE (p_id_senador IS NULL OR s.id_senador = p_id_senador)
-      AND (p_uf IS NULL OR s.sg_uf = upper(p_uf))
-      AND (p_sg_partido IS NULL OR s.sg_partido = p_sg_partido)
+      AND (p_uf IS NULL OR api.uf_match(p_uf, s.sg_uf))
+      AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, s.sg_partido))
       AND (
         p_nome IS NULL
         OR s.nome_parlamentar ILIKE '%' || p_nome || '%'
@@ -1245,7 +1269,7 @@ BEGIN
     FROM parlamentar.voto v
     JOIN parlamentar.votacao vt ON vt.id_votacao = v.id_votacao
     WHERE (p_id_deputado IS NULL OR v.id_deputado = p_id_deputado)
-      AND (p_uf IS NULL OR v.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, v.sg_uf))
       AND (p_ano IS NULL OR vt.ano = p_ano)
     ORDER BY vt.data_votacao DESC NULLS LAST, v.id_votacao
     LIMIT v_lim
@@ -1284,7 +1308,7 @@ BEGIN
       ON c.ano = dp.ano_eleicao AND c.sq_candidato = dp.sq_candidato
     WHERE (p_casa IS NULL OR dp.casa = upper(p_casa))
       AND dp.ano_eleicao = COALESCE(p_ano_eleicao, 2022)
-      AND (p_uf IS NULL OR c.sg_uf = upper(p_uf) OR s.sg_uf = upper(p_uf))
+      AND (p_uf IS NULL OR api.uf_match(p_uf, c.sg_uf) OR api.uf_match(p_uf, s.sg_uf))
     ORDER BY dp.casa, c.sg_uf, COALESCE(d.nome, s.nome_parlamentar)
     LIMIT v_lim
   ) t;

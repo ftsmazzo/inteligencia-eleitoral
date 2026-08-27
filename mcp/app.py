@@ -33,7 +33,10 @@ MSG_AUTH = "não autorizado"
 _STATIC = Path(__file__).resolve().parent / "static"
 _GUIA = _STATIC / "guia"
 _PATCH_TOKENS = Path(__file__).resolve().parent / "sql" / "patch_mcp_tokens.sql"
+_PATCH_PARTIDO = Path(__file__).resolve().parent / "sql" / "patch_partido_linha.sql"
+_API_SQL = Path(__file__).resolve().parent / "sql" / "api.sql"
 _TOKENS_READY = False
+_API_PARTIDO_READY = False
 _SKILL_PLACEHOLDER = "__SKILL_CONTENT__"
 _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
@@ -57,6 +60,70 @@ def _ensure_tokens_table() -> None:
     with psycopg.connect(url, autocommit=True) as conn:
         conn.execute(sql)
     _TOKENS_READY = True
+
+
+def _run_sql_script(conn: psycopg.Connection, text: str) -> None:
+    """Executa script SQL multi-statement respeitando blocos $$ ... $$."""
+    stmts: list[str] = []
+    buf: list[str] = []
+    in_dollar = False
+    for line in text.splitlines():
+        if not in_dollar and line.strip().startswith("--"):
+            continue
+        # toggle em ocorrências de $$
+        parts = line.split("$$")
+        if len(parts) > 1:
+            # número ímpar de $$ inverte o estado ao final da linha
+            if (len(parts) - 1) % 2 == 1:
+                in_dollar = not in_dollar
+        buf.append(line)
+        if not in_dollar and line.rstrip().endswith(";"):
+            stmt = "\n".join(buf).strip()
+            buf = []
+            if stmt:
+                stmts.append(stmt)
+    tail = "\n".join(buf).strip()
+    if tail:
+        stmts.append(tail)
+    for stmt in stmts:
+        conn.execute(stmt)
+
+
+def _ensure_partido_linha() -> None:
+    """Aplica linha partidária + funções api.* (siglas/regiões equivalentes)."""
+    global _API_PARTIDO_READY
+    if _API_PARTIDO_READY:
+        return
+    url = _ddl_url()
+    if not url:
+        return
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            if _PATCH_PARTIDO.exists():
+                _run_sql_script(conn, _PATCH_PARTIDO.read_text(encoding="utf-8"))
+            if _API_SQL.exists():
+                _run_sql_script(conn, _API_SQL.read_text(encoding="utf-8"))
+            for fn in (
+                "GRANT EXECUTE ON FUNCTION api.siglas_equivalentes(text) TO agente",
+                "GRANT EXECUTE ON FUNCTION api.partido_match(text, text) TO agente",
+                "GRANT EXECUTE ON FUNCTION api.ufs_da_regiao(text) TO agente",
+                "GRANT EXECUTE ON FUNCTION api.eh_regiao(text) TO agente",
+                "GRANT EXECUTE ON FUNCTION api.uf_match(text, text) TO agente",
+            ):
+                try:
+                    conn.execute(fn)
+                except psycopg.Error:
+                    pass
+        _API_PARTIDO_READY = True
+    except Exception:
+        # Não derruba o serviço se o DDL falhar; consultas sem expansão ainda funcionam.
+        _API_PARTIDO_READY = False
+
+
+@app.on_event("startup")
+def _startup_ddl() -> None:
+    _ensure_tokens_table()
+    _ensure_partido_linha()
 
 
 def _extract_token(authorization: str | None, x_token: str | None) -> str:
@@ -242,7 +309,9 @@ def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    _ensure_tokens_table()
+    _ensure_partido_linha()
+    return {"status": "ok", "partido_linha": "ready" if _API_PARTIDO_READY else "pending"}
 
 
 @app.get("/")
@@ -449,6 +518,7 @@ def despesa(body: ContasIn, authorization: str | None = Header(default=None), x_
 @app.post("/v1/eleitos")
 def eleitos(body: EleitosIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token)
+    _ensure_partido_linha()
     with db() as conn:
         return _one(
             conn,

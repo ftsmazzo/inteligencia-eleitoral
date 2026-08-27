@@ -75,16 +75,27 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_eleitos",
-            "description": "Quem foi eleito.",
+            "description": (
+                "Quem foi eleito. Aceita uf=UF (ex.: CE) ou região (Nordeste, Norte, Sudeste, Sul, Centro-Oeste). "
+                "sg_partido é expandido automaticamente para siglas históricas equivalentes "
+                "(ex.: PL inclui PR e PSL; MDB inclui PMDB). "
+                "status=vazio significa zero eleitos no filtro, não ausência de base."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "ano": {"type": "integer"},
                     "cargo": {"type": "string"},
-                    "uf": {"type": "string"},
+                    "uf": {
+                        "type": "string",
+                        "description": "UF (CE) ou região (Nordeste). Região expande para todas as UFs.",
+                    },
                     "cod_ibge": {"type": "integer"},
                     "nacional": {"type": "boolean"},
-                    "sg_partido": {"type": "string"},
+                    "sg_partido": {
+                        "type": "string",
+                        "description": "Sigla pedida; a API inclui equivalentes históricas automaticamente.",
+                    },
                     "limite": {"type": "integer", "default": 50},
                 },
                 "required": ["ano", "cargo"],

@@ -7,6 +7,8 @@ COPY mcp/apura /app/apura
 COPY mcp/static /app/static
 COPY sql/patch_mcp_tokens.sql /app/sql/patch_mcp_tokens.sql
 COPY sql/patch_apura.sql /app/sql/patch_apura.sql
+COPY sql/patch_partido_linha.sql /app/sql/patch_partido_linha.sql
+COPY sql/api.sql /app/sql/api.sql
 ENV PORT=8000
 EXPOSE 8000
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
