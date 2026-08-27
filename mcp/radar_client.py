@@ -54,6 +54,11 @@ def _parse_articles(html: str) -> list[dict[str, Any]]:
         origem = partes[2] if len(partes) > 2 else None
         alvo = partes[3] if len(partes) > 3 else None
         quando = partes[4] if len(partes) > 4 else None
+        # Se o parse por posição falhar, tenta achar dd/mm HH:MM no meta
+        if not quando:
+            m_q = re.search(r"\b(\d{1,2}/\d{1,2}\s+\d{1,2}:\d{2})\b", meta_txt)
+            quando = m_q.group(1) if m_q else None
+        rotulo = " · ".join(p for p in (fonte, quando) if p) or meta_txt or None
         itens.append(
             {
                 "titulo": _unescape(m_title.group(1)) if m_title else "",
@@ -63,6 +68,8 @@ def _parse_articles(html: str) -> list[dict[str, Any]]:
                 "origem": origem,
                 "alvo": alvo,
                 "quando": quando,
+                "data_hora": quando,  # alias explícito p/ redator (como no Radar)
+                "rotulo": rotulo,  # "UOL · 27/08 07:56"
                 "tipo": next((b for b in badges if b in {
                     "ataque", "defesa", "escandalo", "escândalo", "rotina",
                     "oportunidade", "boato", "cobertura", "mobilizacao", "mobilização",
@@ -76,6 +83,34 @@ def _parse_articles(html: str) -> list[dict[str, Any]]:
             }
         )
     return itens
+
+
+def _normalizar_item_json(raw: dict[str, Any]) -> dict[str, Any]:
+    """Garante fonte + data/hora também quando o Radar devolver JSON."""
+    it = dict(raw)
+    fonte = it.get("fonte") or it.get("source") or it.get("veiculo")
+    quando = (
+        it.get("quando")
+        or it.get("data_hora")
+        or it.get("publicado_em")
+        or it.get("published_at")
+        or it.get("hora")
+    )
+    if isinstance(quando, (int, float)):
+        try:
+            quando = datetime.fromtimestamp(quando, tz=timezone.utc).strftime("%d/%m %H:%M")
+        except (OSError, OverflowError, ValueError):
+            quando = str(quando)
+    elif quando is not None:
+        quando = str(quando).strip() or None
+    if fonte is not None:
+        fonte = str(fonte).strip() or None
+    it["fonte"] = fonte
+    it["quando"] = quando
+    it["data_hora"] = quando
+    if not it.get("rotulo"):
+        it["rotulo"] = " · ".join(p for p in (fonte, quando) if p) or None
+    return it
 
 
 def _filter_janela(itens: list[dict[str, Any]], janela_horas: int | None) -> list[dict[str, Any]]:
@@ -153,7 +188,7 @@ async def consultar_clima(
         data = r.json()
         raw = data.get("itens") or data.get("items") or data.get("stream") or []
         if isinstance(raw, list):
-            itens = raw
+            itens = [_normalizar_item_json(x) if isinstance(x, dict) else x for x in raw]
     else:
         itens = _parse_articles(r.text)
 
@@ -163,6 +198,7 @@ async def consultar_clima(
     nota = (
         "Camada C (Radar): clima de redes/notícias. nivel=indicio — "
         "não use cifra do texto como fato eleitoral. "
+        "Em cada item use fonte + data_hora/quando (campo rotulo) ao citar, como no painel Radar. "
         "Consulta livre por q/canal/tipo/janela; campaign_id só se quiser escopo de uma campanha do painel."
     )
     if not itens:

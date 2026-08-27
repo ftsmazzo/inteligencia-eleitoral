@@ -171,6 +171,7 @@ data/raw/acervo_nota_tse/<YYYY-MM-DD>/
 | 0 | Este doc + DDL `patch_acervo.sql` |
 | 1 | Extensão pgvector no Postgres + tool `consultar_acervo` (stub → busca lexical se embedding ausente) |
 | 2 | Carga planos presidente 2018 e 2022 |
+| 2b | **Carga planos presidente 2026** (seed `mcp/seed/acervo_planos_2026.jsonl` + bootstrap no startup) |
 | 3 | Conector `consultar_clima` → API Radar (env `RADAR_API_URL` + token) |
 | 4 | Apura: orquestrador chama B/C; redator com template fato/programa/clima |
 | 5 | Programas partidários + notas TSE |

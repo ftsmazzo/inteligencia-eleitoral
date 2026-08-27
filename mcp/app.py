@@ -122,6 +122,9 @@ def _ensure_partido_linha() -> None:
         _API_PARTIDO_READY = False
 
 
+_SEED_PLANOS = Path(__file__).resolve().parent / "seed" / "acervo_planos_2026.jsonl"
+
+
 def _ensure_acervo() -> None:
     global _ACERVO_READY
     if _ACERVO_READY:
@@ -138,9 +141,118 @@ def _ensure_acervo() -> None:
                 )
             except psycopg.Error:
                 pass
+            _seed_acervo_planos(conn)
         _ACERVO_READY = True
     except Exception:
         _ACERVO_READY = False
+
+
+def _seed_acervo_planos(conn: psycopg.Connection) -> None:
+    """Carga idempotente dos planos 2026 embutidos em mcp/seed (sha256 por documento)."""
+    import json
+    import uuid as _uuid
+
+    if not _SEED_PLANOS.exists():
+        return
+    with _SEED_PLANOS.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            doc = json.loads(line)
+            dig = doc.get("sha256")
+            if not dig:
+                continue
+            row = conn.execute(
+                "SELECT id FROM acervo.documento WHERE sha256 = %s AND tipo = %s",
+                (dig, doc.get("tipo") or "plano_governo"),
+            ).fetchone()
+            expected = len([c for c in (doc.get("chunks") or []) if (c.get("texto") or "").strip()])
+            if row:
+                n = conn.execute(
+                    "SELECT count(*) FROM acervo.chunk WHERE documento_id = %s",
+                    (row[0],),
+                ).fetchone()[0]
+                if n == expected and expected > 0:
+                    continue
+                doc_id = row[0]
+                conn.execute("DELETE FROM acervo.chunk WHERE documento_id = %s", (doc_id,))
+                conn.execute(
+                    """
+                    UPDATE acervo.documento SET
+                      titulo=%s, descricao=%s, nivel=%s, ano_eleicao=%s,
+                      vigencia_inicio=%s, vigencia_fim=%s, escopo=%s,
+                      nm_candidato=%s, cargo=%s, tags=%s, fonte_orgao=%s,
+                      id_base_raw=%s, meta=%s::jsonb, ativo=true, atualizado_em=now()
+                    WHERE id=%s
+                    """,
+                    (
+                        doc["titulo"],
+                        doc.get("descricao") or "",
+                        doc.get("nivel") or "referencia",
+                        doc.get("ano_eleicao"),
+                        doc.get("vigencia_inicio"),
+                        doc.get("vigencia_fim"),
+                        doc.get("escopo") or "BR",
+                        doc.get("nm_candidato"),
+                        doc.get("cargo"),
+                        doc.get("tags") or [],
+                        doc.get("fonte_orgao"),
+                        doc.get("id_base_raw"),
+                        json.dumps(doc.get("meta") or {}, ensure_ascii=False),
+                        doc_id,
+                    ),
+                )
+            else:
+                doc_id = _uuid.uuid4()
+                conn.execute(
+                    """
+                    INSERT INTO acervo.documento (
+                      id, tipo, titulo, descricao, nivel, ano_eleicao,
+                      vigencia_inicio, vigencia_fim, escopo, sg_partido,
+                      nm_candidato, cargo, tags, fonte_orgao, sha256,
+                      id_base_raw, meta
+                    ) VALUES (
+                      %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
+                    )
+                    """,
+                    (
+                        doc_id,
+                        doc.get("tipo") or "plano_governo",
+                        doc["titulo"],
+                        doc.get("descricao") or "",
+                        doc.get("nivel") or "referencia",
+                        doc.get("ano_eleicao"),
+                        doc.get("vigencia_inicio"),
+                        doc.get("vigencia_fim"),
+                        doc.get("escopo") or "BR",
+                        doc.get("sg_partido"),
+                        doc.get("nm_candidato"),
+                        doc.get("cargo"),
+                        doc.get("tags") or [],
+                        doc.get("fonte_orgao"),
+                        dig,
+                        doc.get("id_base_raw"),
+                        json.dumps(doc.get("meta") or {}, ensure_ascii=False),
+                    ),
+                )
+            for ch in doc.get("chunks") or []:
+                texto = (ch.get("texto") or "").strip()
+                if not texto:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO acervo.chunk (documento_id, ord, secao, texto, token_count)
+                    VALUES (%s,%s,%s,%s,%s)
+                    """,
+                    (
+                        doc_id,
+                        int(ch.get("ord") or 0),
+                        ch.get("secao") or "",
+                        texto,
+                        max(1, len(texto) // 4),
+                    ),
+                )
 
 
 @app.on_event("startup")
