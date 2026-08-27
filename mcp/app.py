@@ -153,7 +153,9 @@ def _seed_acervo_planos(conn: psycopg.Connection) -> None:
     import uuid as _uuid
 
     if not _SEED_PLANOS.exists():
+        print(f"[acervo] seed ausente: {_SEED_PLANOS}")
         return
+    print(f"[acervo] carregando seed {_SEED_PLANOS}")
     with _SEED_PLANOS.open(encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -468,15 +470,28 @@ def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
+def health() -> dict[str, Any]:
     _ensure_tokens_table()
     _ensure_partido_linha()
     _ensure_acervo()
-    return {
+    out: dict[str, Any] = {
         "status": "ok",
         "partido_linha": "ready" if _API_PARTIDO_READY else "pending",
         "acervo": "ready" if _ACERVO_READY else "pending",
+        "seed_planos": _SEED_PLANOS.exists(),
     }
+    url = _ddl_url()
+    if url and _ACERVO_READY:
+        try:
+            with psycopg.connect(url) as conn:
+                n_doc = conn.execute("SELECT count(*) FROM acervo.documento WHERE ativo").fetchone()[0]
+                n_chunk = conn.execute("SELECT count(*) FROM acervo.chunk").fetchone()[0]
+                out["acervo_docs"] = int(n_doc)
+                out["acervo_chunks"] = int(n_chunk)
+                out["db_date"] = str(conn.execute("SELECT CURRENT_DATE").fetchone()[0])
+        except Exception as e:
+            out["acervo_stats_erro"] = type(e).__name__
+    return out
 
 
 @app.get("/")

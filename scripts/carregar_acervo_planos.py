@@ -192,8 +192,9 @@ def docs_from_raw(raw_dir: Path) -> list[dict]:
                 "descricao": f"Proposta de governo (presidente) registrada junto ao TSE, ano {ANO}.",
                 "nivel": "referencia",
                 "ano_eleicao": ANO,
-                "vigencia_inicio": f"{ANO}-01-01",
-                "vigencia_fim": f"{ANO}-12-31",
+                # Vigência ampla: plano 2026 consultável desde a candidatura (não travar no calendário do servidor).
+                "vigencia_inicio": "2025-01-01",
+                "vigencia_fim": "2027-01-01",
                 "escopo": "BR",
                 "sg_uf": None,
                 "sg_partido": None,
