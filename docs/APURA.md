@@ -45,8 +45,16 @@ Tabelas criadas automaticamente via `sql/patch_apura.sql`:
 - `ctl.apura_usuario`
 - `ctl.apura_sessao`
 - `ctl.apura_mensagem`
+- `ctl.apura_skill` — skills pessoais do redator (até 3 ativas)
 
 Cada usuário Apura recebe um token MCP próprio em `ctl.mcp_token`.
+
+A conversa aberta é restaurada após F5 (id salvo no navegador).
+
+## Skills (painel)
+
+Instruções de tom/formato que o **redator expert** recebe — não alteram fontes de dados.
+Até **3 skills ativas** por usuário; cadastro na sidebar “Minhas Skills”.
 
 ## API
 
@@ -56,4 +64,5 @@ Prefixo `/apura/api`:
 - `GET /sessoes` · `POST /sessoes`
 - `GET /sessoes/{id}/mensagens`
 - `POST /chat` (SSE)
+- `GET /skills` · `POST /skills` · `PATCH /skills/{id}` · `DELETE /skills/{id}`
 - `POST /export/xlsx` · `POST /export/html`

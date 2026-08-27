@@ -31,9 +31,23 @@ CREATE TABLE IF NOT EXISTS ctl.apura_mensagem (
 
 CREATE INDEX IF NOT EXISTS idx_apura_mensagem_sessao ON ctl.apura_mensagem (sessao_id, criado_em);
 
+CREATE TABLE IF NOT EXISTS ctl.apura_skill (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  usuario_id    uuid NOT NULL REFERENCES ctl.apura_usuario(id) ON DELETE CASCADE,
+  nome          text NOT NULL,
+  conteudo      text NOT NULL,
+  ativo         boolean NOT NULL DEFAULT false,
+  criado_em     timestamptz NOT NULL DEFAULT now(),
+  atualizado_em timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_apura_skill_usuario ON ctl.apura_skill (usuario_id, ativo);
+
 COMMENT ON TABLE ctl.apura_usuario IS 'Usuários do painel Apura; cada um tem token MCP próprio.';
+COMMENT ON TABLE ctl.apura_skill IS 'Skills pessoais: instruções de tom/formato para o redator expert.';
 
 GRANT USAGE ON SCHEMA ctl TO agente;
 GRANT SELECT, INSERT, UPDATE ON ctl.apura_usuario TO agente;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.apura_sessao TO agente;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.apura_mensagem TO agente;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.apura_skill TO agente;

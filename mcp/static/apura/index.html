@@ -53,7 +53,7 @@
     .btn-new { margin: 16px; padding: 12px; background: var(--brand-light); color: var(--brand);
       border: 1px dashed #9ec5c0; border-radius: 12px; font-weight: 600; cursor: pointer; }
     .btn-new:hover { background: #d4ece8; }
-    .sess-list { flex: 1; overflow-y: auto; padding: 0 12px 12px; }
+    .sess-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 8px; }
     .sess-item { padding: 12px 14px; border-radius: 10px; cursor: pointer; margin-bottom: 4px;
       font-size: 0.9rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sess-item:hover { background: var(--bg); color: var(--ink); }
@@ -115,6 +115,22 @@
     .relatorio-box { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fafbfc; }
     .relatorio-box summary { cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: 0.85rem; color: var(--brand); background: var(--brand-light); }
     .relatorio-frame { width: 100%; min-height: 420px; border: none; background: #fff; display: block; }
+
+    .skills-panel { border-top: 1px solid var(--line); padding: 0 12px 12px; max-height: 42vh; overflow-y: auto; flex-shrink: 0; }
+    .skills-panel summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; color: var(--brand); padding: 12px 4px; list-style: none; }
+    .skills-panel summary::-webkit-details-marker { display: none; }
+    .skills-hint { font-size: 0.75rem; color: var(--muted); margin-bottom: 10px; line-height: 1.4; }
+    .skill-item { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; background: var(--bg); }
+    .skill-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .skill-head label { font-size: 0.85rem; font-weight: 600; flex: 1; margin: 0; cursor: pointer; }
+    .skill-preview { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+    .skill-actions { display: flex; gap: 6px; }
+    .skill-actions button { font-size: 0.7rem; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--brand); font-weight: 600; }
+    .skill-form { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; }
+    .skill-form input, .skill-form textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 0.85rem; margin-bottom: 8px; }
+    .skill-form textarea { min-height: 72px; resize: vertical; }
+    .skill-form button { width: 100%; padding: 8px; border: none; border-radius: 8px; background: var(--brand); color: #fff; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
+    .skill-err { color: #b91c1c; font-size: 0.75rem; min-height: 1em; margin-bottom: 6px; }
   </style>
 </head>
 <body>
@@ -154,6 +170,17 @@
       </div>
       <button type="button" class="btn-new" id="btn-nova">+ Nova conversa</button>
       <div class="sess-list" id="sess-list"></div>
+      <details class="skills-panel" id="skills-panel" open>
+        <summary>Minhas Skills</summary>
+        <p class="skills-hint">Ative até 3 skills para orientar tom e formato do expert. Não alteram a fonte dos números.</p>
+        <div id="skills-list"></div>
+        <form id="form-skill" class="skill-form">
+          <input type="text" id="skill-nome" placeholder="Nome (ex.: Dossiê candidato)" maxlength="80" required />
+          <textarea id="skill-conteudo" placeholder="Instruções em markdown: tom, estrutura, o que priorizar…" required minlength="10"></textarea>
+          <p class="skill-err" id="skill-err"></p>
+          <button type="submit">+ Adicionar skill</button>
+        </form>
+      </details>
       <div class="sidebar-foot">
         <span id="user-email"></span><br />
         <button type="button" id="btn-sair">Sair</button>
@@ -178,10 +205,13 @@
 
   <script>
     const API = '/apura/api';
+    const SESS_KEY = 'apura_sessao_id';
     let jwt = localStorage.getItem('apura_jwt') || '';
-    let sessaoId = '';
+    let sessaoId = localStorage.getItem(SESS_KEY) || '';
     let streaming = false;
     let appReady = false;
+    let skillsCache = [];
+    let maxSkillsAtivas = 3;
 
     const $ = id => document.getElementById(id);
 
@@ -264,16 +294,32 @@
     $('btn-sair').addEventListener('click', () => {
       jwt = '';
       localStorage.removeItem('apura_jwt');
+      localStorage.removeItem(SESS_KEY);
       location.reload();
     });
+
+    function saveSessao(id) {
+      sessaoId = id || '';
+      if (sessaoId) localStorage.setItem(SESS_KEY, sessaoId);
+      else localStorage.removeItem(SESS_KEY);
+    }
 
     async function initApp() {
       appReady = false;
       $('composer').classList.add('loading');
       $('app-err').textContent = '';
       try {
-        await carregarSessoes();
-        if (!sessaoId) await novaSessao();
+        const list = await carregarSessoes();
+        await carregarSkills();
+        const saved = localStorage.getItem(SESS_KEY);
+        if (saved && list.some(s => s.id === saved)) {
+          const s = list.find(x => x.id === saved);
+          await abrirSessao(s.id, s.titulo, false);
+        } else if (list.length > 0) {
+          await abrirSessao(list[0].id, list[0].titulo, false);
+        } else {
+          await novaSessao();
+        }
         appReady = true;
       } catch (err) {
         $('app-err').textContent = err.message || 'Não foi possível iniciar o chat';
@@ -291,30 +337,120 @@
       list.forEach(s => {
         const div = document.createElement('div');
         div.className = 'sess-item' + (s.id === sessaoId ? ' active' : '');
+        div.dataset.id = s.id;
         div.textContent = s.titulo;
         div.onclick = () => abrirSessao(s.id, s.titulo);
         el.appendChild(div);
       });
+      return list;
     }
 
     async function novaSessao() {
       const s = await api('/sessoes', { method: 'POST', body: JSON.stringify({ titulo: 'Nova conversa' }) });
+      saveSessao(s.id);
       await abrirSessao(s.id, s.titulo);
-      await carregarSessoes();
     }
 
     $('btn-nova').addEventListener('click', () => novaSessao());
 
-    async function abrirSessao(id, titulo) {
-      sessaoId = id;
+    async function abrirSessao(id, titulo, reloadList = true) {
+      saveSessao(id);
       $('chat-titulo').textContent = titulo;
       $('messages').innerHTML = '';
-      document.querySelectorAll('.sess-item').forEach(el => el.classList.remove('active'));
-      await carregarSessoes();
+      if (reloadList) await carregarSessoes();
+      else {
+        document.querySelectorAll('.sess-item').forEach(el => {
+          el.classList.toggle('active', el.dataset.id === id);
+        });
+      }
       const msgs = await api('/sessoes/' + id + '/mensagens');
       msgs.forEach(m => appendMsg(m.papel, m.conteudo, m.id, m.dados));
-      scrollBottom();
+      scrollBottom(true);
     }
+
+    async function carregarSkills() {
+      const data = await api('/skills');
+      skillsCache = data.items || [];
+      maxSkillsAtivas = data.max_ativas || 3;
+      renderSkills();
+    }
+
+    function renderSkills() {
+      const el = $('skills-list');
+      el.innerHTML = '';
+      if (!skillsCache.length) {
+        el.innerHTML = '<p class="skills-hint">Nenhuma skill ainda.</p>';
+        return;
+      }
+      skillsCache.forEach(sk => {
+        const box = document.createElement('div');
+        box.className = 'skill-item';
+        const head = document.createElement('div');
+        head.className = 'skill-head';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = sk.ativo;
+        cb.title = 'Ativar skill (máx. ' + maxSkillsAtivas + ')';
+        cb.onchange = () => toggleSkill(sk.id, cb.checked, cb);
+        const lbl = document.createElement('label');
+        lbl.textContent = sk.nome;
+        lbl.onclick = () => { cb.checked = !cb.checked; toggleSkill(sk.id, cb.checked, cb); };
+        head.appendChild(cb);
+        head.appendChild(lbl);
+        const prev = document.createElement('div');
+        prev.className = 'skill-preview';
+        prev.textContent = sk.conteudo.slice(0, 120) + (sk.conteudo.length > 120 ? '…' : '');
+        const actions = document.createElement('div');
+        actions.className = 'skill-actions';
+        const btnDel = document.createElement('button');
+        btnDel.type = 'button';
+        btnDel.textContent = 'Excluir';
+        btnDel.onclick = () => excluirSkill(sk.id);
+        actions.appendChild(btnDel);
+        box.appendChild(head);
+        box.appendChild(prev);
+        box.appendChild(actions);
+        el.appendChild(box);
+      });
+    }
+
+    async function toggleSkill(id, ativo, cb) {
+      $('skill-err').textContent = '';
+      try {
+        await api('/skills/' + id, { method: 'PATCH', body: JSON.stringify({ ativo }) });
+        await carregarSkills();
+      } catch (err) {
+        if (cb) cb.checked = !ativo;
+        $('skill-err').textContent = err.message;
+      }
+    }
+
+    async function excluirSkill(id) {
+      if (!confirm('Excluir esta skill?')) return;
+      $('skill-err').textContent = '';
+      try {
+        await api('/skills/' + id, { method: 'DELETE' });
+        await carregarSkills();
+      } catch (err) { $('skill-err').textContent = err.message; }
+    }
+
+    $('form-skill').addEventListener('submit', async e => {
+      e.preventDefault();
+      $('skill-err').textContent = '';
+      try {
+        await api('/skills', {
+          method: 'POST',
+          body: JSON.stringify({
+            nome: $('skill-nome').value.trim(),
+            conteudo: $('skill-conteudo').value.trim(),
+            ativo: false
+          })
+        });
+        $('skill-nome').value = '';
+        $('skill-conteudo').value = '';
+        await carregarSkills();
+      } catch (err) { $('skill-err').textContent = err.message; }
+    });
 
     function formatText(texto) {
       const esc = texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

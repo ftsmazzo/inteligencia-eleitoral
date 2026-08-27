@@ -21,12 +21,22 @@ from apura.auth import (
 )
 from apura.export import exportar_html, exportar_xlsx
 from apura.orchestrator import executar_chat
+from apura.skills import (
+    MAX_ATIVAS,
+    MAX_CONTEUDO,
+    MAX_NOME,
+    criar_skill,
+    deletar_skill,
+    listar_skills,
+    texto_skills_ativas,
+    atualizar_skill,
+)
 
 router = APIRouter(prefix="/apura/api", tags=["apura"])
 _STATIC = Path(__file__).resolve().parents[1] / "static" / "apura"
 _PATCH = Path(__file__).resolve().parents[1] / "sql" / "patch_apura.sql"
 _PATCH_TOKENS = Path(__file__).resolve().parents[1] / "sql" / "patch_mcp_tokens.sql"
-_SCHEMA_VER = 2
+_SCHEMA_VER = 3
 _READY_VER = 0
 
 
@@ -102,6 +112,18 @@ class ChatIn(BaseModel):
 
 class ExportIn(BaseModel):
     mensagem_id: str
+
+
+class SkillIn(BaseModel):
+    nome: str = Field(min_length=2, max_length=MAX_NOME)
+    conteudo: str = Field(min_length=10, max_length=MAX_CONTEUDO)
+    ativo: bool = False
+
+
+class SkillPatchIn(BaseModel):
+    nome: str | None = Field(default=None, min_length=2, max_length=MAX_NOME)
+    conteudo: str | None = Field(default=None, min_length=10, max_length=MAX_CONTEUDO)
+    ativo: bool | None = None
 
 
 @router.post("/auth/registrar")
@@ -250,10 +272,13 @@ async def chat(
 
     historico = [{"papel": r[0], "conteudo": r[1]} for r in hist_rows]
 
+    with _db() as conn:
+        skills_txt = texto_skills_ativas(conn, uid)
+
     async def stream_and_save() -> Any:
         final_content = ""
         final_dados = None
-        async for chunk in executar_chat(historico, mcp_token):
+        async for chunk in executar_chat(historico, mcp_token, skills_txt):
             yield chunk
             if chunk.startswith("event: done"):
                 line = chunk.split("\n", 1)[1]
@@ -326,6 +351,37 @@ def export_html_route(body: ExportIn, user: tuple[str, str, str] = Depends(_usua
         media_type="text/html; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="apura-relatorio.html"'},
     )
+
+
+@router.get("/skills")
+def api_listar_skills(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
+    with _db() as conn:
+        items = listar_skills(conn, user[0])
+    return {"items": items, "max_ativas": MAX_ATIVAS}
+
+
+@router.post("/skills")
+def api_criar_skill(body: SkillIn, user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
+    with _db() as conn:
+        return criar_skill(conn, user[0], body.nome, body.conteudo, body.ativo)
+
+
+@router.patch("/skills/{skill_id}")
+def api_atualizar_skill(
+    skill_id: str,
+    body: SkillPatchIn,
+    user: tuple[str, str, str] = Depends(_usuario_atual),
+) -> dict[str, str]:
+    with _db() as conn:
+        atualizar_skill(conn, user[0], skill_id, body.nome, body.conteudo, body.ativo)
+    return {"status": "ok"}
+
+
+@router.delete("/skills/{skill_id}")
+def api_deletar_skill(skill_id: str, user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
+    with _db() as conn:
+        deletar_skill(conn, user[0], skill_id)
+    return {"status": "ok"}
 
 
 def pagina_apura() -> HTMLResponse:

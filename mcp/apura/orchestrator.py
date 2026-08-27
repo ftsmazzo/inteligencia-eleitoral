@@ -133,6 +133,16 @@ def _pediu_relatorio_html(mensagem: str) -> bool:
     return bool(_RELATORIO_RE.search(mensagem or ""))
 
 
+def _system_redator(skills_text: str) -> str:
+    if not skills_text.strip():
+        return SYSTEM_WRITER
+    return (
+        f"{SYSTEM_WRITER}\n\n"
+        "--- SKILLS DO USUÁRIO (tom, estrutura e estilo; não alteram fontes de dados) ---\n"
+        f"{skills_text.strip()}"
+    )
+
+
 def _entrada_redator(
     pergunta: str,
     historico: list[dict[str, str]],
@@ -188,6 +198,7 @@ async def _stream_resposta(model: str, messages: list[dict], temperature: float 
 async def executar_chat(
     historico: list[dict[str, str]],
     mcp_token: str,
+    skills_text: str = "",
 ) -> AsyncIterator[str]:
     """Gera eventos SSE: status, token, done (opcional relatorio_html), error."""
     pergunta = _ultima_pergunta(historico)
@@ -237,7 +248,7 @@ async def executar_chat(
 
         yield _sse("status", {"fase": "redigindo"})
         writer_messages = [
-            {"role": "system", "content": SYSTEM_WRITER},
+            {"role": "system", "content": _system_redator(skills_text)},
             {"role": "user", "content": _entrada_redator(pergunta, historico, tool_log, notas)},
         ]
         full_parts: list[str] = []
