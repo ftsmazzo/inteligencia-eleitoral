@@ -55,6 +55,18 @@ CREATE TABLE IF NOT EXISTS acervo.chunk (
 CREATE INDEX IF NOT EXISTS idx_acervo_chunk_doc ON acervo.chunk (documento_id, ord);
 CREATE INDEX IF NOT EXISTS idx_acervo_chunk_texto ON acervo.chunk USING gin (to_tsvector('portuguese', texto));
 
+CREATE OR REPLACE FUNCTION api.acervo_norm(p text)
+RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT translate(
+    lower(COALESCE(p, '')),
+    'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ',
+    'aaaaaeeeeiiiiooooouuuucnaaaaaeeeeiiiiooooouuuucn'
+  );
+$$;
+
+DROP FUNCTION IF EXISTS api.consultar_acervo(text, smallint, text, text, text, date, integer);
+
 CREATE OR REPLACE FUNCTION api.consultar_acervo(
   p_query text,
   p_ano_eleicao smallint DEFAULT NULL,
@@ -62,7 +74,8 @@ CREATE OR REPLACE FUNCTION api.consultar_acervo(
   p_uf text DEFAULT NULL,
   p_sg_partido text DEFAULT NULL,
   p_vigente_em date DEFAULT CURRENT_DATE,
-  p_limite integer DEFAULT 8
+  p_limite integer DEFAULT 8,
+  p_nm_candidato text DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path = api, acervo, ref, pg_temp
@@ -71,6 +84,7 @@ DECLARE
   v_lim integer;
   v_linhas jsonb;
   v_q text;
+  v_cand text;
 BEGIN
   v_q := btrim(COALESCE(p_query, ''));
   IF v_q = '' THEN
@@ -82,6 +96,7 @@ BEGIN
     );
   END IF;
   v_lim := LEAST(GREATEST(COALESCE(p_limite, 8), 1), 30);
+  v_cand := nullif(btrim(COALESCE(p_nm_candidato, '')), '');
 
   SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY t.rank DESC), '[]'::jsonb)
     INTO v_linhas
@@ -91,6 +106,7 @@ BEGIN
       c.id::text AS chunk_id,
       d.tipo,
       d.titulo,
+      d.nm_candidato,
       d.nivel,
       d.ano_eleicao,
       d.vigencia_inicio,
@@ -100,7 +116,10 @@ BEGIN
       d.fonte_url,
       c.secao,
       left(c.texto, 1200) AS trecho,
-      ts_rank(to_tsvector('portuguese', c.texto), plainto_tsquery('portuguese', v_q)) AS rank
+      ts_rank(
+        to_tsvector('portuguese', c.texto),
+        plainto_tsquery('portuguese', v_q)
+      ) AS rank
     FROM acervo.chunk c
     JOIN acervo.documento d ON d.id = c.documento_id
     WHERE d.ativo IS TRUE
@@ -111,6 +130,11 @@ BEGIN
         p_sg_partido IS NULL
         OR d.sg_partido IS NULL
         OR upper(d.sg_partido) = ANY (COALESCE(api.siglas_equivalentes(p_sg_partido), ARRAY[upper(btrim(p_sg_partido))]))
+      )
+      AND (
+        v_cand IS NULL
+        OR api.acervo_norm(d.nm_candidato) LIKE '%' || api.acervo_norm(v_cand) || '%'
+        OR api.acervo_norm(d.titulo) LIKE '%' || api.acervo_norm(v_cand) || '%'
       )
       AND (d.vigencia_inicio IS NULL OR d.vigencia_inicio <= COALESCE(p_vigente_em, CURRENT_DATE))
       AND (d.vigencia_fim IS NULL OR d.vigencia_fim >= COALESCE(p_vigente_em, CURRENT_DATE))
@@ -124,7 +148,7 @@ BEGIN
       'status', 'vazio',
       'nivel', 'referencia',
       'mensagem', 'Nenhum trecho no acervo para este filtro temporal/temático.',
-      'nota_metodologica', 'Busca lexical. Cifra no trecho é pista, não fato. Acervo ainda pode estar vazio (fase de carga).',
+      'nota_metodologica', 'Busca lexical. Cifra no trecho é pista, não fato. Planos carregados hoje: presidente 2026. Use ano_eleicao=2026 e nm_candidato quando perguntar de um candidato.',
       'itens', v_linhas
     );
   END IF;
@@ -140,4 +164,5 @@ $$;
 
 GRANT USAGE ON SCHEMA acervo TO agente;
 GRANT SELECT ON ALL TABLES IN SCHEMA acervo TO agente;
-GRANT EXECUTE ON FUNCTION api.consultar_acervo(text, smallint, text, text, text, date, integer) TO agente;
+GRANT EXECUTE ON FUNCTION api.acervo_norm(text) TO agente;
+GRANT EXECUTE ON FUNCTION api.consultar_acervo(text, smallint, text, text, text, date, integer, text) TO agente;

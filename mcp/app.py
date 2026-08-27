@@ -138,8 +138,12 @@ def _ensure_acervo() -> None:
             _run_sql_script(conn, _PATCH_ACERVO.read_text(encoding="utf-8"))
             try:
                 conn.execute(
-                    "GRANT EXECUTE ON FUNCTION api.consultar_acervo(text, smallint, text, text, text, date, integer) TO agente"
+                    "GRANT EXECUTE ON FUNCTION api.consultar_acervo(text, smallint, text, text, text, date, integer, text) TO agente"
                 )
+            except psycopg.Error:
+                pass
+            try:
+                conn.execute("GRANT EXECUTE ON FUNCTION api.acervo_norm(text) TO agente")
             except psycopg.Error:
                 pass
             _seed_acervo_planos(conn)
@@ -449,6 +453,7 @@ class AcervoIn(BaseModel):
     sg_partido: str | None = None
     vigente_em: str | None = None
     limite: int = 8
+    nm_candidato: str | None = None
 
 
 class ClimaIn(BaseModel):
@@ -813,7 +818,7 @@ def acervo(body: AcervoIn, authorization: str | None = Header(default=None), x_t
     with db() as conn:
         return _one(
             conn,
-            "SELECT api.consultar_acervo(%s,%s,%s,%s,%s,%s::date,%s)",
+            "SELECT api.consultar_acervo(%s,%s,%s,%s,%s,%s::date,%s,%s)",
             (
                 body.query,
                 body.ano_eleicao,
@@ -822,6 +827,7 @@ def acervo(body: AcervoIn, authorization: str | None = Header(default=None), x_t
                 body.sg_partido,
                 vigente,
                 body.limite,
+                body.nm_candidato,
             ),
         )
 

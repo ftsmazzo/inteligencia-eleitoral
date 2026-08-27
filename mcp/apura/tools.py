@@ -175,17 +175,20 @@ MCP_TOOLS: list[dict] = [
         "function": {
             "name": "consultar_acervo",
             "description": (
-                "Acervo semântico (planos de governo, programas, notas TSE) com filtro temporal. "
-                "Cifra no texto é pista, não fato. Use para programa/narrativa/compromisso."
+                "Acervo semântico: planos de governo 2026 (presidente) já carregados. "
+                "Para tema de um candidato: query=tema (segurança), ano_eleicao=2026, "
+                "tipo=plano_governo, nm_candidato=Flávio (ou Lula…). "
+                "Não há planos 2018/2022 no acervo. Cifra no texto é pista, não fato."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string"},
-                    "ano_eleicao": {"type": "integer"},
+                    "query": {"type": "string", "description": "Tema lexical (segurança, saúde…) — sem misturar com o nome"},
+                    "ano_eleicao": {"type": "integer", "description": "Use 2026 para planos atuais"},
                     "tipo": {"type": "string", "description": "plano_governo|programa_partido|nota_tse|…"},
                     "uf": {"type": "string"},
                     "sg_partido": {"type": "string"},
+                    "nm_candidato": {"type": "string", "description": "Filtra pelo candidato do plano (Flávio, Lula…)"},
                     "limite": {"type": "integer", "default": 8},
                 },
                 "required": ["query"],
