@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Apura · Conversa Eleitoral</title>
+  <meta http-equiv="Cache-Control" content="no-store" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet" />
   <style>
@@ -144,7 +145,8 @@
     .skill-form input, .skill-form textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 0.85rem; margin-bottom: 8px; }
     .skill-form textarea { min-height: 72px; resize: vertical; }
     .skill-form button { width: 100%; padding: 8px; border: none; border-radius: 8px; background: var(--brand); color: #fff; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
-    .skill-err { color: #b91c1c; font-size: 0.75rem; min-height: 1em; margin-bottom: 6px; }
+    .welcome-msg { text-align: center; color: var(--muted); padding: 48px 24px; max-width: 520px; margin: 0 auto; line-height: 1.6; }
+    .welcome-msg strong { color: var(--brand); }
   </style>
 </head>
 <body>
@@ -225,6 +227,7 @@
     const SESS_KEY = 'apura_sessao_id';
     let jwt = localStorage.getItem('apura_jwt') || '';
     let sessaoId = localStorage.getItem(SESS_KEY) || '';
+    let ultimaSessaoServidor = '';
     let streaming = false;
     let appReady = false;
     let skillsCache = [];
@@ -317,28 +320,47 @@
 
     function saveSessao(id) {
       sessaoId = id || '';
-      if (sessaoId) localStorage.setItem(SESS_KEY, sessaoId);
-      else localStorage.removeItem(SESS_KEY);
+      if (sessaoId) {
+        localStorage.setItem(SESS_KEY, sessaoId);
+        try { sessionStorage.setItem(SESS_KEY, sessaoId); } catch (_) {}
+      } else {
+        localStorage.removeItem(SESS_KEY);
+        try { sessionStorage.removeItem(SESS_KEY); } catch (_) {}
+      }
     }
+
+    function mostrarBoasVindas() {
+      $('messages').innerHTML = '<div class="welcome-msg"><strong>Apura</strong><br />Escolha uma conversa na barra lateral ou envie a primeira mensagem abaixo.<br />Nenhuma conversa nova será criada ao recarregar a página.</div>';
+      $('chat-titulo').textContent = 'Nova conversa';
+    }
+
+    function escolherSessao(list) {
+      const pick = id => id && list.find(s => s.id === id);
+      const saved = localStorage.getItem(SESS_KEY) || sessionStorage.getItem(SESS_KEY) || '';
+      return pick(saved)
+        || pick(ultimaSessaoServidor)
+        || list.find(s => s.fixada)
+        || list.find(s => s.num_mensagens > 0)
+        || (list.length ? list[0] : null);
+    }
+
+    window.addEventListener('pagehide', () => { if (sessaoId) saveSessao(sessaoId); });
 
     async function initApp() {
       appReady = false;
       $('composer').classList.add('loading');
       $('app-err').textContent = '';
       try {
+        const eu = await api('/auth/eu');
+        ultimaSessaoServidor = eu.ultima_sessao_id || '';
         const list = await carregarSessoes();
         await carregarSkills();
-        const saved = localStorage.getItem(SESS_KEY);
-        if (saved && list.some(s => s.id === saved)) {
-          const s = list.find(x => x.id === saved);
-          await abrirSessao(s.id, s.titulo, false);
-        } else if (list.some(s => s.fixada)) {
-          const s = list.find(x => x.fixada);
-          await abrirSessao(s.id, s.titulo, false);
-        } else if (list.length > 0) {
-          await abrirSessao(list[0].id, list[0].titulo, false);
+        const alvo = escolherSessao(list);
+        if (alvo) {
+          await abrirSessao(alvo.id, alvo.titulo, false);
         } else {
-          await novaSessao();
+          saveSessao('');
+          mostrarBoasVindas();
         }
         appReady = true;
       } catch (err) {
@@ -430,7 +452,8 @@
         } else if (list.length > 0) {
           await abrirSessao(list[0].id, list[0].titulo, false);
         } else {
-          await novaSessao();
+          saveSessao('');
+          mostrarBoasVindas();
         }
       } catch (err) { $('app-err').textContent = err.message; }
     }
@@ -441,11 +464,20 @@
         await api('/sessoes', { method: 'DELETE' });
         saveSessao('');
         await carregarSessoes();
-        await novaSessao();
+        mostrarBoasVindas();
       } catch (err) { $('app-err').textContent = err.message; }
     }
 
     $('btn-apagar-todas').addEventListener('click', apagarTodasSessoes);
+
+    async function garantirSessao() {
+      if (sessaoId) return sessaoId;
+      const s = await api('/sessoes', { method: 'POST', body: JSON.stringify({ titulo: 'Nova conversa' }) });
+      saveSessao(s.id);
+      $('chat-titulo').textContent = s.titulo;
+      await carregarSessoes();
+      return s.id;
+    }
 
     async function novaSessao() {
       const s = await api('/sessoes', { method: 'POST', body: JSON.stringify({ titulo: 'Nova conversa' }) });
@@ -661,7 +693,7 @@
     async function enviar() {
       const text = input.value.trim();
       if (!text || streaming) return;
-      if (!appReady || !sessaoId) {
+      if (!appReady) {
         $('app-err').textContent = 'Aguarde o chat carregar ou recarregue a página.';
         return;
       }
@@ -670,6 +702,16 @@
       $('app-err').textContent = '';
       input.value = '';
       input.style.height = 'auto';
+      try {
+        await garantirSessao();
+      } catch (err) {
+        streaming = false;
+        syncSendBtn();
+        $('app-err').textContent = err.message;
+        return;
+      }
+      $('messages').querySelector('.welcome-msg')?.remove();
+      if (!$('messages').children.length) $('messages').innerHTML = '';
       appendMsg('user', text);
       showTyping('pensando');
 

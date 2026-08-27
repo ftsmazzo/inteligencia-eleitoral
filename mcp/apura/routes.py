@@ -36,7 +36,7 @@ router = APIRouter(prefix="/apura/api", tags=["apura"])
 _STATIC = Path(__file__).resolve().parents[1] / "static" / "apura"
 _PATCH = Path(__file__).resolve().parents[1] / "sql" / "patch_apura.sql"
 _PATCH_TOKENS = Path(__file__).resolve().parents[1] / "sql" / "patch_mcp_tokens.sql"
-_SCHEMA_VER = 4
+_SCHEMA_VER = 5
 _READY_VER = 0
 
 
@@ -74,7 +74,22 @@ def _db() -> Iterator[psycopg.Connection]:
     if not url:
         raise HTTPException(503, "Banco indisponível")
     with psycopg.connect(url) as conn:
-        yield conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+
+def _registrar_ultima_sessao(conn: psycopg.Connection, usuario_id: str, sessao_id: str) -> None:
+    conn.execute(
+        """
+        UPDATE ctl.apura_usuario SET ultima_sessao_id = %s::uuid
+        WHERE id = %s::uuid
+        """,
+        (sessao_id, usuario_id),
+    )
 
 
 def _bearer(authorization: str | None) -> str:
@@ -155,8 +170,13 @@ def login(body: LoginIn) -> dict[str, str]:
 
 
 @router.get("/auth/eu")
-def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
-    return {"id": user[0], "email": user[1]}
+def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT ultima_sessao_id::text FROM ctl.apura_usuario WHERE id = %s::uuid",
+            (user[0],),
+        ).fetchone()
+    return {"id": user[0], "email": user[1], "ultima_sessao_id": row[0] if row else None}
 
 
 @router.get("/sessoes")
@@ -164,10 +184,11 @@ def listar_sessoes(user: tuple[str, str, str] = Depends(_usuario_atual)) -> list
     with _db() as conn:
         rows = conn.execute(
             """
-            SELECT id::text, titulo, fixada, criado_em, atualizado_em
-            FROM ctl.apura_sessao
-            WHERE usuario_id = %s::uuid
-            ORDER BY fixada DESC, atualizado_em DESC
+            SELECT s.id::text, s.titulo, s.fixada, s.criado_em, s.atualizado_em,
+                   (SELECT COUNT(*)::int FROM ctl.apura_mensagem m WHERE m.sessao_id = s.id)
+            FROM ctl.apura_sessao s
+            WHERE s.usuario_id = %s::uuid
+            ORDER BY s.fixada DESC, s.atualizado_em DESC
             LIMIT 50
             """,
             (user[0],),
@@ -179,6 +200,7 @@ def listar_sessoes(user: tuple[str, str, str] = Depends(_usuario_atual)) -> list
             "fixada": bool(r[2]),
             "criado_em": r[3].isoformat(),
             "atualizado_em": r[4].isoformat(),
+            "num_mensagens": int(r[5]),
         }
         for r in rows
     ]
@@ -197,6 +219,7 @@ def criar_sessao(body: SessaoIn, user: tuple[str, str, str] = Depends(_usuario_a
                 """,
                 (sid, user[0], titulo),
             )
+            _registrar_ultima_sessao(conn, user[0], sid)
     except psycopg.errors.ForeignKeyViolation as exc:
         raise HTTPException(400, "Usuário não encontrado para criar conversa") from exc
     except psycopg.Error as exc:
@@ -274,6 +297,7 @@ def listar_mensagens(sessao_id: str, user: tuple[str, str, str] = Depends(_usuar
         ).fetchone()
         if not ok:
             raise HTTPException(404, "Conversa não encontrada")
+        _registrar_ultima_sessao(conn, user[0], sessao_id)
         rows = conn.execute(
             """
             SELECT id::text, papel, conteudo, dados_json, criado_em
@@ -309,6 +333,7 @@ async def chat(
             ).fetchone()
             if not ok:
                 raise HTTPException(404, "Conversa não encontrada")
+            _registrar_ultima_sessao(conn, uid, body.sessao_id)
             conn.execute(
                 """
                 INSERT INTO ctl.apura_mensagem (sessao_id, papel, conteudo)
@@ -458,4 +483,7 @@ def pagina_apura() -> HTMLResponse:
     path = _STATIC / "index.html"
     if not path.exists():
         raise HTTPException(404, "Apura indisponível")
-    return HTMLResponse(path.read_text(encoding="utf-8"), headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(
+        path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )

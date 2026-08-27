@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS ctl.apura_sessao (
 
 ALTER TABLE ctl.apura_sessao ADD COLUMN IF NOT EXISTS fixada boolean NOT NULL DEFAULT false;
 
+ALTER TABLE ctl.apura_usuario ADD COLUMN IF NOT EXISTS ultima_sessao_id uuid
+  REFERENCES ctl.apura_sessao(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_apura_sessao_usuario ON ctl.apura_sessao (usuario_id, atualizado_em DESC);
 CREATE INDEX IF NOT EXISTS idx_apura_sessao_fixada ON ctl.apura_sessao (usuario_id, fixada DESC, atualizado_em DESC);
 

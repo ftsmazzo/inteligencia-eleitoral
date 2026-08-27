@@ -58,7 +58,16 @@ def _headers() -> dict[str, str]:
 def _erro_openrouter(status: int, body: str) -> str:
     try:
         data = json.loads(body)
-        msg = data.get("error", {}).get("message") or data.get("message") or body
+        err = data.get("error") or {}
+        if isinstance(err, str):
+            msg = err
+            meta: dict[str, Any] = {}
+        else:
+            msg = err.get("message") or data.get("message") or body
+            meta = err.get("metadata") or {}
+        raw = meta.get("raw") if isinstance(meta, dict) else None
+        if isinstance(raw, str) and raw.strip() and raw.strip() not in msg:
+            msg = f"{msg} — {raw.strip()[:320]}"
     except json.JSONDecodeError:
         msg = body
     if status == 401:
@@ -68,7 +77,12 @@ def _erro_openrouter(status: int, body: str) -> str:
         )
     if status == 402:
         return "Créditos insuficientes na conta OpenRouter — adicione saldo em openrouter.ai/credits."
-    return f"OpenRouter retornou erro {status}: {msg[:240]}"
+    if status == 400:
+        return (
+            f"OpenRouter recusou a requisição (400): {msg[:360]}. "
+            "Se persistir, reduza o escopo da pergunta ou ajuste APURA_ORCHESTRATOR_MODEL / APURA_WRITER_MODEL."
+        )
+    return f"OpenRouter retornou erro {status}: {msg[:360]}"
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -112,7 +126,7 @@ def _compactar_consultas(tool_log: list[dict[str, Any]]) -> str:
             partes.append(f"nota: {nota}")
         linhas = res.get("linhas")
         if isinstance(linhas, list):
-            partes.append(json.dumps(linhas, ensure_ascii=False, default=str)[:10000])
+            partes.append(json.dumps(linhas, ensure_ascii=False, default=str)[:6000])
         else:
             partes.append(resumir_resultado(res, max_chars=6000))
     return "\n\n".join(partes)
@@ -157,6 +171,34 @@ def _entrada_redator(
     )
 
 
+def _msg_assistant(choice: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {"role": "assistant", "content": choice.get("content")}
+    tool_calls = choice.get("tool_calls")
+    if tool_calls:
+        out["tool_calls"] = [
+            {
+                "id": tc["id"],
+                "type": tc.get("type") or "function",
+                "function": {
+                    "name": tc["function"]["name"],
+                    "arguments": tc["function"].get("arguments") or "{}",
+                },
+            }
+            for tc in tool_calls
+        ]
+    return out
+
+
+def _historico_orquestrador(historico: list[dict[str, str]]) -> list[dict[str, str]]:
+    msgs: list[dict[str, str]] = []
+    for h in historico[-6:]:
+        papel = h.get("papel")
+        if papel not in ("user", "assistant"):
+            continue
+        msgs.append({"role": papel, "content": (h.get("conteudo") or "")[:2500]})
+    return msgs
+
+
 async def _openrouter(
     messages: list[dict],
     *,
@@ -178,7 +220,13 @@ async def _openrouter(
 async def _stream_resposta(model: str, messages: list[dict], temperature: float = 0.55) -> AsyncIterator[str]:
     sr = await _openrouter(messages, model=model, stream=True, temperature=temperature)
     if sr.status_code >= 400:
-        raise RuntimeError(_erro_openrouter(sr.status_code, sr.text))
+        nr = await _openrouter(messages, model=model, stream=False, temperature=temperature)
+        if nr.status_code >= 400:
+            raise RuntimeError(_erro_openrouter(nr.status_code, nr.text))
+        content = nr.json()["choices"][0]["message"].get("content") or ""
+        if content:
+            yield content
+        return
     async for line in sr.aiter_lines():
         if not line.startswith("data: "):
             continue
@@ -203,8 +251,7 @@ async def executar_chat(
     """Gera eventos SSE: status, token, done (opcional relatorio_html), error."""
     pergunta = _ultima_pergunta(historico)
     orch_messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_ORCHESTRATOR}]
-    for h in historico:
-        orch_messages.append({"role": h["papel"], "content": h["conteudo"]})
+    orch_messages.extend(_historico_orquestrador(historico))
 
     tool_log: list[dict[str, Any]] = []
     notas = ""
@@ -220,7 +267,7 @@ async def executar_chat(
             tool_calls = choice.get("tool_calls") or []
 
             if tool_calls:
-                orch_messages.append(choice)
+                orch_messages.append(_msg_assistant(choice))
                 for tc in tool_calls:
                     fn = tc.get("function", {})
                     name = fn.get("name", "")
@@ -235,7 +282,7 @@ async def executar_chat(
                         {
                             "role": "tool",
                             "tool_call_id": tc["id"],
-                            "content": resumir_resultado(result),
+                            "content": resumir_resultado(result, max_chars=6000),
                         }
                     )
                 continue
