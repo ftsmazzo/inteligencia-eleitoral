@@ -15,7 +15,7 @@ from apura.prompt import SYSTEM_ORCHESTRATOR, SYSTEM_WRITER
 from apura.tools import MCP_TOOLS
 
 _OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
-_MAX_TOOL_ROUNDS = 6
+_MAX_TOOL_ROUNDS = 12
 _RELATORIO_RE = re.compile(
     r"relat[oó]rio|em\s+html|formato\s+html|exporte?\s+(?:em\s+)?html|monte?\s+(?:um\s+)?html",
     re.I,
