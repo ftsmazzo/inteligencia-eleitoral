@@ -4,6 +4,7 @@ from __future__ import annotations
 import html as html_module
 import os
 import secrets
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -807,6 +808,8 @@ def depara_parlamentar(body: DeparaParlamentarIn, authorization: str | None = He
 def acervo(body: AcervoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token)
     _ensure_acervo()
+    # NULL explícito em p_vigente_em anula DEFAULT CURRENT_DATE — sempre passar data concreta.
+    vigente = body.vigente_em or date.today().isoformat()
     with db() as conn:
         return _one(
             conn,
@@ -817,7 +820,7 @@ def acervo(body: AcervoIn, authorization: str | None = Header(default=None), x_t
                 body.tipo,
                 body.uf,
                 body.sg_partido,
-                body.vigente_em,
+                vigente,
                 body.limite,
             ),
         )

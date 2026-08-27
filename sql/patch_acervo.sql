@@ -112,8 +112,8 @@ BEGIN
         OR d.sg_partido IS NULL
         OR upper(d.sg_partido) = ANY (COALESCE(api.siglas_equivalentes(p_sg_partido), ARRAY[upper(btrim(p_sg_partido))]))
       )
-      AND (d.vigencia_inicio IS NULL OR d.vigencia_inicio <= p_vigente_em)
-      AND (d.vigencia_fim IS NULL OR d.vigencia_fim >= p_vigente_em)
+      AND (d.vigencia_inicio IS NULL OR d.vigencia_inicio <= COALESCE(p_vigente_em, CURRENT_DATE))
+      AND (d.vigencia_fim IS NULL OR d.vigencia_fim >= COALESCE(p_vigente_em, CURRENT_DATE))
       AND to_tsvector('portuguese', c.texto) @@ plainto_tsquery('portuguese', v_q)
     ORDER BY rank DESC
     LIMIT v_lim
