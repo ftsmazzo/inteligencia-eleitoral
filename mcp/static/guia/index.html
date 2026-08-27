@@ -59,6 +59,37 @@
       padding: 8px 14px; border-radius: 999px; transition: 0.2s;
     }
     nav a:hover { background: var(--surface); color: var(--ink); }
+    .nav-apura {
+      display: inline-flex !important; align-items: center; gap: 8px;
+      padding: 5px 14px 5px 5px !important;
+      background: var(--brand) !important; color: #fff !important;
+      border-radius: 999px; font-weight: 650;
+      box-shadow: 0 4px 16px rgba(13, 79, 74, 0.28);
+      transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+    .nav-apura img {
+      width: 30px; height: 30px; border-radius: 50%; object-fit: cover;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+      background: #f7f4ef;
+    }
+    .nav-apura:hover {
+      background: #0a3d39 !important; color: #fff !important;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(13, 79, 74, 0.35);
+    }
+    .nav-apura .nav-apura-arrow {
+      width: 14px; height: 14px; opacity: 0.9;
+    }
+    .btn-apura {
+      background: var(--brand); color: #fff;
+      padding-left: 10px;
+      box-shadow: 0 6px 20px rgba(13, 79, 74, 0.22);
+    }
+    .btn-apura img {
+      width: 28px; height: 28px; border-radius: 50%; object-fit: cover;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.35);
+    }
+    .btn-apura:hover { background: #0a3d39; transform: translateY(-1px); color: #fff; }
     .status-pill {
       display: inline-flex; align-items: center; gap: 8px;
       font-size: 0.8rem; font-weight: 600; padding: 6px 12px;
@@ -246,6 +277,11 @@
         <span class="logo-text">Inteligência Eleitoral Brasil</span>
       </a>
       <nav>
+        <a class="nav-apura" href="/apura" title="Abrir o chat Apura">
+          <img src="/apura/assets/avatar-apura.jpg" alt="" width="30" height="30" />
+          <span>Apura</span>
+          <svg class="nav-apura-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        </a>
         <a href="#o-que-e">O que é</a>
         <a href="#token">Token</a>
         <a href="#conectar">Conectar</a>
@@ -263,8 +299,11 @@
           <h1>Dados eleitorais do Brasil, prontos para sua IA</h1>
           <p class="lead">Votos, candidatos, eleitos, contas de campanha, população, CadÚnico, Bolsa Família e Câmara — fontes oficiais, sem inventar número.</p>
           <div class="hero-actions">
+            <a class="btn btn-apura" href="/apura">
+              <img src="/apura/assets/avatar-apura.jpg" alt="" width="28" height="28" />
+              Abrir Apura
+            </a>
             <a class="btn btn-primary" href="#token">Gerar meu token</a>
-            <a class="btn btn-secondary" href="/apura">Abrir Apura</a>
             <a class="btn btn-secondary" href="#conectar">Conectar agora</a>
           </div>
         </div>
