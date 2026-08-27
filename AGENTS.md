@@ -12,7 +12,8 @@ Fora desse recorte: resposta seca em SPEC-BRASIL.md. Sem estimativa.
 
 Dump sujo: `inbox/` (somente leitura). Canônico: `data/` (`data/README.md`).
 
-Entrega MCP: `docs/ENTREGA-MCP.md`.
+Entrega MCP: `docs/ENTREGA-MCP.md`.  
+Acervo / Radar (trilha B + clima): `docs/ACERVO.md`.
 
 Guia do usuário (página web): https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia  
 Skill portátil (Claude, GPT, Manus, Cursor): `docs/SKILL-INTELIGENCIA-ELEITORAL.md` ou download na página /guia.

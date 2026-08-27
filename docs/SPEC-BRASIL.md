@@ -29,6 +29,8 @@ Sem parágrafo de contexto, sem “mas se considerarmos…”, sem puxar 2010 ou
 - **A:** célula de planilha → PostgreSQL, função nomeada, conjunto vazio = inexistente.
 - **B:** parágrafo → pgvector / acervo. Número no texto da B é pista, não fato.
 
+Desenho do acervo, temporalidade, planos de governo e integração com **Radar Eleitoral** (clima de redes/notícias = camada C, sempre `indicio`): `docs/ACERVO.md`. DDL: `sql/patch_acervo.sql`.
+
 ## Pastas de dado (uma árvore, sem colcha)
 
 `Arquitetura/` não recebe arquivo novo.  
