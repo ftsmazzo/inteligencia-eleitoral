@@ -197,9 +197,9 @@ MCP_TOOLS: list[dict] = [
         "function": {
             "name": "consultar_clima",
             "description": (
-                "Radar Eleitoral: clima de redes/notícias sob demanda. "
-                "Obrigatório para Instagram/@conta, X, news, ‘o que está saindo’. "
-                "Instagram só retorna perfis cadastrados no painel; vazio ≠ sem acesso. "
+                "Radar / clima livre: Google News RSS + Apify Instagram (sem trava de campanha). "
+                "Obrigatório para Instagram/@conta, news, ‘o que está saindo’. "
+                "canal=instagram usa Apify em qualquer @handle; canal=news usa RSS livre. "
                 "Cada item: fonte, quando/data_hora, rotulo. url pode ser null (não cole url_raw). "
                 "Passe q=nome ou handle sem @, canal (instagram|news|x…), "
                 "janela_horas (24 ou 168). Sempre indício — não use como cifra eleitoral."

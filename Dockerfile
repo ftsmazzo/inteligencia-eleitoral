@@ -11,6 +11,7 @@ COPY sql/patch_partido_linha.sql /app/sql/patch_partido_linha.sql
 COPY sql/patch_acervo.sql /app/sql/patch_acervo.sql
 COPY sql/api.sql /app/sql/api.sql
 COPY mcp/radar_client.py /app/radar_client.py
+COPY mcp/clima_motores.py /app/clima_motores.py
 COPY mcp/seed /app/seed
 ENV PORT=8000
 EXPOSE 8000

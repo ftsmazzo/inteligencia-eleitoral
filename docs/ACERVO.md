@@ -59,19 +59,19 @@ O Radar já faz coleta multi-canal (Instagram, X, Facebook, YouTube, TikTok, not
 
 ### Como usar no produto Brasil
 
-**Consulta livre, não travada em candidato.** O MCP `clima` recebe o que a pergunta pedir:
+**Consulta livre, sem trava de campanha.** O MCP `clima` usa os **mesmos motores** do Radar (Google News RSS + Apify Instagram) sob demanda:
 
-| Pedido do usuário | Params típicos |
-|---|---|
-| “notícia do Flávio esta semana” | `q=Flávio`, `canal=news`, `janela_horas=168` |
-| “Instagram do Lula” | `q=Lula`, `canal=instagram`, `janela_horas=72` |
-| “ataques em segurança nas últimas 24h” | `q=segurança`, `tipo=ataque`, `janela_horas=24` |
-| “o que saiu de novo sobre o PL” | `q=PL`, `janela_horas=48` |
+| Pedido do usuário | Params típicos | Motor |
+|---|---|---|
+| “notícia do Flávio esta semana” | `q=Flávio`, `canal=news`, `janela_horas=168` | Google News RSS |
+| “Instagram do Lula” / `@lulaoficial` | `q=Lula` ou `lulaoficial`, `canal=instagram` | Apify (qualquer @handle) |
+| “ataques em segurança nas últimas 24h” | `q=segurança`, `tipo=ataque`, `janela_horas=24` | RSS (+ painel se houver) |
 
-`campaign_id` é **opcional** — só quando quiser isolar o stream de uma campanha do [painel Radar](https://inteligencia-eleitora-painel.kxryyk.easypanel.host/). O default é varrer o stream ativo com filtros livres.
+`campaign_id` é **opcional** e só isola o stream HTML do [painel](https://inteligencia-eleitora-painel.kxryyk.easypanel.host/). O default **não** depende de perfil cadastrado.
 
-Não copiar o banco do Radar para `data/`. O conector HTTP lê o painel (JSON se existir; hoje HTML dos `<article class=item>`).
+Env no `mcp-api`: `APIFY_TOKEN`, `APIFY_IG_ACTOR` (default `apify/instagram-scraper`).
 
+Não copiar o banco do Radar para `data/`.
 ### Papel na narrativa
 
 | Pergunta do usuário | A | B | C (Radar) |

@@ -164,22 +164,29 @@ async def consultar_clima(
     page: int = 1,
     limite: int = 20,
 ) -> dict[str, Any]:
-    """Consulta sob demanda: 'notícia do Flávio esta semana', 'Instagram do Lula', etc."""
-    # Normaliza @handle → texto de busca
+    """Clima livre: motores Apify/Google News (sem trava de campanha) + painel Radar opcional."""
+    from clima_motores import (
+        buscar_instagram_apify,
+        buscar_news_google,
+        resolver_handle_instagram,
+    )
+
     if q:
         q = q.strip()
         if q.startswith("@"):
             q = q.lstrip("@").strip()
-        # "instagram.com/lulaoficial" → lulaoficial
         m_ig = re.search(r"(?:instagram\.com/)?@?([A-Za-z0-9._]+)/?$", q)
         if m_ig and " " not in q and ("instagram" in q.lower() or q.count("/") >= 1):
             q = m_ig.group(1)
 
+    canal_l = (canal or "").strip().lower() or None
+    horas = janela_horas if janela_horas is not None else 168
+    lim = max(1, min(limite or 20, 50))
     params: dict[str, Any] = {"page": max(1, page)}
     if q:
         params["q"] = q
-    if canal:
-        params["canal"] = canal.strip().lower()
+    if canal_l:
+        params["canal"] = canal_l
     if origem:
         params["origem"] = origem.strip().lower()
     if tipo:
@@ -187,62 +194,110 @@ async def consultar_clima(
     if urgencia:
         params["urgencia"] = urgencia.strip().lower()
 
-    url = f"{_base()}/?{urlencode(params)}"
-    cookies: dict[str, str] = {}
-    async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
-        if campaign_id is not None:
-            # painel usa form POST /campanha com cid — cookie de sessão
-            await client.post(f"{_base()}/campanha", data={"cid": str(campaign_id)})
-            cookies = dict(client.cookies)
-        r = await client.get(url, headers=_headers(), cookies=cookies or None)
-
-    if r.status_code >= 400:
-        return {
-            "status": "erro",
-            "nivel": "indicio",
-            "mensagem": f"Radar HTTP {r.status_code}",
-            "itens": [],
-        }
-
-    ct = (r.headers.get("content-type") or "").lower()
     itens: list[dict[str, Any]] = []
-    modo = "html"
+    motores: list[str] = []
+    avisos: list[str] = []
+    modo = "motores_livres"
 
-    if "application/json" in ct:
-        modo = "json"
-        data = r.json()
-        raw = data.get("itens") or data.get("items") or data.get("stream") or []
-        if isinstance(raw, list):
-            itens = [_normalizar_item_json(x) if isinstance(x, dict) else x for x in raw]
-    else:
-        itens = _parse_articles(r.text)
+    import asyncio
 
-    itens = _filter_janela(itens, janela_horas)
-    itens = itens[: max(1, min(limite, 50))]
+    # 1) Notícias livres (Google News RSS) — default quando canal vazio ou news
+    quer_news = canal_l in (None, "", "news", "noticia", "notícia") and bool(q)
+    if quer_news and canal_l != "instagram":
+        try:
+            news = await asyncio.to_thread(
+                buscar_news_google, q or "", janela_horas=horas or 168, limite=lim
+            )
+            if news:
+                itens.extend(news)
+                motores.append("google_news_rss")
+        except Exception as e:
+            avisos.append(f"news: {type(e).__name__}")
+
+    # 2) Instagram livre (Apify) — só com canal=instagram (orquestrador manda em paralelo com news)
+    if canal_l == "instagram":
+        handle = resolver_handle_instagram(q) if q else None
+        if handle:
+            try:
+                ig = await asyncio.to_thread(
+                    buscar_instagram_apify,
+                    handle,
+                    janela_horas=horas or 168,
+                    limite=min(lim, 12),
+                )
+                if ig:
+                    itens.extend(ig)
+                    motores.append("apify_instagram")
+                else:
+                    avisos.append(f"instagram @{handle}: zero posts na janela")
+            except Exception as e:
+                avisos.append(f"instagram: {type(e).__name__}: {e}")
+        else:
+            avisos.append(
+                "Informe um @handle (ex.: @lulaoficial) ou nome com alias conhecido (Lula → lulaoficial)."
+            )
+    # 3) Painel Radar só se campaign_id pedido OU motores não cobriram e canal é rede “de campanha”
+    usar_painel = campaign_id is not None or (
+        not itens and canal_l in ("x", "facebook", "youtube", "tiktok", "site")
+    )
+    if usar_painel:
+        url = f"{_base()}/?{urlencode(params)}"
+        cookies: dict[str, str] = {}
+        async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
+            if campaign_id is not None:
+                await client.post(f"{_base()}/campanha", data={"cid": str(campaign_id)})
+                cookies = dict(client.cookies)
+            r = await client.get(url, headers=_headers(), cookies=cookies or None)
+        if r.status_code < 400:
+            ct = (r.headers.get("content-type") or "").lower()
+            if "application/json" in ct:
+                data = r.json()
+                raw = data.get("itens") or data.get("items") or data.get("stream") or []
+                if isinstance(raw, list):
+                    itens.extend(
+                        [_normalizar_item_json(x) if isinstance(x, dict) else x for x in raw]
+                    )
+            else:
+                itens.extend(_parse_articles(r.text))
+            motores.append("painel_radar")
+            modo = "motores+painel"
+        else:
+            avisos.append(f"painel HTTP {r.status_code}")
+
+    itens = _filter_janela(itens, horas)
+    # dedupe por titulo+quando
+    seen: set[str] = set()
+    uniq: list[dict[str, Any]] = []
+    for it in itens:
+        key = f"{it.get('canal')}|{it.get('titulo')}|{it.get('quando')}"
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(it)
+    itens = uniq[:lim]
 
     nota = (
-        "Camada C (Radar): clima de redes/notícias. nivel=indicio — "
-        "não use cifra do texto como fato eleitoral. "
-        "Em cada item use fonte + data_hora/quando (campo rotulo) ao citar, como no painel Radar. "
-        "Se url estiver null, NÃO invente nem cole url_raw (links Google News são omitidos de propósito). "
-        "Instagram só retorna perfis/alvos cadastrados nas campanhas do painel Radar."
+        "Camada C (clima livre): Google News RSS e/ou Apify Instagram sob demanda — "
+        "sem trava de campaign_id. nivel=indicio. "
+        "Cite fonte + data_hora/rotulo. Se url=null, não cole url_raw. "
+        f"Motores: {', '.join(motores) or 'nenhum'}."
     )
+    if avisos:
+        nota += " Avisos: " + "; ".join(avisos)
+
     if not itens:
-        msg = "Nenhum item no Radar para este filtro."
-        if (canal or "").lower() == "instagram":
-            msg = (
-                "Nenhum post de Instagram no Radar para este filtro. "
-                "O painel só monitora perfis cadastrados nas campanhas ativas — "
-                "se @/perfil não estiver cadastrado, o resultado é vazio (não é falha de acesso)."
-            )
+        msg = "Nenhum item de clima para este filtro."
+        if avisos:
+            msg += " " + "; ".join(avisos)
         return {
             "status": "vazio",
             "nivel": "indicio",
             "mensagem": msg,
             "nota_metodologica": nota,
             "modo": modo,
+            "motores": motores,
             "filtro": params,
-            "janela_horas": janela_horas,
+            "janela_horas": horas,
             "itens": [],
         }
 
@@ -251,7 +306,8 @@ async def consultar_clima(
         "nivel": "indicio",
         "nota_metodologica": nota,
         "modo": modo,
+        "motores": motores,
         "filtro": params,
-        "janela_horas": janela_horas,
+        "janela_horas": horas,
         "itens": itens,
     }
