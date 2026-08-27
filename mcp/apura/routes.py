@@ -36,7 +36,7 @@ router = APIRouter(prefix="/apura/api", tags=["apura"])
 _STATIC = Path(__file__).resolve().parents[1] / "static" / "apura"
 _PATCH = Path(__file__).resolve().parents[1] / "sql" / "patch_apura.sql"
 _PATCH_TOKENS = Path(__file__).resolve().parents[1] / "sql" / "patch_mcp_tokens.sql"
-_SCHEMA_VER = 3
+_SCHEMA_VER = 4
 _READY_VER = 0
 
 
@@ -105,6 +105,11 @@ class SessaoIn(BaseModel):
     titulo: str = Field(default="Nova conversa", max_length=120)
 
 
+class SessaoPatchIn(BaseModel):
+    titulo: str | None = Field(default=None, min_length=1, max_length=120)
+    fixada: bool | None = None
+
+
 class ChatIn(BaseModel):
     sessao_id: str
     mensagem: str = Field(min_length=1, max_length=8000)
@@ -159,16 +164,22 @@ def listar_sessoes(user: tuple[str, str, str] = Depends(_usuario_atual)) -> list
     with _db() as conn:
         rows = conn.execute(
             """
-            SELECT id::text, titulo, criado_em, atualizado_em
+            SELECT id::text, titulo, fixada, criado_em, atualizado_em
             FROM ctl.apura_sessao
             WHERE usuario_id = %s::uuid
-            ORDER BY atualizado_em DESC
+            ORDER BY fixada DESC, atualizado_em DESC
             LIMIT 50
             """,
             (user[0],),
         ).fetchall()
     return [
-        {"id": r[0], "titulo": r[1], "criado_em": r[2].isoformat(), "atualizado_em": r[3].isoformat()}
+        {
+            "id": r[0],
+            "titulo": r[1],
+            "fixada": bool(r[2]),
+            "criado_em": r[3].isoformat(),
+            "atualizado_em": r[4].isoformat(),
+        }
         for r in rows
     ]
 
@@ -193,6 +204,65 @@ def criar_sessao(body: SessaoIn, user: tuple[str, str, str] = Depends(_usuario_a
     except Exception as exc:
         raise HTTPException(500, f"Erro ao criar conversa: {type(exc).__name__}: {exc}") from exc
     return {"id": sid, "titulo": titulo}
+
+
+@router.patch("/sessoes/{sessao_id}")
+def atualizar_sessao(
+    sessao_id: str,
+    body: SessaoPatchIn,
+    user: tuple[str, str, str] = Depends(_usuario_atual),
+) -> dict[str, Any]:
+    if body.titulo is None and body.fixada is None:
+        raise HTTPException(400, "Nada para atualizar")
+    with _db() as conn:
+        ok = conn.execute(
+            "SELECT 1 FROM ctl.apura_sessao WHERE id = %s::uuid AND usuario_id = %s::uuid",
+            (sessao_id, user[0]),
+        ).fetchone()
+        if not ok:
+            raise HTTPException(404, "Conversa não encontrada")
+        if body.fixada is True:
+            conn.execute(
+                "UPDATE ctl.apura_sessao SET fixada = false WHERE usuario_id = %s::uuid",
+                (user[0],),
+            )
+        sets: list[str] = ["atualizado_em = now()"]
+        params: list[Any] = []
+        if body.titulo is not None:
+            sets.append("titulo = %s")
+            params.append(body.titulo.strip())
+        if body.fixada is not None:
+            sets.append("fixada = %s")
+            params.append(body.fixada)
+        params.extend([sessao_id, user[0]])
+        conn.execute(
+            f"UPDATE ctl.apura_sessao SET {', '.join(sets)} WHERE id = %s::uuid AND usuario_id = %s::uuid",
+            params,
+        )
+        row = conn.execute(
+            "SELECT id::text, titulo, fixada FROM ctl.apura_sessao WHERE id = %s::uuid",
+            (sessao_id,),
+        ).fetchone()
+    return {"id": row[0], "titulo": row[1], "fixada": bool(row[2])}
+
+
+@router.delete("/sessoes")
+def apagar_todas_sessoes(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
+    with _db() as conn:
+        conn.execute("DELETE FROM ctl.apura_sessao WHERE usuario_id = %s::uuid", (user[0],))
+    return {"status": "ok"}
+
+
+@router.delete("/sessoes/{sessao_id}")
+def apagar_sessao(sessao_id: str, user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
+    with _db() as conn:
+        cur = conn.execute(
+            "DELETE FROM ctl.apura_sessao WHERE id = %s::uuid AND usuario_id = %s::uuid RETURNING id",
+            (sessao_id, user[0]),
+        ).fetchone()
+        if not cur:
+            raise HTTPException(404, "Conversa não encontrada")
+    return {"status": "ok"}
 
 
 @router.get("/sessoes/{sessao_id}/mensagens")
@@ -361,7 +431,7 @@ def api_listar_skills(user: tuple[str, str, str] = Depends(_usuario_atual)) -> d
 
 
 @router.post("/skills")
-def api_criar_skill(body: SkillIn, user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
+def api_criar_skill(body: SkillIn, user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
     with _db() as conn:
         return criar_skill(conn, user[0], body.nome, body.conteudo, body.ativo)
 

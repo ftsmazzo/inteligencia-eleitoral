@@ -61,7 +61,7 @@ Até **3 skills ativas** por usuário; cadastro na sidebar “Minhas Skills”.
 Prefixo `/apura/api`:
 
 - `POST /auth/registrar` · `POST /auth/login` · `GET /auth/eu`
-- `GET /sessoes` · `POST /sessoes`
+- `GET /sessoes` · `POST /sessoes` · `PATCH /sessoes/{id}` · `DELETE /sessoes` · `DELETE /sessoes/{id}`
 - `GET /sessoes/{id}/mensagens`
 - `POST /chat` (SSE)
 - `GET /skills` · `POST /skills` · `PATCH /skills/{id}` · `DELETE /skills/{id}`

@@ -18,7 +18,10 @@ CREATE TABLE IF NOT EXISTS ctl.apura_sessao (
   atualizado_em timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE ctl.apura_sessao ADD COLUMN IF NOT EXISTS fixada boolean NOT NULL DEFAULT false;
+
 CREATE INDEX IF NOT EXISTS idx_apura_sessao_usuario ON ctl.apura_sessao (usuario_id, atualizado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_apura_sessao_fixada ON ctl.apura_sessao (usuario_id, fixada DESC, atualizado_em DESC);
 
 CREATE TABLE IF NOT EXISTS ctl.apura_mensagem (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
