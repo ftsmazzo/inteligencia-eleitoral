@@ -2,7 +2,8 @@
 
 Painel web com chat analítico sobre dados eleitorais oficiais do Brasil.
 
-**URL:** `/apura` (mesmo host do `mcp-api`)
+**URL pública:** redireciona para `/#demo` (pedido de contato)  
+**URL interna (login):** `/apura/app` — não linkada na landing; cadastro público desativado.
 
 ## O que é
 
