@@ -36,10 +36,12 @@ _GUIA = _STATIC / "guia"
 _PATCH_TOKENS = Path(__file__).resolve().parent / "sql" / "patch_mcp_tokens.sql"
 _PATCH_PARTIDO = Path(__file__).resolve().parent / "sql" / "patch_partido_linha.sql"
 _PATCH_ACERVO = Path(__file__).resolve().parent / "sql" / "patch_acervo.sql"
+_PATCH_ANALITICO = Path(__file__).resolve().parent / "sql" / "patch_analitico.sql"
 _API_SQL = Path(__file__).resolve().parent / "sql" / "api.sql"
 _TOKENS_READY = False
 _API_PARTIDO_READY = False
 _ACERVO_READY = False
+_ANALITICO_READY = False
 _SKILL_PLACEHOLDER = "__SKILL_CONTENT__"
 _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
@@ -123,7 +125,35 @@ def _ensure_partido_linha() -> None:
         _API_PARTIDO_READY = False
 
 
-_SEED_PLANOS = Path(__file__).resolve().parent / "seed" / "acervo_planos_2026.jsonl"
+_SEED_DIR = Path(__file__).resolve().parent / "seed"
+
+
+def _ensure_analitico() -> None:
+    global _ANALITICO_READY
+    if _ANALITICO_READY or not _PATCH_ANALITICO.exists():
+        return
+    url = _ddl_url()
+    if not url:
+        return
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            _run_sql_script(conn, _PATCH_ANALITICO.read_text(encoding="utf-8"))
+            for fn in (
+                "GRANT EXECUTE ON FUNCTION api.consultar_acervo_comparar(text, smallint, smallint, text, text, integer) TO agente",
+                "GRANT EXECUTE ON FUNCTION api.linha_temporal_eleitos(text, text, text, smallint[], integer) TO agente",
+                "GRANT EXECUTE ON FUNCTION api.cruzamento_social_urna(smallint, text, text, smallint, text, integer) TO agente",
+                "GRANT EXECUTE ON FUNCTION api.mandato_urna(smallint, text, text, text, integer) TO agente",
+            ):
+                try:
+                    conn.execute(fn)
+                except psycopg.Error:
+                    pass
+        _ANALITICO_READY = True
+    except Exception:
+        _ANALITICO_READY = False
+
+
+_SEED_PLANOS = _SEED_DIR / "acervo_planos_2026.jsonl"
 
 
 def _ensure_acervo() -> None:
@@ -146,22 +176,28 @@ def _ensure_acervo() -> None:
                 conn.execute("GRANT EXECUTE ON FUNCTION api.acervo_norm(text) TO agente")
             except psycopg.Error:
                 pass
-            _seed_acervo_planos(conn)
+            try:
+                conn.execute(
+                    "GRANT EXECUTE ON FUNCTION api.consultar_acervo_comparar(text, smallint, smallint, text, text, integer) TO agente"
+                )
+            except psycopg.Error:
+                pass
+            for seed_path in sorted(_SEED_DIR.glob("acervo_*.jsonl")):
+                _seed_acervo_file(conn, seed_path)
         _ACERVO_READY = True
     except Exception:
         _ACERVO_READY = False
 
 
-def _seed_acervo_planos(conn: psycopg.Connection) -> None:
-    """Carga idempotente dos planos 2026 embutidos em mcp/seed (sha256 por documento)."""
+def _seed_acervo_file(conn: psycopg.Connection, seed_path: Path) -> None:
+    """Carga idempotente de um arquivo seed JSONL (sha256 por documento)."""
     import json
     import uuid as _uuid
 
-    if not _SEED_PLANOS.exists():
-        print(f"[acervo] seed ausente: {_SEED_PLANOS}")
+    if not seed_path.exists():
         return
-    print(f"[acervo] carregando seed {_SEED_PLANOS}")
-    with _SEED_PLANOS.open(encoding="utf-8") as fh:
+    print(f"[acervo] carregando seed {seed_path.name}")
+    with seed_path.open(encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line:
@@ -188,7 +224,7 @@ def _seed_acervo_planos(conn: psycopg.Connection) -> None:
                     """
                     UPDATE acervo.documento SET
                       titulo=%s, descricao=%s, nivel=%s, ano_eleicao=%s,
-                      vigencia_inicio=%s, vigencia_fim=%s, escopo=%s,
+                      vigencia_inicio=%s, vigencia_fim=%s, escopo=%s, sg_uf=%s,
                       nm_candidato=%s, cargo=%s, tags=%s, fonte_orgao=%s,
                       id_base_raw=%s, meta=%s::jsonb, ativo=true, atualizado_em=now()
                     WHERE id=%s
@@ -201,6 +237,7 @@ def _seed_acervo_planos(conn: psycopg.Connection) -> None:
                         doc.get("vigencia_inicio"),
                         doc.get("vigencia_fim"),
                         doc.get("escopo") or "BR",
+                        doc.get("sg_uf"),
                         doc.get("nm_candidato"),
                         doc.get("cargo"),
                         doc.get("tags") or [],
@@ -216,11 +253,11 @@ def _seed_acervo_planos(conn: psycopg.Connection) -> None:
                     """
                     INSERT INTO acervo.documento (
                       id, tipo, titulo, descricao, nivel, ano_eleicao,
-                      vigencia_inicio, vigencia_fim, escopo, sg_partido,
+                      vigencia_inicio, vigencia_fim, escopo, sg_uf, sg_partido,
                       nm_candidato, cargo, tags, fonte_orgao, sha256,
                       id_base_raw, meta
                     ) VALUES (
-                      %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
+                      %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
                     )
                     """,
                     (
@@ -233,6 +270,7 @@ def _seed_acervo_planos(conn: psycopg.Connection) -> None:
                         doc.get("vigencia_inicio"),
                         doc.get("vigencia_fim"),
                         doc.get("escopo") or "BR",
+                        doc.get("sg_uf"),
                         doc.get("sg_partido"),
                         doc.get("nm_candidato"),
                         doc.get("cargo"),
@@ -267,6 +305,7 @@ def _startup_ddl() -> None:
     _ensure_tokens_table()
     _ensure_partido_linha()
     _ensure_acervo()
+    _ensure_analitico()
 
 
 def _extract_token(authorization: str | None, x_token: str | None) -> str:
@@ -456,6 +495,40 @@ class AcervoIn(BaseModel):
     nm_candidato: str | None = None
 
 
+class AcervoCompararIn(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    ano_a: int
+    ano_b: int
+    tipo: str | None = "plano_governo"
+    nm_candidato: str | None = None
+    limite: int = 5
+
+
+class LinhaTemporalIn(BaseModel):
+    cargo: str
+    sg_partido: str
+    uf: str | None = None
+    anos: list[int] | None = None
+    limite: int = 200
+
+
+class CruzamentoSocialIn(BaseModel):
+    ano_urna: int
+    cargo: str
+    indicador: str = "cadunico"
+    anomes: int | None = None
+    uf: str
+    top_n: int = 15
+
+
+class MandatoUrnaIn(BaseModel):
+    ano_eleicao: int = 2022
+    uf: str | None = None
+    sg_partido: str | None = None
+    tema: str | None = None
+    limite: int = 30
+
+
 class ClimaIn(BaseModel):
     """Consulta livre ao Radar — alvo/tema sob demanda, sem candidatura travada."""
 
@@ -480,10 +553,12 @@ def health() -> dict[str, Any]:
     _ensure_tokens_table()
     _ensure_partido_linha()
     _ensure_acervo()
+    _ensure_analitico()
     out: dict[str, Any] = {
         "status": "ok",
         "partido_linha": "ready" if _API_PARTIDO_READY else "pending",
         "acervo": "ready" if _ACERVO_READY else "pending",
+        "analitico": "ready" if _ANALITICO_READY else "pending",
         "seed_planos": _SEED_PLANOS.exists(),
     }
     url = _ddl_url()
@@ -836,6 +911,56 @@ def acervo(body: AcervoIn, authorization: str | None = Header(default=None), x_t
         )
 
 
+@app.post("/v1/acervo_comparar")
+def acervo_comparar(body: AcervoCompararIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_acervo()
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.consultar_acervo_comparar(%s,%s,%s,%s,%s,%s)",
+            (body.query, body.ano_a, body.ano_b, body.tipo, body.nm_candidato, body.limite),
+        )
+
+
+@app.post("/v1/linha_temporal")
+def linha_temporal(body: LinhaTemporalIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_analitico()
+    _ensure_partido_linha()
+    anos = body.anos or [2014, 2018, 2022]
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.linha_temporal_eleitos(%s,%s,%s,%s::smallint[],%s)",
+            (body.cargo, body.sg_partido, body.uf, anos, body.limite),
+        )
+
+
+@app.post("/v1/cruzamento_social")
+def cruzamento_social(body: CruzamentoSocialIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_analitico()
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.cruzamento_social_urna(%s,%s,%s,%s,%s,%s)",
+            (body.ano_urna, body.cargo, body.indicador, body.anomes, body.uf, body.top_n),
+        )
+
+
+@app.post("/v1/mandato_urna")
+def mandato_urna(body: MandatoUrnaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_analitico()
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.mandato_urna(%s,%s,%s,%s,%s)",
+            (body.ano_eleicao, body.uf, body.sg_partido, body.tema, body.limite),
+        )
+
+
 @app.post("/v1/clima")
 async def clima(body: ClimaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token)
@@ -904,6 +1029,14 @@ async def mcp(body: McpCall, authorization: str | None = Header(default=None), x
         return depara_parlamentar(DeparaParlamentarIn(**p), authorization, x_token)
     if name == "acervo":
         return acervo(AcervoIn(**p), authorization, x_token)
+    if name == "acervo_comparar":
+        return acervo_comparar(AcervoCompararIn(**p), authorization, x_token)
+    if name == "linha_temporal":
+        return linha_temporal(LinhaTemporalIn(**p), authorization, x_token)
+    if name == "cruzamento_social":
+        return cruzamento_social(CruzamentoSocialIn(**p), authorization, x_token)
+    if name == "mandato_urna":
+        return mandato_urna(MandatoUrnaIn(**p), authorization, x_token)
     if name == "clima":
         return await clima(ClimaIn(**p), authorization, x_token)
     raise HTTPException(400, "tool inexistente neste catálogo")

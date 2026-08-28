@@ -148,7 +148,7 @@ BEGIN
       'status', 'vazio',
       'nivel', 'referencia',
       'mensagem', 'Nenhum trecho no acervo para este filtro temporal/temático.',
-      'nota_metodologica', 'Busca lexical. Cifra no trecho é pista, não fato. Planos carregados hoje: presidente 2026. Use ano_eleicao=2026 e nm_candidato quando perguntar de um candidato.',
+      'nota_metodologica', 'Busca lexical. Cifra no trecho é pista, não fato. Tipos: plano_governo, ficha_territorial, nota_tse, programa_partido.',
       'itens', v_linhas
     );
   END IF;
@@ -166,3 +166,42 @@ GRANT USAGE ON SCHEMA acervo TO agente;
 GRANT SELECT ON ALL TABLES IN SCHEMA acervo TO agente;
 GRANT EXECUTE ON FUNCTION api.acervo_norm(text) TO agente;
 GRANT EXECUTE ON FUNCTION api.consultar_acervo(text, smallint, text, text, text, date, integer, text) TO agente;
+
+-- Compara o mesmo tema lexical em dois anos de eleição (ex.: segurança 2018 vs 2026).
+CREATE OR REPLACE FUNCTION api.consultar_acervo_comparar(
+  p_query text,
+  p_ano_a smallint,
+  p_ano_b smallint,
+  p_tipo text DEFAULT 'plano_governo',
+  p_nm_candidato text DEFAULT NULL,
+  p_limite integer DEFAULT 5
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path = api, acervo, ref, pg_temp
+AS $$
+DECLARE
+  v_a jsonb;
+  v_b jsonb;
+BEGIN
+  v_a := api.consultar_acervo(p_query, p_ano_a, p_tipo, NULL, NULL, CURRENT_DATE, p_limite, p_nm_candidato);
+  v_b := api.consultar_acervo(p_query, p_ano_b, p_tipo, NULL, NULL, CURRENT_DATE, p_limite, p_nm_candidato);
+  RETURN jsonb_build_object(
+    'status', CASE
+      WHEN (v_a->>'status') = 'ok' OR (v_b->>'status') = 'ok' THEN 'ok'
+      ELSE 'vazio'
+    END,
+    'nivel', 'referencia',
+    'nota_metodologica',
+      format(
+        'Comparação acervo %s vs %s (tipo=%s). Trechos não são cifra de urna.',
+        p_ano_a, p_ano_b, COALESCE(p_tipo, 'plano_governo')
+      ),
+    'ano_a', p_ano_a,
+    'ano_b', p_ano_b,
+    'acervo_a', v_a,
+    'acervo_b', v_b
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION api.consultar_acervo_comparar(text, smallint, smallint, text, text, integer) TO agente;

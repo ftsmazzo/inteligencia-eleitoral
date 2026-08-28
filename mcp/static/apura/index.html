@@ -156,6 +156,11 @@
     .composer .btn-send svg { width: 18px; height: 18px; }
     .composer .btn-send:disabled { opacity: .45; cursor: not-allowed; }
     .hint { text-align: center; font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
+    .modo-narrativa {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.82rem; color: var(--muted);
+    }
+    .modo-narrativa input { width: auto; margin: 0; accent-color: var(--brand); }
+    .modo-narrativa label { margin: 0; font-weight: 500; cursor: pointer; }
     .app-err { text-align: center; color: #b91c1c; font-size: 0.85rem; min-height: 1.2em; margin-bottom: 8px; }
     .composer.loading { opacity: .55; pointer-events: none; }
     .relatorio-box { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fafbfc; }
@@ -303,6 +308,10 @@
       <div class="messages" id="messages"></div>
       <div class="composer" id="composer">
         <p class="app-err" id="app-err"></p>
+        <label class="modo-narrativa">
+          <input type="checkbox" id="modo-narrativa" />
+          <span>Modo narrativa — cruza fato + acervo + clima</span>
+        </label>
         <div class="composer-inner">
           <textarea id="input-msg" rows="1" placeholder="Pergunte sobre eleições, candidatos, votos, contexto…"></textarea>
           <button type="button" class="btn btn-send" id="btn-send" disabled title="Enviar" aria-label="Enviar">
@@ -890,7 +899,11 @@
         const r = await fetch(API + '/chat', {
           method: 'POST',
           headers: authHeaders(),
-          body: JSON.stringify({ sessao_id: sessaoId, mensagem: text })
+          body: JSON.stringify({
+            sessao_id: sessaoId,
+            mensagem: text,
+            modo_narrativa: $('modo-narrativa').checked
+          })
         });
         if (!r.ok) throw new Error(await r.text());
 

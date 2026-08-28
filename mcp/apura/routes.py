@@ -21,6 +21,7 @@ from apura.auth import (
 )
 from apura.export import exportar_html, exportar_xlsx
 from apura.orchestrator import executar_chat
+from apura.prompt import SKILL_NARRATIVA_DEFAULT
 from apura.skills import (
     MAX_ATIVAS,
     MAX_CONTEUDO,
@@ -128,6 +129,7 @@ class SessaoPatchIn(BaseModel):
 class ChatIn(BaseModel):
     sessao_id: str
     mensagem: str = Field(min_length=1, max_length=8000)
+    modo_narrativa: bool = False
 
 
 class ExportIn(BaseModel):
@@ -369,11 +371,13 @@ async def chat(
 
     with _db() as conn:
         skills_txt = texto_skills_ativas(conn, uid)
+        if body.modo_narrativa and SKILL_NARRATIVA_DEFAULT not in skills_txt:
+            skills_txt = (skills_txt + "\n\n" + SKILL_NARRATIVA_DEFAULT).strip()
 
     async def stream_and_save() -> Any:
         final_content = ""
         final_dados = None
-        async for chunk in executar_chat(historico, mcp_token, skills_txt):
+        async for chunk in executar_chat(historico, mcp_token, skills_txt, body.modo_narrativa):
             yield chunk
             if chunk.startswith("event: done"):
                 line = chunk.split("\n", 1)[1]

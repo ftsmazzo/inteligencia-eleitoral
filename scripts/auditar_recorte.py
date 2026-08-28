@@ -182,23 +182,30 @@ def audit_pg(conn: psycopg.Connection, checks: list[Check]) -> None:
 
 
 def audit_modulos_posteriores(conn: psycopg.Connection, checks: list[Check]) -> None:
-    """Só aviso: módulos que não deveriam ter sido expostos com núcleo falho."""
-    for schema, table in (
-        ("contexto", "populacao_mun"),
-        ("contexto", "cadunico_mun"),
-        ("contexto", "bolsa_familia_mun"),
-        ("parlamentar", "proposicao"),
-    ):
+    """Complementos: aviso se vazio, ok se carregado."""
+    packs = [
+        ("contexto", "populacao_mun", 5000, "populacao"),
+        ("contexto", "cadunico_mun", 1000, "cadunico"),
+        ("contexto", "bolsa_familia_mun", 1000, "bolsa_familia"),
+        ("eleicao", "bem", 10000, "bens"),
+        ("eleicao", "receita", 10000, "contas_receita"),
+        ("eleicao", "despesa", 10000, "contas_despesa"),
+        ("parlamentar", "deputado", 400, "camara_deputados"),
+        ("parlamentar", "proposicao", 1000, "camara_proposicoes"),
+        ("acervo", "documento", 1, "acervo_docs"),
+        ("acervo", "chunk", 10, "acervo_chunks"),
+    ]
+    for schema, table, min_n, label in packs:
         try:
             n = conn.execute(f"SELECT count(*) FROM {schema}.{table}").fetchone()[0]
         except Exception:
             n = 0
         checks.append(
             Check(
-                "modulo_posterior",
-                f"{schema}.{table}",
-                "aviso" if n else "ok",
-                f"n={n:,}" if n else "vazio",
+                "complemento",
+                label,
+                "ok" if n >= min_n else "aviso",
+                f"n={n:,}" if n else "vazio — rode carregar_complementos.py / seeds acervo",
             )
         )
 
@@ -225,7 +232,7 @@ def render_md(checks: list[Check], nucleus_ok: bool) -> str:
         "|---|---|---|---|",
     ]
     for c in checks:
-        if c.bloco == "modulo_posterior":
+        if c.bloco in ("modulo_posterior", "complemento"):
             continue
         lines.append(f"| {c.bloco} | {c.item} | {c.status} | {c.detalhe} |")
     if falhas:

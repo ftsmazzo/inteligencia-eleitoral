@@ -25,15 +25,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from tse_util import ROOT, dsn, load_env
 
 ID_BASE = "acervo_plano_governo"
-ANO = 2026
 TIPO = "plano_governo"
 CARGO = "presidente"
-FONTE_ORGAO = "TSE Dados Abertos — proposta de governo 2026"
+FONTE_ORGAO_TPL = "TSE Dados Abertos — proposta de governo {ano}"
 CHUNK_MAX = 2200
 CHUNK_MIN = 60
 DEFAULT_FONTE = Path(r"C:\Users\anjo_\OneDrive\Projetos-FabriaIA\mineracao\Planos")
 SEED_DIR = ROOT / "mcp" / "seed"
-SEED_JSONL = SEED_DIR / "acervo_planos_2026.jsonl"
 
 
 def sha256_file(path: Path) -> str:
@@ -117,8 +115,8 @@ def chunk_markdown(body: str) -> list[tuple[str, str]]:
     return out
 
 
-def promover(fonte: Path, stamp: str) -> Path:
-    dest = ROOT / "data" / "raw" / ID_BASE / stamp
+def promover(fonte: Path, stamp: str, ano: int) -> Path:
+    dest = ROOT / "data" / "raw" / ID_BASE / f"ano={ano}" / stamp
     dest.mkdir(parents=True, exist_ok=True)
     md_dest = dest / "MD"
     md_dest.mkdir(exist_ok=True)
@@ -153,12 +151,12 @@ def promover(fonte: Path, stamp: str) -> Path:
     )
     meta = {
         "id_base": ID_BASE,
-        "ano": ANO,
+        "ano": ano,
         "copiado_em": stamp,
         "origem": str(fonte),
-        "orgao": FONTE_ORGAO,
+        "orgao": FONTE_ORGAO_TPL.format(ano=ano),
         "arquivos": len(digests),
-        "nota": "Planos de governo presidente 2026 (MD + PDF). Texto canônico = MD.",
+        "nota": f"Planos de governo presidente {ano} (MD + PDF). Texto canônico = MD.",
         "status": "bruto_promovido",
     }
     (dest / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -166,8 +164,9 @@ def promover(fonte: Path, stamp: str) -> Path:
     return dest
 
 
-def docs_from_raw(raw_dir: Path) -> list[dict]:
+def docs_from_raw(raw_dir: Path, ano: int) -> list[dict]:
     manifesto = json.loads((raw_dir / "manifesto.json").read_text(encoding="utf-8"))
+    fonte_orgao = FONTE_ORGAO_TPL.format(ano=ano)
     docs: list[dict] = []
     for item in manifesto:
         md_rel = item["arquivo_md"].replace("\\", "/")
@@ -188,21 +187,20 @@ def docs_from_raw(raw_dir: Path) -> list[dict]:
         docs.append(
             {
                 "tipo": TIPO,
-                "titulo": f"Plano de governo 2026 — {nome}",
-                "descricao": f"Proposta de governo (presidente) registrada junto ao TSE, ano {ANO}.",
+                "titulo": f"Plano de governo {ano} — {nome}",
+                "descricao": f"Proposta de governo (presidente) registrada junto ao TSE, ano {ano}.",
                 "nivel": "referencia",
-                "ano_eleicao": ANO,
-                # Vigência ampla: plano 2026 consultável desde a candidatura (não travar no calendário do servidor).
-                "vigencia_inicio": "2025-01-01",
-                "vigencia_fim": "2027-01-01",
+                "ano_eleicao": ano,
+                "vigencia_inicio": f"{ano - 1}-01-01",
+                "vigencia_fim": f"{ano + 1}-01-01",
                 "escopo": "BR",
                 "sg_uf": None,
                 "sg_partido": None,
                 "nm_candidato": nome,
                 "cargo": CARGO,
-                "tags": ["plano_governo", "presidente", "2026", cand_id],
+                "tags": ["plano_governo", "presidente", str(ano), cand_id],
                 "fonte_url": None,
-                "fonte_orgao": FONTE_ORGAO,
+                "fonte_orgao": fonte_orgao,
                 "sha256": digest,
                 "id_base_raw": ID_BASE,
                 "meta": {
@@ -219,13 +217,14 @@ def docs_from_raw(raw_dir: Path) -> list[dict]:
     return docs
 
 
-def escrever_seed(docs: list[dict]) -> Path:
+def escrever_seed(docs: list[dict], ano: int) -> Path:
     SEED_DIR.mkdir(parents=True, exist_ok=True)
-    with SEED_JSONL.open("w", encoding="utf-8") as f:
+    seed_path = SEED_DIR / f"acervo_planos_{ano}.jsonl"
+    with seed_path.open("w", encoding="utf-8") as f:
         for doc in docs:
             f.write(json.dumps(doc, ensure_ascii=False) + "\n")
-    print("seed", SEED_JSONL, "docs", len(docs))
-    return SEED_JSONL
+    print("seed", seed_path, "docs", len(docs))
+    return seed_path
 
 
 def carregar_db(docs: list[dict]) -> None:
@@ -332,6 +331,7 @@ def carregar_db(docs: list[dict]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fonte", type=Path, default=DEFAULT_FONTE)
+    ap.add_argument("--ano", type=int, default=2026)
     ap.add_argument("--stamp", default=date.today().isoformat())
     ap.add_argument("--so-promover", action="store_true")
     ap.add_argument("--so-seed", action="store_true")
@@ -342,14 +342,14 @@ def main() -> None:
     if raw is None:
         if not args.fonte.exists():
             raise SystemExit(f"fonte inexistente: {args.fonte}")
-        raw = promover(args.fonte, args.stamp)
+        raw = promover(args.fonte, args.stamp, args.ano)
     if args.so_promover:
         return
 
-    docs = docs_from_raw(raw)
+    docs = docs_from_raw(raw, args.ano)
     if not docs:
         raise SystemExit("nenhum documento")
-    escrever_seed(docs)
+    escrever_seed(docs, args.ano)
     if args.so_seed:
         return
     try:

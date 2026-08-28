@@ -11,7 +11,7 @@ import httpx
 
 from apura.export import exportar_html
 from apura.mcp_client import chamar_mcp, resumir_resultado
-from apura.prompt import SYSTEM_ORCHESTRATOR, SYSTEM_WRITER
+from apura.prompt import NARRATIVA_ORCHESTRATOR, SKILL_NARRATIVA_DEFAULT, SYSTEM_ORCHESTRATOR, SYSTEM_WRITER
 from apura.tools import MCP_TOOLS
 
 _OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
@@ -127,6 +127,12 @@ def _compactar_consultas(tool_log: list[dict[str, Any]]) -> str:
         linhas = res.get("linhas")
         if isinstance(linhas, list):
             partes.append(json.dumps(linhas, ensure_ascii=False, default=str)[:6000])
+        elif isinstance(res.get("itens"), list):
+            partes.append(json.dumps(res.get("itens"), ensure_ascii=False, default=str)[:6000])
+        elif isinstance(res.get("series"), list):
+            partes.append(json.dumps(res.get("series"), ensure_ascii=False, default=str)[:6000])
+        elif res.get("acervo_a") or res.get("acervo_b"):
+            partes.append(resumir_resultado(res, max_chars=6000))
         else:
             partes.append(resumir_resultado(res, max_chars=6000))
     return "\n\n".join(partes)
@@ -247,10 +253,14 @@ async def executar_chat(
     historico: list[dict[str, str]],
     mcp_token: str,
     skills_text: str = "",
+    modo_narrativa: bool = False,
 ) -> AsyncIterator[str]:
     """Gera eventos SSE: status, token, done (opcional relatorio_html), error."""
     pergunta = _ultima_pergunta(historico)
-    orch_messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_ORCHESTRATOR}]
+    orch_system = SYSTEM_ORCHESTRATOR
+    if modo_narrativa:
+        orch_system = f"{SYSTEM_ORCHESTRATOR}\n\n{NARRATIVA_ORCHESTRATOR}"
+    orch_messages: list[dict[str, Any]] = [{"role": "system", "content": orch_system}]
     orch_messages.extend(_historico_orquestrador(historico))
 
     tool_log: list[dict[str, Any]] = []

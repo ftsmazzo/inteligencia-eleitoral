@@ -74,28 +74,128 @@ MCP_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "consultar_eleitorado",
+            "description": "Perfil do eleitorado (sexo, faixa, escolaridade) por município/UF.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "uf": {"type": "string"},
+                    "cod_ibge": {"type": "integer"},
+                    "nacional": {"type": "boolean"},
+                },
+                "required": ["ano"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_coligacao",
+            "description": "Coligações e federações por ano/cargo (quebra 2014 ≠ 2018+).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "cargo": {"type": "string"},
+                    "uf": {"type": "string"},
+                    "cod_ibge": {"type": "integer"},
+                    "sg_partido": {"type": "string"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+                "required": ["ano", "cargo"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_vagas",
+            "description": "Vagas disputadas por cargo/UF/município.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "cargo": {"type": "string"},
+                    "uf": {"type": "string"},
+                    "cod_ibge": {"type": "integer"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+                "required": ["ano", "cargo"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_bem",
+            "description": "Patrimônio declarado (bens) de candidato por sq_candidato.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "sq_candidato": {"type": "integer"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+                "required": ["ano", "sq_candidato"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_receita",
+            "description": "Receitas de campanha (prestação de contas TSE).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "sq_candidato": {"type": "integer"},
+                    "uf": {"type": "string"},
+                    "sg_partido": {"type": "string"},
+                    "cargo": {"type": "string"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+                "required": ["ano"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_despesa",
+            "description": "Despesas de campanha (prestação de contas TSE).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "sq_candidato": {"type": "integer"},
+                    "uf": {"type": "string"},
+                    "sg_partido": {"type": "string"},
+                    "cargo": {"type": "string"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+                "required": ["ano"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "consultar_eleitos",
             "description": (
-                "Quem foi eleito. Aceita uf=UF (ex.: CE) ou região (Nordeste, Norte, Sudeste, Sul, Centro-Oeste). "
-                "sg_partido é expandido automaticamente para siglas históricas equivalentes "
-                "(ex.: PL inclui PR e PSL; MDB inclui PMDB). "
-                "status=vazio significa zero eleitos no filtro, não ausência de base."
+                "Quem foi eleito. Aceita uf=UF ou região (Nordeste…). "
+                "sg_partido expande siglas históricas (PL↔PSL, MDB↔PMDB)."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "ano": {"type": "integer"},
                     "cargo": {"type": "string"},
-                    "uf": {
-                        "type": "string",
-                        "description": "UF (CE) ou região (Nordeste). Região expande para todas as UFs.",
-                    },
+                    "uf": {"type": "string"},
                     "cod_ibge": {"type": "integer"},
                     "nacional": {"type": "boolean"},
-                    "sg_partido": {
-                        "type": "string",
-                        "description": "Sigla pedida; a API inclui equivalentes históricas automaticamente.",
-                    },
+                    "sg_partido": {"type": "string"},
                     "limite": {"type": "integer", "default": 50},
                 },
                 "required": ["ano", "cargo"],
@@ -106,7 +206,7 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_populacao",
-            "description": "População IBGE municipal/UF.",
+            "description": "População IBGE municipal/UF (censo ou estimativa).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -124,7 +224,7 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_cadunico",
-            "description": "Famílias CadÚnico municipal.",
+            "description": "Famílias CadÚnico municipal (MDS).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -141,7 +241,7 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_bolsa_familia",
-            "description": "Bolsa Família municipal.",
+            "description": "Bolsa Família municipal (MDS).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -158,7 +258,7 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_deputados_casa",
-            "description": "Deputados na Câmara (mandato atual).",
+            "description": "Deputados na Câmara (mandato atual L57).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -173,22 +273,86 @@ MCP_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "consultar_senadores",
+            "description": "Senadores em exercício (lista atual ou legislatura).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "uf": {"type": "string"},
+                    "sg_partido": {"type": "string"},
+                    "nome": {"type": "string"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_proposicoes",
+            "description": "Proposições na Câmara por ano e deputado.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "sigla_tipo": {"type": "string"},
+                    "id_deputado": {"type": "integer"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+                "required": ["ano"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_votos_camara",
+            "description": "Votos nominais de deputado na Câmara.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "id_deputado": {"type": "integer"},
+                    "uf": {"type": "string"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_depara_parlamentar",
+            "description": "De-para urna TSE ↔ id Câmara/Senado por ano de eleição.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "casa": {"type": "string", "description": "camara|senado"},
+                    "ano_eleicao": {"type": "integer", "default": 2022},
+                    "uf": {"type": "string"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "consultar_acervo",
             "description": (
-                "Acervo semântico: planos de governo 2026 (presidente) já carregados. "
-                "Para tema de um candidato: query=tema (segurança), ano_eleicao=2026, "
-                "tipo=plano_governo, nm_candidato=Flávio (ou Lula…). "
-                "Não há planos 2018/2022 no acervo. Cifra no texto é pista, não fato."
+                "Acervo semântico: planos de governo, fichas territoriais, notas TSE. "
+                "Para candidato: query=tema, ano_eleicao, tipo=plano_governo, nm_candidato. "
+                "Cifra no texto é pista, não fato."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Tema lexical (segurança, saúde…) — sem misturar com o nome"},
-                    "ano_eleicao": {"type": "integer", "description": "Use 2026 para planos atuais"},
-                    "tipo": {"type": "string", "description": "plano_governo|programa_partido|nota_tse|…"},
+                    "query": {"type": "string"},
+                    "ano_eleicao": {"type": "integer"},
+                    "tipo": {"type": "string", "description": "plano_governo|ficha_territorial|nota_tse|programa_partido"},
                     "uf": {"type": "string"},
                     "sg_partido": {"type": "string"},
-                    "nm_candidato": {"type": "string", "description": "Filtra pelo candidato do plano (Flávio, Lula…)"},
+                    "nm_candidato": {"type": "string"},
                     "limite": {"type": "integer", "default": 8},
                 },
                 "required": ["query"],
@@ -198,26 +362,105 @@ MCP_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
-            "name": "consultar_clima",
+            "name": "consultar_acervo_comparar",
             "description": (
-                "Radar / clima livre: Google News RSS + Apify Instagram (sem trava de campanha). "
-                "Obrigatório para Instagram/@conta, news, ‘o que está saindo’. "
-                "canal=instagram usa Apify em qualquer @handle; canal=news usa RSS livre. "
-                "Cada item: fonte, quando/data_hora, rotulo. url pode ser null (não cole url_raw). "
-                "Passe q=nome ou handle sem @, canal (instagram|news|x…), "
-                "janela_horas (24 ou 168). Sempre indício — não use como cifra eleitoral."
+                "Compara o mesmo tema em dois anos de acervo (ex.: segurança 2022 vs 2026). "
+                "Use nm_candidato quando comparar planos de pessoas diferentes."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "q": {"type": "string", "description": "Alvo ou tema livre"},
-                    "canal": {"type": "string", "description": "instagram|news|x|facebook|youtube|tiktok|site"},
-                    "origem": {"type": "string", "description": "clima|oficial"},
+                    "query": {"type": "string"},
+                    "ano_a": {"type": "integer"},
+                    "ano_b": {"type": "integer"},
+                    "tipo": {"type": "string", "default": "plano_governo"},
+                    "nm_candidato": {"type": "string"},
+                    "limite": {"type": "integer", "default": 5},
+                },
+                "required": ["query", "ano_a", "ano_b"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_clima",
+            "description": (
+                "Clima livre: Google News RSS + Apify Instagram. "
+                "canal=instagram|news. Sempre indício — não use como cifra."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "q": {"type": "string"},
+                    "canal": {"type": "string"},
+                    "origem": {"type": "string"},
                     "tipo": {"type": "string"},
-                    "urgencia": {"type": "string"},
-                    "janela_horas": {"type": "integer", "description": "24=dia, 168=semana"},
-                    "campaign_id": {"type": "integer", "description": "Opcional"},
+                    "janela_horas": {"type": "integer", "description": "24 ou 168"},
+                    "campaign_id": {"type": "integer"},
                     "limite": {"type": "integer", "default": 20},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_linha_temporal",
+            "description": (
+                "Série de eleitos do mesmo partido em vários anos (ex.: PL deputado federal Nordeste 2014/2018/2022)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cargo": {"type": "string"},
+                    "sg_partido": {"type": "string"},
+                    "uf": {"type": "string"},
+                    "anos": {"type": "array", "items": {"type": "integer"}},
+                    "limite": {"type": "integer", "default": 200},
+                },
+                "required": ["cargo", "sg_partido"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_cruzamento_social",
+            "description": (
+                "Top municípios por CadÚnico ou Bolsa Família cruzados com eleito na urna. "
+                "Requer uf. Não inferir causalidade."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano_urna": {"type": "integer"},
+                    "cargo": {"type": "string"},
+                    "indicador": {"type": "string", "enum": ["cadunico", "bolsa_familia"], "default": "cadunico"},
+                    "anomes": {"type": "integer"},
+                    "uf": {"type": "string"},
+                    "top_n": {"type": "integer", "default": 15},
+                },
+                "required": ["ano_urna", "cargo", "uf"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_mandato_urna",
+            "description": (
+                "Deputados na Câmara (mandato) com contagem de proposições; "
+                "cruzamento com de-para da urna 2022."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano_eleicao": {"type": "integer", "default": 2022},
+                    "uf": {"type": "string"},
+                    "sg_partido": {"type": "string"},
+                    "tema": {"type": "string", "description": "Filtro em ementa/indexação"},
+                    "limite": {"type": "integer", "default": 30},
                 },
             },
         },
@@ -229,11 +472,25 @@ TOOL_TO_MCP: dict[str, str] = {
     "consultar_nominata": "nominata",
     "consultar_votacao": "votacao",
     "consultar_comparecimento": "comparecimento",
+    "consultar_eleitorado": "eleitorado",
+    "consultar_coligacao": "coligacao",
+    "consultar_vagas": "vagas",
+    "consultar_bem": "bem",
+    "consultar_receita": "receita",
+    "consultar_despesa": "despesa",
     "consultar_eleitos": "eleitos",
     "consultar_populacao": "populacao",
     "consultar_cadunico": "cadunico",
     "consultar_bolsa_familia": "bolsa_familia",
     "consultar_deputados_casa": "deputados_casa",
+    "consultar_senadores": "senadores",
+    "consultar_proposicoes": "proposicoes",
+    "consultar_votos_camara": "votos_camara",
+    "consultar_depara_parlamentar": "depara_parlamentar",
     "consultar_acervo": "acervo",
+    "consultar_acervo_comparar": "acervo_comparar",
     "consultar_clima": "clima",
+    "consultar_linha_temporal": "linha_temporal",
+    "consultar_cruzamento_social": "cruzamento_social",
+    "consultar_mandato_urna": "mandato_urna",
 }
