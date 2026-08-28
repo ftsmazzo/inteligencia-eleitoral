@@ -34,6 +34,7 @@ async def apura_erro_generico(_request, exc: Exception) -> JSONResponse:
 MSG_AUTH = "não autorizado"
 _STATIC = Path(__file__).resolve().parent / "static"
 _GUIA = _STATIC / "guia"
+_LANDING = _STATIC / "landing"
 _PATCH_TOKENS = Path(__file__).resolve().parent / "sql" / "patch_mcp_tokens.sql"
 _PATCH_PARTIDO = Path(__file__).resolve().parent / "sql" / "patch_partido_linha.sql"
 _PATCH_ACERVO = Path(__file__).resolve().parent / "sql" / "patch_acervo.sql"
@@ -679,8 +680,9 @@ def health() -> dict[str, Any]:
 
 
 @app.get("/")
-def root() -> RedirectResponse:
-    return RedirectResponse(url="/guia", status_code=302)
+def root() -> HTMLResponse:
+    html = (_LANDING / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html, media_type="text/html; charset=utf-8", headers=_NO_CACHE)
 
 
 def _skill_text() -> str:

@@ -16,4 +16,6 @@ Entrega MCP: `docs/ENTREGA-MCP.md`.
 Acervo / Radar (trilha B + clima): `docs/ACERVO.md`.
 
 Guia do usuário (página web): https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia  
+Landing comercial: https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/  
+Apura (chat): https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/apura  
 Skill portátil (Claude, GPT, Manus, Cursor): `docs/SKILL-INTELIGENCIA-ELEITORAL.md` ou download na página /guia.

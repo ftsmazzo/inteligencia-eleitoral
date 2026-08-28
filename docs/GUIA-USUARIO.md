@@ -1,8 +1,10 @@
 # Guia do usuário · Inteligência Eleitoral Brasil
 
-**Página online (principal):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia
+**Landing (comercial):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/  
+**Guia técnico (online):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia  
+**Apura (chat):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/apura
 
-Versão 1.0 · 26/08/2026 — este arquivo é espelho estático; prefira a página web.
+Versão 2.0 · 28/08/2026 — este arquivo é espelho estático; prefira a página web.
 
 Este guia é para **quem usa** a ferramenta — não para quem administra servidor ou banco de dados.
 
@@ -10,64 +12,154 @@ Este guia é para **quem usa** a ferramenta — não para quem administra servid
 
 ## O que é isto?
 
-Uma base **oficial** de dados eleitorais do **Brasil inteiro**: votos, candidatos, eleitos, contas de campanha, população, CadÚnico, Bolsa Família e atividade na Câmara dos Deputados.
+Plataforma de **inteligência eleitoral oficial** do **Brasil inteiro**: urna TSE, contas de campanha, população IBGE, CadÚnico, Bolsa Família, Câmara dos Deputados e camada semântica (planos, fichas territoriais) + radar de clima midiático.
 
-Você **pergunta em linguagem normal** (por chat, Cursor, Claude, GPT, Manus etc.) e a IA consulta a base — **sem inventar número**.
+Dois modos de uso:
 
-**Não é** a ferramenta da campanha NE9. **Não mistura** com notícias ou “achismos”.
+| Modo | Para quem | Como acessar |
+|---|---|---|
+| **Apura** | Equipes de campanha, consultoria, imprensa | Chat em `/apura` — pergunta em linguagem normal |
+| **MCP + Skill** | Desenvolvedores e power users | Token + Cursor, Claude, GPT, Manus |
+
+Você **pergunta em linguagem normal** e a IA consulta a base — **sem inventar número**.
+
+**Não é** a ferramenta da campanha NE9. **Não mistura** achismo com urna.
 
 ---
 
-## O que você pode perguntar
+## Três trilhas de inteligência
 
-| Tema | Exemplos de pergunta |
+| Trilha | O que entrega | Cifra? |
+|---|---|---|
+| **A · Fato** | Votos, eleitos, contas, população, social, Câmara | **Sim** — única fonte de número |
+| **B · Acervo** | Planos de governo, fichas territoriais, notas TSE | Não — texto é referência |
+| **C · Clima** | Google News + Instagram (Radar) | Não — sempre *indício* |
+
+O Apura, no **modo narrativa**, estrutura respostas em: **Fato → Programa/acervo → Clima → Implicação/lacunas**.
+
+---
+
+## O Apura entrega hoje
+
+### Urna e candidatos (Trilha A)
+
+| Consulta | O que faz | Exemplo de pergunta |
+|---|---|---|
+| Votação | Votos por candidato, partido, UF ou município | “Votos do Haddad em SP, gov, 2º turno 2022” |
+| Eleitos | Quem ganhou, por cargo e território | “Eleitos a senador no Nordeste em 2022” |
+| Nominata | Quem concorreu (cadastro TSE) | “Candidatos PL a dep. federal em PE, 2022” |
+| Comparecimento | Aptos, comparecimento, brancos, nulos, válidos | “Apuração em Recife, prefeito 2024” |
+| Eleitorado | Perfil (sexo, idade, escolaridade) | “Perfil do eleitorado de MG em 2022” |
+| Coligação | Coligações (2014) e federações (2018+) | “Federação do PT em SP, gov 2022” |
+| Vagas | Quantas cadeiras disputadas | “Vagas de dep. federal em SP, 2022” |
+| Bens | Patrimônio declarado ao TSE | “Patrimônio do candidato X em 2022” |
+
+### Contas de campanha (Trilha A · TSE)
+
+| Consulta | O que faz | Exemplo |
+|---|---|---|
+| Receita | Financiamento de campanha (maior valor primeiro) | “Maiores receitas governador SP 2022” |
+| Despesa | Gastos de campanha por candidato | “Despesas do Haddad em 2022” |
+
+**Importante:** despesas/receitas por candidato exigem `sq_candidato` (obtido via votação ou nominata). Candidato eliminado no 1º turno tem contas do ano inteiro, mas votos só no 1º turno.
+
+**Anos carregados hoje:** contas **2018 e 2022**. Anos anteriores/posteriores entram conforme carga.
+
+### Contexto social e territorial (Trilha A)
+
+| Consulta | Fonte | Exemplo |
+|---|---|---|
+| População | IBGE | “População de Fortaleza no censo 2022” |
+| CadÚnico | MDS | “Famílias no CadÚnico em Recife” |
+| Bolsa Família | MDS | “Repasses de Bolsa Família em CE” |
+
+### Parlamento (Trilha A · Câmara)
+
+| Consulta | O que faz |
 |---|---|
-| **Votos** | “Quantos votos teve o candidato X em SP no 2º turno de 2022?” |
-| **Candidatos** | “Quem foi candidato a deputado federal pelo PL em Pernambuco em 2022?” |
-| **Eleitos** | “Quem foi eleito governador do Ceará em 2022?” |
-| **Comparecimento** | “Quantos votos válidos, brancos e nulos em Recife na eleição de 2024?” |
-| **Coligação** | “Quais partidos compunham a coligação do candidato Y em 2014?” |
-| **Contas** | “Quanto o candidato Z declarou de receita em 2022?” |
-| **População** | “Qual a população de Fortaleza no censo de 2022?” |
-| **Social** | “Quantas famílias no CadÚnico em Recife?” / “Quanto foi repassado de Bolsa Família?” |
-| **Câmara** | “Quais PLs foram apresentados em 2024?” / “Quem são os deputados do PT em SP?” |
+| Deputados | Quem está na Câmara agora (mandato L57) |
+| Senadores | Senadores em exercício |
+| Proposições | PLs, PECs etc. por ano e autor |
+| Votos Câmara | Voto nominal de deputado em plenário |
+| De-para | Liga urna TSE ↔ id Câmara/Senado |
 
-### Anos disponíveis
+### Análises compostas (Apura)
 
-| Tipo de eleição | Anos com resultado na urna |
+| Análise | Ferramentas encadeadas |
 |---|---|
-| Presidente, governador, senador, deputados | **2014, 2018, 2022** |
-| Prefeito e vereador | **2016, 2020, 2024** |
-| Candidaturas 2026 | Só **cadastro** (quem se candidatou) — **sem votos** até a eleição |
+| **Gasto vs voto** | Votação → sq_candidato → receita + despesa |
+| **Evolução partidária** | Linha temporal de eleitos (ex.: PL dep. federal Nordeste 2014→2022) |
+| **Social × urna** | CadÚnico/Bolsa cruzado com eleito por município |
+| **Mandato × urna** | Deputado na Câmara + proposições + origem na urna 2022 |
+| **Deputado: como votou** | Deputados → votos nominais na Câmara |
+| **Narrativa de campanha** | Fato + acervo (plano) + clima (notícias) |
+
+### Acervo semântico (Trilha B)
+
+| Tipo | Status | Uso |
+|---|---|---|
+| Planos de governo **2026** | Carregado | “O que o candidato X promete sobre segurança?” |
+| Planos 2018/2022 | Lacuna (em expansão) | Apura informa explicitamente quando não há |
+| Fichas territoriais | Derivadas da urna | Perfil eleitoral por UF |
+| Notas TSE | Sob demanda | Coligação vs federação, regras do ciclo |
+| Comparador | Ativo | Mesmo tema em dois anos (ex.: 2022 vs 2026) |
+
+### Clima / Radar (Trilha C)
+
+- **Google News** — últimas 24h ou 168h por tema ou pessoa
+- **Instagram** — menções por handle (Apify)
+- Sempre rotulado como **indício** — nunca substitui urna
+
+### Exportação (Apura)
+
+- **Relatório HTML** — peça “exporte em HTML” ou “monte um relatório”
+- **Planilha XLSX** — botão exportar na conversa
+- Sessões salvas, fixar conversa, histórico por usuário
+
+---
+
+## Anos disponíveis
+
+| Tipo | Anos com urna | Contas TSE |
+|---|---|---|
+| Presidente, gov, senador, deputados | **2014, 2018, 2022** | 2018, 2022 (hoje) |
+| Prefeito e vereador | **2016, 2020, 2024** | em expansão |
+| Candidaturas 2026 | Só **cadastro** — sem votos até apuração | — |
 
 ### O que **não** dá para perguntar
 
-- Eleições antes de 2014 ou depois do recorte (ex.: 2010, 2028)
-- Resultado da eleição de **2026** antes da apuração oficial
-- “Estimativas” ou completar lacuna com Nordeste ou outra região
+- Eleições antes de 2014 ou fora do recorte
+- Resultado de **2026** antes da apuração oficial
+- Estimativas ou completar lacuna com outra região
 - Pesquisa eleitoral de instituto (não é urna)
+- Número vindo só de notícia ou plano de governo
 
-Se estiver fora do recorte, a ferramenta responde **secamente** que o dado não existe — não chuta zero.
+Lista vazia = **inexistente**, não zero.
 
 ---
 
-## Passo 1 · Receber seu token
+## Passo 1 · Acesso
 
-Quem administra o sistema vai te passar um **token secreto** (senha de acesso).  
-Guarde em local seguro. **Não** publique, **não** cole em grupo, **não** commite no git.
+### Apura (recomendado para equipes)
 
-Você vai colar esse token onde indicado abaixo como `SEU_TOKEN_AQUI`.
+1. Abra https://…/apura
+2. **Cadastre-se** ou entre com login fornecido pela equipe
+3. Ative **modo narrativa** quando quiser Fato + Programa + Clima
+4. Pergunte com **ano + cargo + lugar**
+
+### MCP (desenvolvedores e IAs)
+
+Quem administra passa um **token secreto** ou você gera em `/guia` → “Gerar token”.
+
+Guarde em local seguro. **Não** publique nem commite no git.
 
 ---
 
 ## Passo 2 · Conectar na sua IA
 
-Escolha **uma** opção conforme a ferramenta que você usa.
-
 ### Opção A · Cursor (recomendado)
 
-1. Abra **Cursor Settings → MCP** (ou edite o arquivo de configuração MCP do Cursor).
-2. Cole o bloco abaixo e substitua `SEU_TOKEN_AQUI` pelo token recebido:
+Settings → MCP → cole:
 
 ```json
 {
@@ -82,159 +174,86 @@ Escolha **uma** opção conforme a ferramenta que você usa.
 }
 ```
 
-3. Ative o servidor MCP e reinicie o Cursor se pedido.
-4. No chat, peça algo como: *“Use a Inteligência Eleitoral: votos de Lula em SP no 2º turno de 2022.”*
+Arquivo pronto: `docs/config/mcp-cursor.json` ou download em `/guia`.
 
-Arquivo pronto para copiar também em: `docs/config/mcp-cursor.json`
+### Opção B · Claude Desktop
 
----
+Mesmo JSON em `docs/config/mcp-claude.json`.
 
-### Opção B · Claude Desktop / Claude (MCP HTTP)
+### Opção C · ChatGPT, Manus ou IA sem MCP
 
-Se sua versão suporta MCP remoto por URL:
+1. Copie `docs/SKILL-INTELIGENCIA-ELEITORAL.md`
+2. Cole nas instruções do agente
+3. Informe URL MCP + token (só na configuração)
 
-```json
-{
-  "mcpServers": {
-    "inteligencia-eleitoral-brasil": {
-      "url": "https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/mcp",
-      "headers": {
-        "Authorization": "Bearer SEU_TOKEN_AQUI"
-      }
-    }
-  }
-}
-```
-
-Arquivo: `docs/config/mcp-claude.json`
-
----
-
-### Opção C · ChatGPT, Manus ou qualquer IA **sem** MCP nativo
-
-1. Copie o conteúdo do arquivo **`docs/SKILL-INTELIGENCIA-ELEITORAL.md`** (ou peça para anexar ao projeto).
-2. Cole nas **instruções personalizadas** / **system prompt** / **conhecimento do agente**.
-3. Informe à IA:
-   - **URL:** `https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/mcp`
-   - **Token:** o que você recebeu (só na configuração, não em conversa pública)
-
-A IA deve chamar a API com POST JSON (modelo abaixo).
-
----
-
-### Opção D · Teste rápido no navegador (Postman / Insomnia / curl)
-
-**URL:**
+### Opção D · Teste REST
 
 ```
-https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/mcp
-```
-
-**Cabeçalho:**
-
-```
+POST https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/mcp
 Authorization: Bearer SEU_TOKEN_AQUI
 Content-Type: application/json
-```
 
-**Corpo (exemplo — listar o que existe):**
-
-```json
-{
-  "method": "catalogo",
-  "params": {}
-}
-```
-
-**Corpo (exemplo — candidatos PL em SP, 2022):**
-
-```json
-{
-  "method": "nominata",
-  "params": {
-    "ano": 2022,
-    "cargo": "deputado_federal",
-    "uf": "SP",
-    "sg_partido": "PL",
-    "limite": 10
-  }
-}
-```
-
-**Corpo (exemplo — votos presidente SP, 2º turno 2022):**
-
-```json
-{
-  "method": "votacao",
-  "params": {
-    "ano": 2022,
-    "cargo": "presidente",
-    "uf": "SP",
-    "turno": 2,
-    "base_pct": "validos",
-    "limite": 20
-  }
-}
+{"method": "catalogo", "params": {}}
 ```
 
 ---
 
-## Passo 3 · Como formular boas perguntas
+## Passo 3 · Boas perguntas
 
-Quanto mais claro, melhor a resposta:
-
-1. **Ano** da eleição (ex.: 2022)
+1. **Ano** (2022, 2024…)
 2. **Cargo** (presidente, governador, senador, deputado_federal, deputado_estadual, prefeito, vereador)
-3. **Onde** — UF (`SP`, `PE`…) ou município (código IBGE de 7 dígitos, se souber)
-4. **Quem** — partido, nome de urna ou número, se aplicável
+3. **Onde** — UF (`SP`, `PE`) ou município (IBGE 7 dígitos)
+4. **Turno** — quando for 2º turno, diga explicitamente
+5. **Quem** — partido, nome de urna ou número
 
-**Bom:** “Votos válidos do Bolsonaro em MG no 2º turno de 2022 para presidente.”  
-**Ruim:** “Como foi a eleição?” (falta ano, cargo, lugar)
+**Bom:** “Compare despesas e votos de Haddad e Tarcísio, gov SP, 2º turno 2022.”  
+**Ruim:** “Como foi a eleição?”
 
-### Nomes de cargo que funcionam
+### Regiões e partidos
 
-| Fale assim | Ou assim |
-|---|---|
-| presidente | pres |
-| governador | gov |
-| senador | sen |
-| deputado federal | deputado_federal |
-| deputado estadual | deputado_estadual |
-| prefeito | prefeito |
-| vereador | vereador |
+- **Região:** “Nordeste”, “Sudeste” — a base expande UFs
+- **Partido:** sigla atual (PL, MDB) — expande histórico (PL↔PSL, MDB↔PMDB)
 
 ---
 
 ## Passo 4 · Entender a resposta
 
-Toda resposta vem em JSON com:
+- **`status: ok`** — encontrou dados
+- **`status: vazio`** — consulta ok, sem linhas (repita com sq_candidato ou turno)
+- **`status: fora_do_recorte`** — pedido inválido
+- Lista vazia ≠ zero votos
 
-- **`status`:** `ok` = encontrou dados; `fora_do_recorte` = pedido inválido para esta base
-- **`linhas`:** lista de resultados (pode ser vazia)
-- Lista vazia = **não existe** na base — **não** significa zero votos
-
-Percentual de votos: peça explícito “sobre votos **válidos**” ou a IA usa `base_pct: "validos"`.
-
----
-
-## Passo 5 · Skill para a IA (Claude, GPT, Manus, Cursor)
-
-Para a IA **se comportar corretamente**, use o arquivo:
-
-**`docs/SKILL-INTELIGENCIA-ELEITORAL.md`**
-
-- No **Cursor:** já existe skill em `.cursor/skills/inteligencia-eleitoral-brasil/` apontando para ela.
-- Em **outras IAs:** copie o conteúdo inteiro para instruções do agente ou anexe ao projeto.
+Percentual: peça “sobre votos **válidos**” ou use `base_pct: "validos"`.
 
 ---
 
-## Checklist antes de usar
+## Passo 5 · Skill para IA
 
-- [ ] Recebi meu token
-- [ ] Conectei MCP ou colei a Skill
-- [ ] Testei com `catalogo` ou uma pergunta simples
+**`docs/SKILL-INTELIGENCIA-ELEITORAL.md`** — download em `/guia`.
+
+No Cursor: `.cursor/skills/inteligencia-eleitoral-brasil/`.
+
+---
+
+## Roadmap (em breve)
+
+| Item | Descrição |
+|---|---|
+| Acervo 2018/2022 | Planos de governo dos ciclos anteriores |
+| Contas 2014–2024 | Prestação TSE completa no recorte |
+| Totais agregados | Soma receita/despesa por candidato em uma consulta |
+| Radar por campanha | Clima dedicado por `campaign_id` |
+| API white-label | Embeddable para portais de clientes |
+
+---
+
+## Checklist
+
+- [ ] Acesso Apura ou token MCP
+- [ ] Skill instalada (se usar IA externa)
+- [ ] Testei com pergunta simples (ano + cargo + UF)
 - [ ] Sei que 2026 ainda não tem urna
-- [ ] Sei que número vazio = inexistente, não zero
+- [ ] Sei que vazio = inexistente, não zero
 
 ---
 
@@ -242,28 +261,27 @@ Para a IA **se comportar corretamente**, use o arquivo:
 
 | Sintoma | O que fazer |
 |---|---|
-| “não autorizado” | Token errado ou ausente no cabeçalho |
-| “fora do recorte” | Ano, cargo ou território fora da tabela — reformule |
-| Lista vazia | Dado não existe (candidato, município ou combinação) |
-| IA inventa número | Reforce: “consulte só a Inteligência Eleitoral Brasil, sem estimar” |
+| “não autorizado” | Token errado ou login Apura inválido |
+| “fora do recorte” | Ano/cargo/território fora da tabela |
+| Despesa vazia com candidato conhecido | Peça comparar com sq_candidato ou turno correto |
+| IA inventa número | Reforce: “só Inteligência Eleitoral, sem estimar” |
 
-**Teste se o serviço está no ar:** abra no navegador  
-https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/health  
-Deve aparecer `{"status":"ok"}`.
+**Health:** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/health → `{"status":"ok"}`
 
 ---
 
-## Onde saber mais (técnico)
+## Onde saber mais
 
 | Documento | Para quem |
 |---|---|
+| `/` (landing) | Apresentação comercial |
 | `docs/SKILL-INTELIGENCIA-ELEITORAL.md` | IA / agentes |
 | `docs/ENTREGA-MCP.md` | Equipe técnica |
-| `docs/catalogo_nucleo.json` | Lista formal de pacotes |
+| `docs/ACERVO.md` | Acervo e Radar |
 | `docs/SPEC-BRASIL.md` | Recorte oficial |
 
 ---
 
-## Resumo em uma frase
+## Resumo
 
-**Conecte o MCP com seu token, cole a Skill na IA, pergunte com ano + cargo + lugar — e use só os números que a base devolver.**
+**Apura para conversa · MCP para integração · Skill para comportamento correto · Só números da base oficial.**

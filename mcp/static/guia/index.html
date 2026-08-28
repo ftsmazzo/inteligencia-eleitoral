@@ -277,12 +277,15 @@
         <span class="logo-text">Inteligência Eleitoral Brasil</span>
       </a>
       <nav>
+        <a href="/" title="Apresentação comercial">Produto</a>
         <a class="nav-apura" href="/apura" title="Abrir o chat Apura">
           <img src="/apura/assets/avatar-apura.jpg" alt="" width="30" height="30" />
           <span>Apura</span>
           <svg class="nav-apura-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
         </a>
-        <a href="#o-que-e">O que é</a>
+        <a href="#o-que-e">Capacidades</a>
+        <a href="#apura">Apura</a>
+        <a href="#trilhas">Trilhas</a>
         <a href="#token">Token</a>
         <a href="#conectar">Conectar</a>
         <a href="#skill">Skill</a>
@@ -297,7 +300,7 @@
       <div class="wrap hero-grid">
         <div>
           <h1>Dados eleitorais do Brasil, prontos para sua IA</h1>
-          <p class="lead">Votos, candidatos, eleitos, contas de campanha, população, CadÚnico, Bolsa Família e Câmara — fontes oficiais, sem inventar número.</p>
+          <p class="lead">Urna TSE, contas de campanha, população, CadÚnico, Bolsa Família, Câmara, acervo de planos e clima midiático — fontes oficiais, sem inventar número. Use o <strong>Apura</strong> (chat) ou conecte via MCP.</p>
           <div class="hero-actions">
             <a class="btn btn-apura" href="/apura">
               <img src="/apura/assets/avatar-apura.jpg" alt="" width="28" height="28" />
@@ -312,7 +315,7 @@
           <div class="stat-row">
             <div class="stat"><strong>5.571</strong><span>municípios</span></div>
             <div class="stat"><strong>6</strong><span>eleições na urna</span></div>
-            <div class="stat"><strong>19</strong><span>consultas MCP</span></div>
+            <div class="stat"><strong>25</strong><span>consultas MCP</span></div>
             <div class="stat"><strong>100%</strong><span>Brasil</span></div>
           </div>
         </div>
@@ -323,15 +326,36 @@
       <div class="wrap">
         <div class="section-head">
           <h2>O que você pode fazer</h2>
-          <p>Pergunte em linguagem normal. A IA consulta a base e devolve só o que existe.</p>
+          <p>Pergunte em linguagem normal no Apura ou via IA com MCP. Três trilhas: <strong>Fato</strong> (cifra) · <strong>Acervo</strong> (programa) · <strong>Clima</strong> (indício).</p>
         </div>
         <div class="grid-3">
-          <div class="card"><div class="card-icon">🗳️</div><h3>Votos e eleitos</h3><p>Resultado oficial por candidato, partido, município ou UF.</p><p class="ex">“Votos do Lula em SP no 2º turno de 2022”</p></div>
+          <div class="card"><div class="card-icon">🗳️</div><h3>Votos e eleitos</h3><p>Resultado oficial por candidato, partido, município, UF ou região (Nordeste…).</p><p class="ex">“Votos do Lula em SP no 2º turno de 2022”</p></div>
           <div class="card"><div class="card-icon">👤</div><h3>Candidatos</h3><p>Quem concorreu, partido, situação, número na urna.</p><p class="ex">“Candidatos PL a dep. federal em PE em 2022”</p></div>
           <div class="card"><div class="card-icon">📊</div><h3>Comparecimento</h3><p>Aptos, comparecimento, brancos, nulos e válidos.</p><p class="ex">“Apuração em Recife, prefeito 2024”</p></div>
-          <div class="card"><div class="card-icon">💰</div><h3>Contas e bens</h3><p>Receitas, despesas e patrimônio declarado ao TSE.</p><p class="ex">“Receita de campanha do candidato X em 2022”</p></div>
-          <div class="card"><div class="card-icon">🏛️</div><h3>Câmara</h3><p>Deputados, proposições e votos nominais 2023–2026.</p><p class="ex">“PLs apresentados em 2024”</p></div>
-          <div class="card"><div class="card-icon">🌎</div><h3>Contexto</h3><p>População IBGE, CadÚnico e Bolsa Família municipal.</p><p class="ex">“Famílias no CadÚnico em Fortaleza”</p></div>
+          <div class="card"><div class="card-icon">💰</div><h3>Contas e bens</h3><p>Receitas, despesas e patrimônio TSE. Gasto vs voto composto.</p><p class="ex">“Despesas Haddad gov SP 2022” · contas 2018+2022</p></div>
+          <div class="card"><div class="card-icon">🏛️</div><h3>Câmara e Senado</h3><p>Deputados, proposições, votos nominais, mandato×urna.</p><p class="ex">“PLs apresentados em 2024”</p></div>
+          <div class="card"><div class="card-icon">🌎</div><h3>Social × urna</h3><p>População IBGE, CadÚnico, Bolsa — cruzamento com eleito.</p><p class="ex">“Famílias CadÚnico em Fortaleza”</p></div>
+          <div class="card"><div class="card-icon">📚</div><h3>Acervo</h3><p>Planos de governo 2026, fichas territoriais, comparador de promessas.</p><p class="ex">“Segurança no plano 2026 vs 2022”</p></div>
+          <div class="card"><div class="card-icon">📰</div><h3>Clima / Radar</h3><p>Google News e Instagram — sempre indício, nunca cifra.</p><p class="ex">“Clima sobre candidato X, 168h”</p></div>
+          <div class="card"><div class="card-icon">📈</div><h3>Analítico</h3><p>Linha temporal partidária, export HTML/XLSX, modo narrativa.</p><p class="ex">“Evolução PL dep. federal Nordeste”</p></div>
+        </div>
+        <div class="section-head" id="apura" style="margin-top:48px;margin-bottom:16px">
+          <h2>Apura · chat eleitoral</h2>
+          <p>Interface conversacional com orquestrador de 25 consultas, modo narrativa e export de relatório.</p>
+        </div>
+        <div class="grid-3" style="margin-bottom:32px">
+          <div class="card"><h3>Modo narrativa</h3><p>Estrutura Fato → Programa → Clima → Implicação/lacunas.</p></div>
+          <div class="card"><h3>Export</h3><p>Relatório HTML ou planilha XLSX da conversa.</p></div>
+          <div class="card"><h3>Sessões</h3><p>Histórico, fixar conversa, login por usuário.</p></div>
+        </div>
+        <p style="text-align:center;margin-bottom:32px"><a class="btn btn-apura" href="/apura"><img src="/apura/assets/avatar-apura.jpg" alt="" width="28" height="28" /> Abrir Apura</a></p>
+        <div class="section-head" id="trilhas" style="margin-bottom:16px">
+          <h2>Trilhas de inteligência</h2>
+        </div>
+        <div class="grid-3" style="margin-bottom:32px">
+          <div class="card"><h3>Trilha A · Fato</h3><p>Única fonte de <strong>número</strong>: TSE, IBGE, MDS, Câmara.</p></div>
+          <div class="card"><h3>Trilha B · Acervo</h3><p>Texto oficial indexado — cifra no plano é pista, não fato.</p></div>
+          <div class="card"><h3>Trilha C · Clima</h3><p>Notícias e redes — rotulado como indício.</p></div>
         </div>
         <div class="section-head" style="margin-top:48px;margin-bottom:16px">
           <h2>Anos disponíveis</h2>
@@ -443,7 +467,9 @@
           <div class="card"><h3>✗ Evite</h3><p>“Como foi a eleição?” — falta ano, cargo e lugar</p></div>
         </div>
         <div class="section-head" style="margin-top:40px;margin-bottom:20px"><h2>Dúvidas frequentes</h2></div>
-        <details><summary>O número veio vazio. É zero?</summary><p>Não. Lista vazia significa que o dado <strong>não existe</strong> na base — não é zero votos.</p></details>
+        <details><summary>O número veio vazio. É zero?</summary><p>Não. Lista vazia ou status vazio significa que o dado <strong>não existe</strong> ou a consulta precisa de ajuste (ex.: <code>sq_candidato</code>, turno) — não é zero votos.</p></details>
+        <details><summary>Como comparar gasto vs voto?</summary><p>No Apura, peça ano + cargo + UF + candidatos. O orquestrador usa votação para obter <code>sq_candidato</code> e então consulta despesa/receita.</p></details>
+        <details><summary>O que é modo narrativa?</summary><p>Ativa acervo (programa) e clima (notícias) além dos fatos — resposta em camadas com lacunas explícitas.</p></details>
         <details><summary>Posso pedir resultado de 2026?</summary><p>Só candidaturas (quem se inscreveu). Votos só depois da apuração oficial.</p></details>
         <details><summary>A IA pode estimar se faltar dado?</summary><p>Não. Esta ferramenta proíbe inventar. Fora do recorte, a resposta é seca: dado inexistente.</p></details>
         <details><summary>É a ferramenta da campanha NE9?</summary><p>Não. É o Brasil inteiro, produto separado, fontes TSE/IBGE/MDS/Câmara.</p></details>
