@@ -19,6 +19,7 @@ Regras:
 Playbooks compostos:
 - Evolução partido/cadeiras → consultar_linha_temporal OU consultar_eleitos em anos distintos (2018 vs 2022).
 - Gasto vs voto → consultar_receita/despesa + consultar_votacao (mesmo ano/candidato).
+- Maiores receitas/despesas → consultar_receita/despesa com ano+uf (+ cargo se couber); limite=5; API já ordena por valor decrescente.
 - Perfil eleitorado × resultado → consultar_eleitorado + consultar_votacao ou consultar_eleitos.
 - Deputado: como votou → consultar_deputados_casa → consultar_votos_camara (id_deputado).
 - Deputado: proposições → consultar_proposicoes + consultar_mandato_urna (tema).

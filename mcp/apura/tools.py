@@ -145,7 +145,7 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_receita",
-            "description": "Receitas de campanha (prestação de contas TSE).",
+            "description": "Receitas de campanha (prestação TSE). Ordenação: maior valor primeiro. Consulta por UF retorna só linhas com candidato (sq_candidato); use cargo para filtrar governador etc.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -164,7 +164,7 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_despesa",
-            "description": "Despesas de campanha (prestação de contas TSE).",
+            "description": "Despesas de campanha (prestação TSE). Ordenação: maior valor primeiro. Consulta por UF retorna só linhas com candidato.",
             "parameters": {
                 "type": "object",
                 "properties": {

@@ -650,6 +650,7 @@ BEGIN
     FROM eleicao.receita r
     WHERE r.ano = p_ano
       AND (p_sq_candidato IS NULL OR r.sq_candidato = p_sq_candidato)
+      AND (p_sq_candidato IS NOT NULL OR r.sq_candidato IS NOT NULL)
       AND (p_uf IS NULL OR api.uf_match(p_uf, r.sg_uf))
       AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, r.sg_partido))
       AND (
@@ -657,7 +658,7 @@ BEGIN
         OR upper(translate(coalesce(r.ds_cargo, ''), 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
            = upper(translate(v_cargo_nome, 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
       )
-    ORDER BY r.dt_receita NULLS LAST, r.vr_receita DESC NULLS LAST, r.id
+    ORDER BY r.vr_receita DESC NULLS LAST, r.dt_receita DESC NULLS LAST, r.id
     LIMIT v_lim
   ) t;
   IF v_linhas = '[]'::jsonb THEN
@@ -711,6 +712,7 @@ BEGIN
     FROM eleicao.despesa d
     WHERE d.ano = p_ano
       AND (p_sq_candidato IS NULL OR d.sq_candidato = p_sq_candidato)
+      AND (p_sq_candidato IS NOT NULL OR d.sq_candidato IS NOT NULL)
       AND (p_uf IS NULL OR api.uf_match(p_uf, d.sg_uf))
       AND (p_sg_partido IS NULL OR api.partido_match(p_sg_partido, d.sg_partido))
       AND (
@@ -718,7 +720,7 @@ BEGIN
         OR upper(translate(coalesce(d.ds_cargo, ''), 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
            = upper(translate(v_cargo_nome, 'ÁÀÂÃÉÊÍÓÔÕÚÇáàâãéêíóôõúç', 'AAAAEEIOOOUCaaaaeeiooouc'))
       )
-    ORDER BY d.dt_despesa NULLS LAST, d.vr_despesa DESC NULLS LAST, d.id
+    ORDER BY d.vr_despesa DESC NULLS LAST, d.dt_despesa DESC NULLS LAST, d.id
     LIMIT v_lim
   ) t;
   IF v_linhas = '[]'::jsonb THEN
