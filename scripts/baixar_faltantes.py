@@ -4,13 +4,15 @@ from __future__ import annotations
 import hashlib
 import json
 import ssl
+import sys
 import urllib.error
 import urllib.request
 from datetime import date
 from pathlib import Path
 
-ROOT = Path(r"C:\Users\anjo_\OneDrive\Projetos-FabriaIA\inteligencia-eleitoral")
-RAW = ROOT / "data" / "raw"
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from tse_util import ROOT, RAW  # noqa: E402
 STAMP = date.today().isoformat()
 UA = "inteligencia-eleitoral-brasil/0.1 (reuso TSE dados abertos)"
 

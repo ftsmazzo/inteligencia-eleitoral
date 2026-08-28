@@ -1,0 +1,8 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY mcp/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+COPY scripts /app/scripts
+COPY sql /app/sql
+ENV PYTHONUNBUFFERED=1
+CMD ["python", "scripts/job_complementos.py"]
