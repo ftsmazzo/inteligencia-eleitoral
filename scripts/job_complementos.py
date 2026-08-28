@@ -52,12 +52,13 @@ def main() -> None:
         raise SystemExit("Núcleo ausente no Postgres — abortando job complementos.")
 
     if not args.skip_download:
+        anos_dl = args.anos_contas.replace(",", " ").split()
         for s in (
             "baixar_ibge_populacao.py",
             "baixar_parlamento.py",
-            "baixar_contas.py",
         ):
             _run(s)
+        _run("baixar_contas.py", *anos_dl)
 
     _run("carregar_populacao.py")
 

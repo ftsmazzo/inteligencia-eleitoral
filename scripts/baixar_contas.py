@@ -45,8 +45,9 @@ def download(url: str, dest: Path) -> None:
 
 
 def main() -> None:
+    anos = [int(a) for a in sys.argv[1:]] or ANOS
     falhas: list[dict] = []
-    for ano in ANOS:
+    for ano in anos:
         dest_dir = year_dir("br_cand_contas", ano)
         dest = dest_dir / "origem.zip"
         if dest.exists() and dest.stat().st_size > 10_000:
