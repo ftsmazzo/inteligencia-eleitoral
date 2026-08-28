@@ -23,6 +23,12 @@ ALTER TABLE ctl.apura_sessao ADD COLUMN IF NOT EXISTS fixada boolean NOT NULL DE
 ALTER TABLE ctl.apura_usuario ADD COLUMN IF NOT EXISTS ultima_sessao_id uuid
   REFERENCES ctl.apura_sessao(id) ON DELETE SET NULL;
 
+ALTER TABLE ctl.apura_usuario ADD COLUMN IF NOT EXISTS quota_perguntas_max integer;
+ALTER TABLE ctl.apura_usuario ADD COLUMN IF NOT EXISTS quota_perguntas_used integer NOT NULL DEFAULT 0;
+
+COMMENT ON COLUMN ctl.apura_usuario.quota_perguntas_max IS 'NULL = ilimitado. Contas demo novas: tipicamente 5 perguntas.';
+COMMENT ON COLUMN ctl.apura_usuario.quota_perguntas_used IS 'Perguntas (turnos user→assistente) já consumidas no demo.';
+
 CREATE INDEX IF NOT EXISTS idx_apura_sessao_usuario ON ctl.apura_sessao (usuario_id, atualizado_em DESC);
 CREATE INDEX IF NOT EXISTS idx_apura_sessao_fixada ON ctl.apura_sessao (usuario_id, fixada DESC, atualizado_em DESC);
 

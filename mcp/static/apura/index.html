@@ -84,6 +84,11 @@
     .sidebar-actions button:hover { background: #fee2e2; }
     .sidebar-foot { padding: 16px; border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--muted); }
     .sidebar-foot button { background: none; border: none; color: var(--brand); font-weight: 600; cursor: pointer; }
+    .quota-pill {
+      display: inline-block; margin: 6px 0 4px; font-size: 0.72rem; font-weight: 650;
+      color: var(--brand); background: var(--brand-light); padding: 4px 8px; border-radius: 8px;
+    }
+    .quota-pill.esgotado { color: #b91c1c; background: #fef2f2; }
 
     .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
     .topbar { flex-shrink: 0; padding: 16px 24px; background: rgba(255,255,255,.9); backdrop-filter: blur(8px);
@@ -298,7 +303,7 @@
     <div class="auth-card">
       <img class="auth-brand" src="/apura/assets/logo-apura.jpg" alt="Apura" width="72" height="72" />
       <h1>Apura</h1>
-      <p class="sub">Conversa eleitoral com dados oficiais do Brasil</p>
+                    <p class="sub">Conversa eleitoral com dados oficiais · demo com 5 perguntas</p>
       <div class="tabs-auth">
         <button type="button" class="active" data-tab="login">Entrar</button>
         <button type="button" data-tab="registrar">Criar conta</button>
@@ -350,6 +355,7 @@
       </div>
       <div class="sidebar-foot">
         <span id="user-email"></span><br />
+        <span id="user-quota" class="quota-pill"></span><br />
         <button type="button" id="btn-sair">Sair</button>
       </div>
     </aside>
@@ -541,6 +547,7 @@
       try {
         const eu = await api('/auth/eu');
         ultimaSessaoServidor = eu.ultima_sessao_id || '';
+        atualizarQuota(eu.quota);
         const list = await carregarSessoes();
         await carregarSkills();
         const alvo = escolherSessao(list);
@@ -931,8 +938,22 @@
     }
 
     const input = $('input-msg');
+    function atualizarQuota(q) {
+      const el = $('user-quota');
+      if (!el) return;
+      el.classList.remove('esgotado');
+      if (!q || q.ilimitado) {
+        el.textContent = 'Acesso completo';
+        return;
+      }
+      const rest = q.restantes ?? Math.max(0, (q.max || 0) - (q.used || 0));
+      el.textContent = `Demo · ${rest} de ${q.max} perguntas`;
+      if (rest <= 0) el.classList.add('esgotado');
+    }
+
     function syncSendBtn() {
-      $('btn-send').disabled = !appReady || !input.value.trim() || streaming;
+      const esgotado = $('user-quota')?.classList.contains('esgotado');
+      $('btn-send').disabled = !appReady || !input.value.trim() || streaming || !!esgotado;
     }
 
     input.addEventListener('input', () => {
@@ -985,7 +1006,20 @@
             modo_narrativa: $('modo-narrativa').checked
           })
         });
-        if (!r.ok) throw new Error(await r.text());
+        if (!r.ok) {
+          let msg = await r.text();
+          try {
+            const j = JSON.parse(msg);
+            msg = typeof j.detail === 'string' ? j.detail : msg;
+          } catch (_) {}
+          throw new Error(msg);
+        }
+        const restHdr = r.headers.get('X-Demo-Quota-Restantes');
+        if (restHdr && restHdr !== 'ilimitado') {
+          const eu = await api('/auth/eu');
+          atualizarQuota(eu.quota);
+          syncSendBtn();
+        }
 
         const reader = r.body.getReader();
         const dec = new TextDecoder();
@@ -1070,6 +1104,7 @@
         $('auth-screen').classList.add('hidden');
         $('app-screen').classList.remove('hidden');
         $('user-email').textContent = u.email || '';
+        atualizarQuota(u.quota);
         initApp().catch(err => { $('app-err').textContent = err.message; });
       }).catch(() => localStorage.removeItem('apura_jwt'));
     }

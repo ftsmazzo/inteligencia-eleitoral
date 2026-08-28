@@ -14,8 +14,10 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 
 from apura.auth import (
+    consumir_pergunta_demo,
     decodificar_jwt,
     login_usuario,
+    quota_usuario,
     registrar_usuario,
     usuario_por_id,
 )
@@ -37,7 +39,7 @@ router = APIRouter(prefix="/apura/api", tags=["apura"])
 _STATIC = Path(__file__).resolve().parents[1] / "static" / "apura"
 _PATCH = Path(__file__).resolve().parents[1] / "sql" / "patch_apura.sql"
 _PATCH_TOKENS = Path(__file__).resolve().parents[1] / "sql" / "patch_mcp_tokens.sql"
-_SCHEMA_VER = 5
+_SCHEMA_VER = 6
 _READY_VER = 0
 
 
@@ -178,7 +180,13 @@ def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
             "SELECT ultima_sessao_id::text FROM ctl.apura_usuario WHERE id = %s::uuid",
             (user[0],),
         ).fetchone()
-    return {"id": user[0], "email": user[1], "ultima_sessao_id": row[0] if row else None}
+        q = quota_usuario(conn, user[0])
+    return {
+        "id": user[0],
+        "email": user[1],
+        "ultima_sessao_id": row[0] if row else None,
+        "quota": q,
+    }
 
 
 @router.get("/sessoes")
@@ -335,6 +343,7 @@ async def chat(
             ).fetchone()
             if not ok:
                 raise HTTPException(404, "Conversa não encontrada")
+            quota_info = consumir_pergunta_demo(conn, uid)
             _registrar_ultima_sessao(conn, uid, body.sessao_id)
             conn.execute(
                 """
@@ -402,7 +411,13 @@ async def chat(
     return StreamingResponse(
         stream_and_save(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Demo-Quota-Restantes": (
+                str(quota_info["restantes"]) if quota_info.get("restantes") is not None else "ilimitado"
+            ),
+        },
     )
 
 

@@ -46,6 +46,16 @@ _ACERVO_READY = False
 _ANALITICO_READY = False
 _SKILL_PLACEHOLDER = "__SKILL_CONTENT__"
 _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+_DEMO_QUOTA_DEFAULT = 5
+
+
+def _demo_quota_mcp() -> int:
+    raw = os.environ.get("DEMO_QUOTA", str(_DEMO_QUOTA_DEFAULT)).strip()
+    try:
+        n = int(raw)
+    except ValueError:
+        return _DEMO_QUOTA_DEFAULT
+    return max(1, min(n, 100))
 
 
 def _db_url() -> str | None:
@@ -417,6 +427,7 @@ def _extract_token(authorization: str | None, x_token: str | None) -> str:
 
 
 def _token_ok(authorization: str | None, x_token: str | None) -> None:
+    """Valida token e consome 1 unidade da cota demo (se houver)."""
     master = os.environ.get("MCP_TOKEN", "")
     got = _extract_token(authorization, x_token)
     if not master and not got:
@@ -430,12 +441,29 @@ def _token_ok(authorization: str | None, x_token: str | None) -> None:
     if not url:
         raise HTTPException(401, MSG_AUTH)
     with psycopg.connect(url) as conn:
-        ok = conn.execute(
-            "SELECT 1 FROM ctl.mcp_token WHERE token = %s AND ativo IS TRUE",
+        row = conn.execute(
+            """
+            SELECT ativo, quota_max, quota_used
+            FROM ctl.mcp_token
+            WHERE token = %s
+            FOR UPDATE
+            """,
             (got,),
         ).fetchone()
-    if not ok:
-        raise HTTPException(401, MSG_AUTH)
+        if not row or not row[0]:
+            raise HTTPException(401, MSG_AUTH)
+        qmax, used = row[1], int(row[2] or 0)
+        if qmax is not None and used >= int(qmax):
+            raise HTTPException(
+                429,
+                f"Cota demo esgotada ({qmax} consultas MCP). Gere outro token ou solicite acesso comercial.",
+            )
+        if qmax is not None:
+            conn.execute(
+                "UPDATE ctl.mcp_token SET quota_used = quota_used + 1 WHERE token = %s",
+                (got,),
+            )
+        conn.commit()
 
 
 def db() -> psycopg.Connection:
@@ -713,17 +741,26 @@ def guia_gerar_token(body: GerarTokenIn) -> dict[str, str]:
     if not url:
         raise HTTPException(503, "Indisponível")
     token = secrets.token_urlsafe(32)
+    quota = _demo_quota_mcp()
     with psycopg.connect(url) as conn:
         conn.execute(
-            "INSERT INTO ctl.mcp_token (token, rotulo) VALUES (%s, %s)",
-            (token, body.rotulo.strip()),
+            """
+            INSERT INTO ctl.mcp_token (token, rotulo, quota_max, quota_used)
+            VALUES (%s, %s, %s, 0)
+            """,
+            (token, body.rotulo.strip(), quota),
         )
         conn.commit()
     return {
         "status": "ok",
         "token": token,
         "rotulo": body.rotulo.strip(),
-        "aviso": "Copie agora. Este token não será exibido de novo.",
+        "quota_max": str(quota),
+        "aviso": (
+            f"Token demo · {quota} consultas MCP. "
+            "Copie agora — não será exibido de novo. "
+            "Quando esgotar, solicite acesso comercial."
+        ),
     }
 
 
