@@ -104,27 +104,7 @@
     }
     .hero h1 em { font-style: normal; color: var(--brand); }
     .hero-lead { font-size: 1.15rem; color: var(--muted); max-width: 520px; margin-bottom: 28px; }
-    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 28px; }
-    .hero-stats {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-      max-width: 520px;
-      margin-top: 4px;
-    }
-    @media (max-width: 960px) {
-      .hero-stats { max-width: none; }
-    }
-    @media (max-width: 400px) {
-      .hero-stats { grid-template-columns: 1fr; }
-    }
-    .hero-stats .stat-card {
-      padding: 18px 16px; min-height: 96px; text-align: left; align-items: flex-start;
-    }
-    .hero-stats .stat-card strong {
-      font-size: clamp(1.25rem, 2vw, 1.55rem); margin-bottom: 6px;
-    }
-    .hero-stats .stat-card span { font-size: 0.8rem; }
+    .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 0; }
 
     /* Mock chat */
     .mock {
@@ -166,15 +146,34 @@
     .typing-indicator span:nth-child(3) { animation-delay: .3s; }
     @keyframes bounce { 0%,100% { transform: translateY(0); opacity: .4; } 50% { transform: translateY(-4px); opacity: 1; } }
 
-    /* Stats (hero) */
+    /* Stats — um bloco só, centralizado sob o hero */
+    .stats-band {
+      padding: 0 0 72px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 20px;
+      max-width: 920px;
+      margin: 0 auto;
+    }
+    @media (max-width: 860px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 480px) {
+      .stats { grid-template-columns: 1fr; max-width: 320px; }
+    }
     .stat-card {
-      background: var(--bg2); border: 1px solid var(--line); border-radius: 14px;
-      display: flex; flex-direction: column; justify-content: center;
+      background: var(--bg2); border: 1px solid var(--line); border-radius: 16px;
+      padding: 22px 16px; text-align: center;
+      min-height: 110px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
     }
     .stat-card strong {
-      display: block; font-family: Fraunces, serif; color: var(--brand); line-height: 1.15;
+      display: block; font-family: Fraunces, serif; font-size: clamp(1.35rem, 2.2vw, 1.75rem);
+      color: var(--brand); margin-bottom: 6px; line-height: 1.15;
     }
-    .stat-card span { color: var(--muted); line-height: 1.4; }
+    .stat-card span { font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
 
     /* Capturas */
     .capture-grid { display: grid; gap: 28px; }
@@ -360,12 +359,6 @@
             <a class="btn btn-primary" href="/apura">Abrir demonstração</a>
             <a class="btn btn-ghost" href="/guia">Conectar minha IA</a>
           </div>
-          <div class="hero-stats reveal">
-            <div class="stat-card"><strong data-count="5571">0</strong><span>Municípios cobertos</span></div>
-            <div class="stat-card"><strong>2014–2024</strong><span>Recorte oficial na urna</span></div>
-            <div class="stat-card"><strong>3</strong><span>Trilhas de inteligência</span></div>
-            <div class="stat-card"><strong>TSE·IBGE·MDS</strong><span>Fontes primárias</span></div>
-          </div>
         </div>
 
         <div class="mock" id="demo-chat" aria-label="Demonstração do chat Apura">
@@ -374,6 +367,17 @@
             <span class="mock-title">Apura · Inteligência Eleitoral</span>
           </div>
           <div class="mock-body" id="mock-messages"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="stats-band" aria-label="Números da base">
+      <div class="wrap">
+        <div class="stats reveal">
+          <div class="stat-card"><strong data-count="5571">0</strong><span>Municípios cobertos</span></div>
+          <div class="stat-card"><strong>2014–2024</strong><span>Recorte oficial na urna</span></div>
+          <div class="stat-card"><strong>3</strong><span>Trilhas de inteligência</span></div>
+          <div class="stat-card"><strong>TSE·IBGE·MDS</strong><span>Fontes primárias</span></div>
         </div>
       </div>
     </section>
@@ -516,29 +520,20 @@
       <div class="wrap">
         <div class="section-head reveal">
           <h2>Veja na prática</h2>
-          <p>Interface real em produção — chat, trilhas e números oficiais na mesma conversa.</p>
+          <p>Prints reais do Apura em produção — painel de dados oficiais, tabela comparativa e modo narrativa.</p>
         </div>
         <div class="capture-grid reveal">
           <figure class="capture-frame">
-            <img src="/landing/assets/captura-landing.png" alt="Captura da landing e chat Apura em produção" width="1280" height="720" loading="lazy" />
-            <figcaption class="capture-caption"><strong>Landing + Apura</strong> · hero, demo animada e métricas da base oficial</figcaption>
+            <img src="/landing/assets/captura-painel-votos.png" alt="Apura: painel com votação e despesas Tarcísio, Haddad e Garcia SP 2022" width="1280" height="720" loading="lazy" />
+            <figcaption class="capture-caption"><strong>Painel · dados oficiais</strong> · votos e despesas Tarcísio, Haddad e Garcia — governador SP 2022</figcaption>
           </figure>
           <figure class="capture-frame">
-            <div class="screen-head">Apura · Resposta analítica · Governador SP 2022</div>
-            <div class="screen-body">
-              <p style="color:var(--brand);font-weight:700;font-size:0.75rem;text-transform:uppercase;margin-bottom:8px">Fato (TSE)</p>
-              <table class="screen-table">
-                <tr><th>Candidato</th><th>2º turno</th><th>Despesa total</th></tr>
-                <tr><td>Tarcísio</td><td>13.480.643</td><td>R$ 37,3 mi</td></tr>
-                <tr><td>Haddad</td><td>10.909.371</td><td>R$ 32,8 mi</td></tr>
-                <tr><td>Garcia</td><td>— (1º turno)</td><td>R$ 29,6 mi</td></tr>
-              </table>
-              <p style="color:#a5b4fc;font-weight:700;font-size:0.75rem;text-transform:uppercase;margin:16px 0 8px">Programa / acervo</p>
-              <p style="color:var(--muted);font-size:0.82rem">Lacuna 2022 informada — sem inventar trecho de plano.</p>
-              <p style="color:var(--gold);font-weight:700;font-size:0.75rem;text-transform:uppercase;margin:16px 0 8px">Implicação</p>
-              <p style="color:var(--muted);font-size:0.82rem">Garcia gastou volume comparável, mas ficou fora do 2º turno.</p>
-            </div>
-            <figcaption class="capture-caption"><strong>Exemplo real de output</strong> · dados validados na base TSE (ago/2026)</figcaption>
+            <img src="/landing/assets/captura-tabela.png" alt="Apura: tabela dos 5 candidatos mais votados a governador SP 1º turno 2022" width="1280" height="720" loading="lazy" />
+            <figcaption class="capture-caption"><strong>Tabela comparativa</strong> · top 5 governador SP, 1º turno 2022 — formatada no chat</figcaption>
+          </figure>
+          <figure class="capture-frame">
+            <img src="/landing/assets/captura-narrativa.png" alt="Apura: modo narrativa PT governador Nordeste 2022 com painel de eleitos" width="1280" height="720" loading="lazy" />
+            <figcaption class="capture-caption"><strong>Modo narrativa</strong> · PT a governador no Nordeste 2022 — Fato + painel de eleitos</figcaption>
           </figure>
         </div>
       </div>

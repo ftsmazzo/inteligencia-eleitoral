@@ -144,7 +144,9 @@
       const tr = document.createElement('tr');
       for (const k of cols) {
         const td = document.createElement('td');
-        if (NUM_KEYS.has(k)) td.className = 'num';
+        if (NUM_KEYS.has(k) || k === 'ano' || k === 'sg_uf' || k === 'nr_candidato') {
+          td.className = (NUM_KEYS.has(k) ? 'num' : '') + ' nowrap';
+        }
         td.textContent = formatCell(k, row[k]);
         tr.appendChild(td);
       }
