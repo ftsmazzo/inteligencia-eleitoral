@@ -41,6 +41,11 @@ def _run(name: str, *extra: str) -> None:
     subprocess.check_call([PY, str(script), *extra], cwd=str(ROOT))
 
 
+def _downloads_ready() -> bool:
+    probe = ROOT / "data" / "raw" / "br_mun_estimativas" / "ano=2024" / "origem.json"
+    return probe.exists()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-download", action="store_true")
@@ -51,7 +56,11 @@ def main() -> None:
     if not _nucleus_ok():
         raise SystemExit("Núcleo ausente no Postgres — abortando job complementos.")
 
-    if not args.skip_download:
+    skip_dl = args.skip_download or os.environ.get("INGEST_SKIP_DOWNLOAD", "").strip() in ("1", "true", "yes")
+    if not skip_dl and _downloads_ready():
+        print("AVISO: downloads já em data/raw — pulando baixar_*", flush=True)
+        skip_dl = True
+    if not skip_dl:
         anos_dl = args.anos_contas.replace(",", " ").split()
         for s in (
             "baixar_ibge_populacao.py",
