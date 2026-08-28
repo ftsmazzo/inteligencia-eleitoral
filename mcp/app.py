@@ -739,6 +739,10 @@ _APURA_ASSETS = _STATIC / "apura" / "assets"
 if _APURA_ASSETS.is_dir():
     app.mount("/apura/assets", StaticFiles(directory=_APURA_ASSETS), name="apura-assets")
 
+_LANDING_ASSETS = _STATIC / "landing" / "assets"
+if _LANDING_ASSETS.is_dir():
+    app.mount("/landing/assets", StaticFiles(directory=_LANDING_ASSETS), name="landing-assets")
+
 
 @app.get("/apura")
 def apura() -> HTMLResponse:

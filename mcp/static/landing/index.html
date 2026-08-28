@@ -89,7 +89,7 @@
     }
 
     /* Hero */
-    .hero { padding: 120px 0 80px; }
+    .hero { padding: 120px 0 64px; }
     .hero-grid {
       display: grid; grid-template-columns: 1.05fr .95fr; gap: 48px; align-items: center;
     }
@@ -149,20 +149,43 @@
     @keyframes bounce { 0%,100% { transform: translateY(0); opacity: .4; } 50% { transform: translateY(-4px); opacity: 1; } }
 
     /* Stats */
+    .stats-band { padding: 8px 0 72px; }
     .stats {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
-      margin: -40px 0 0; position: relative; z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 24px;
+      margin: 0;
     }
-    @media (max-width: 768px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 960px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+    }
+    @media (max-width: 520px) {
+      .stats { grid-template-columns: 1fr; }
+    }
     .stat-card {
       background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius);
-      padding: 24px; text-align: center;
+      padding: 28px 22px; text-align: center;
+      min-height: 118px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
     }
     .stat-card strong {
-      display: block; font-family: Fraunces, serif; font-size: 2rem; color: var(--brand);
-      margin-bottom: 4px;
+      display: block; font-family: Fraunces, serif; font-size: clamp(1.5rem, 2.5vw, 2rem);
+      color: var(--brand); margin-bottom: 8px; line-height: 1.15;
     }
-    .stat-card span { font-size: 0.85rem; color: var(--muted); }
+    .stat-card span { font-size: 0.85rem; color: var(--muted); line-height: 1.4; }
+
+    /* Capturas */
+    .capture-grid { display: grid; gap: 28px; }
+    .capture-frame {
+      border-radius: 20px; border: 1px solid var(--line); overflow: hidden;
+      background: var(--bg2); box-shadow: var(--shadow);
+    }
+    .capture-frame img { width: 100%; height: auto; display: block; vertical-align: middle; }
+    .capture-caption {
+      padding: 14px 20px; font-size: 0.88rem; color: var(--muted);
+      border-top: 1px solid var(--line); background: rgba(0,0,0,.2);
+    }
+    .capture-caption strong { color: var(--ink); }
 
     /* Sections */
     section { padding: 88px 0; }
@@ -311,6 +334,7 @@
         <a href="#produto">Produto</a>
         <a href="#trilhas">Trilhas</a>
         <a href="#casos">Casos</a>
+        <a href="#entrega">Entrega</a>
         <a href="#roadmap">Roadmap</a>
         <a href="/guia">Guia técnico</a>
         <a class="btn btn-primary" href="/apura">Demo ao vivo →</a>
@@ -352,12 +376,14 @@
       </div>
     </section>
 
-    <div class="wrap stats reveal">
-      <div class="stat-card"><strong data-count="5571">0</strong><span>Municípios cobertos</span></div>
-      <div class="stat-card"><strong>2014–2024</strong><span>Recorte oficial na urna</span></div>
-      <div class="stat-card"><strong>3</strong><span>Trilhas de inteligência</span></div>
-      <div class="stat-card"><strong>TSE·IBGE·MDS</strong><span>Fontes primárias</span></div>
-    </div>
+    <section class="stats-band" aria-label="Números da base">
+      <div class="wrap stats reveal">
+        <div class="stat-card"><strong data-count="5571">0</strong><span>Municípios cobertos</span></div>
+        <div class="stat-card"><strong>2014–2024</strong><span>Recorte oficial na urna</span></div>
+        <div class="stat-card"><strong>3</strong><span>Trilhas de inteligência</span></div>
+        <div class="stat-card"><strong>TSE·IBGE·MDS</strong><span>Fontes primárias</span></div>
+      </div>
+    </section>
 
     <section id="produto" class="light">
       <div class="wrap">
@@ -493,15 +519,19 @@
       </div>
     </section>
 
-    <section id="telas">
+    <section id="telas" class="light">
       <div class="wrap">
         <div class="section-head reveal">
           <h2>Veja na prática</h2>
-          <p>Respostas estruturadas — prontas para apresentar ao cliente ou à direção.</p>
+          <p>Interface real em produção — chat, trilhas e números oficiais na mesma conversa.</p>
         </div>
-        <div class="screens reveal">
-          <div class="screen">
-            <div class="screen-head">Apura · Modo narrativa · Governador SP 2022</div>
+        <div class="capture-grid reveal">
+          <figure class="capture-frame">
+            <img src="/landing/assets/captura-landing.png" alt="Captura da landing e chat Apura em produção" width="1280" height="720" loading="lazy" />
+            <figcaption class="capture-caption"><strong>Landing + Apura</strong> · hero, demo animada e métricas da base oficial</figcaption>
+          </figure>
+          <figure class="capture-frame">
+            <div class="screen-head">Apura · Resposta analítica · Governador SP 2022</div>
             <div class="screen-body">
               <p style="color:var(--brand);font-weight:700;font-size:0.75rem;text-transform:uppercase;margin-bottom:8px">Fato (TSE)</p>
               <table class="screen-table">
@@ -511,27 +541,12 @@
                 <tr><td>Garcia</td><td>— (1º turno)</td><td>R$ 29,6 mi</td></tr>
               </table>
               <p style="color:#a5b4fc;font-weight:700;font-size:0.75rem;text-transform:uppercase;margin:16px 0 8px">Programa / acervo</p>
-              <p style="color:var(--muted);font-size:0.82rem">Planos 2022: lacuna informada explicitamente — sem inventar trecho.</p>
+              <p style="color:var(--muted);font-size:0.82rem">Lacuna 2022 informada — sem inventar trecho de plano.</p>
               <p style="color:var(--gold);font-weight:700;font-size:0.75rem;text-transform:uppercase;margin:16px 0 8px">Implicação</p>
-              <p style="color:var(--muted);font-size:0.82rem">Garcia gastou volume comparável ao 2º colocado, mas ficou fora do 2º turno.</p>
+              <p style="color:var(--muted);font-size:0.82rem">Garcia gastou volume comparável, mas ficou fora do 2º turno.</p>
             </div>
-          </div>
-          <div class="screen">
-            <div class="screen-head">Export · Relatório HTML</div>
-            <div class="screen-body">
-              <p style="margin-bottom:12px">Peça: <em>“Monte um relatório em HTML”</em></p>
-              <div style="padding:16px;background:var(--surface);border-radius:12px;border:1px solid var(--line)">
-                <p style="font-weight:700;margin-bottom:8px">Inteligência Eleitoral · Relatório</p>
-                <p style="font-size:0.8rem;color:var(--muted)">Seções: Fato · Acervo · Clima · Lacunas</p>
-                <div style="margin-top:12px;display:flex;gap:8px">
-                  <span class="badge badge-ok">HTML</span>
-                  <span class="badge badge-ok">XLSX</span>
-                  <span class="badge badge-soon">PDF</span>
-                </div>
-              </div>
-              <p style="margin-top:16px;font-size:0.82rem;color:var(--muted)">Sessões salvas · conversas fixadas · histórico por usuário</p>
-            </div>
-          </div>
+            <figcaption class="capture-caption"><strong>Exemplo real de output</strong> · dados validados na base TSE (ago/2026)</figcaption>
+          </figure>
         </div>
       </div>
     </section>
@@ -561,7 +576,40 @@
       </div>
     </section>
 
-    <section id="roadmap">
+    <section id="entrega">
+      <div class="wrap">
+        <div class="section-head reveal">
+          <h2>O que está em produção agora</h2>
+          <p>Transparência total — prometemos só o que a base e o Apura entregam hoje.</p>
+        </div>
+        <div class="pain-grid reveal">
+          <div class="pain-card good">
+            <h3>✓ Entregue hoje</h3>
+            <ul>
+              <li>Urna TSE 2014–2024 + candidatura 2026</li>
+              <li>25 consultas MCP + Apura chat</li>
+              <li>Contas de campanha 2018 e 2022</li>
+              <li>População, CadÚnico, Bolsa Família</li>
+              <li>Câmara: deputados, PLs, votos nominais</li>
+              <li>Acervo planos 2026 · clima News/Instagram</li>
+              <li>Export HTML/XLSX · modo narrativa</li>
+            </ul>
+          </div>
+          <div class="pain-card bad" style="background:rgba(251,191,36,.06);border-color:rgba(251,191,36,.25)">
+            <h3>◷ Em expansão (roadmap)</h3>
+            <ul>
+              <li>Planos de governo 2018/2022 no acervo</li>
+              <li>Contas TSE 2014, 2016, 2020, 2024</li>
+              <li>Totais agregados receita/despesa</li>
+              <li>Radar dedicado por campanha</li>
+              <li>API white-label / multi-tenant</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="roadmap" class="light">
       <div class="wrap">
         <div class="section-head reveal">
           <h2>Roadmap · produto em expansão</h2>
