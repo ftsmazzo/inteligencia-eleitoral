@@ -238,6 +238,58 @@
     .topbar { padding: 14px 28px; }
     .messages-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     #messages { margin: 0 auto; width: 100%; max-width: 860px; }
+    .msg.assistant.has-painel { max-width: min(920px, 100%); }
+
+    /* Painel visual (canvas inline) */
+    .apura-painel {
+      margin: 0 0 16px; border: 1px solid #c5ddd9; border-radius: 14px; overflow: hidden;
+      background: linear-gradient(180deg, #f4faf9 0%, #fff 48%);
+      box-shadow: 0 4px 20px rgba(13, 79, 74, 0.08);
+    }
+    .painel-cap {
+      padding: 8px 14px; font-size: 0.68rem; font-weight: 800; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--brand); background: var(--brand-light);
+      border-bottom: 1px solid #c5ddd9;
+    }
+    .painel-block + .painel-block { border-top: 1px solid var(--line); }
+    .painel-head {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 10px 14px; background: #fff; border-bottom: 1px solid #eef2f6;
+      font-size: 0.84rem;
+    }
+    .painel-head strong { flex: 1; min-width: 120px; color: var(--ink); }
+    .painel-count { font-size: 0.75rem; color: var(--muted); font-weight: 500; }
+    .painel-badge {
+      font-size: 0.62rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+      padding: 4px 8px; border-radius: 6px;
+    }
+    .painel-badge-fato { background: var(--brand); color: #fff; }
+    .painel-badge-acervo { background: #4338ca; color: #fff; }
+    .painel-badge-clima { background: #b45309; color: #fff; }
+    .painel-table-wrap { overflow-x: auto; }
+    .painel-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .painel-table th {
+      text-align: left; padding: 10px 14px; background: #fafbfc; color: var(--muted);
+      font-weight: 650; font-size: 0.7rem; text-transform: uppercase; letter-spacing: .04em;
+      border-bottom: 1px solid var(--line); white-space: nowrap;
+    }
+    .painel-table td {
+      padding: 10px 14px; border-bottom: 1px solid #eef2f6; color: var(--ink); vertical-align: top;
+    }
+    .painel-table tr:last-child td { border-bottom: none; }
+    .painel-table tbody tr:hover td { background: rgba(13, 79, 74, 0.04); }
+    .painel-table td.num {
+      text-align: right; font-variant-numeric: tabular-nums; font-weight: 650; color: var(--brand);
+      white-space: nowrap;
+    }
+    .painel-more {
+      margin: 0; padding: 8px 14px 12px; font-size: 0.75rem; color: var(--muted);
+      background: #fafbfc; border-top: 1px solid var(--line);
+    }
+    .bubble-text { white-space: normal; }
+    .bubble-text .inline-table { margin: 12px 0; border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
+    .bubble-text ul { margin: 8px 0 8px 1.2rem; }
+    .bubble-text p { margin: 0 0 10px; }
   </style>
 </head>
 <body>
@@ -342,6 +394,7 @@
     </div>
   </div>
 
+  <script src="/apura/assets/painel.js"></script>
   <script>
     const API = '/apura/api';
     const SESS_KEY = 'apura_sessao_id';
@@ -757,19 +810,36 @@
     });
 
     function formatText(texto) {
-      const esc = texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return esc
+      const withTables = ApuraPainel.parseMarkdownTables(texto);
+      const tables = [];
+      const placeholder = withTables.replace(
+        /<div class="painel-table-wrap inline-table">[\s\S]*?<\/div>/g,
+        (m) => {
+          tables.push(m);
+          return `\x00TBL${tables.length - 1}\x00`;
+        }
+      );
+      let out = placeholder.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      out = out.replace(/\x00TBL(\d+)\x00/g, (_, i) => tables[Number(i)]);
+      out = out
         .replace(/^### (.+)$/gm, '<h3>$1</h3>')
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        // Markdown [texto](url) → link curto (só o rótulo visível)
         .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, href) => {
-          const safe = href.replace(/"/g, '');
-          const lab = label || 'Leia mais';
-          return '<a class="msg-link" href="' + safe + '" target="_blank" rel="noopener noreferrer">' + lab + '</a>';
+          const safeHref = href.replace(/"/g, '');
+          return '<a class="msg-link" href="' + safeHref + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
         })
-        // URL crua monstro (Google News etc.): esconde do texto
         .replace(/(https?:\/\/(?:news\.google\.com|www\.google\.com\/url)[^\s<]+)/g, '')
         .replace(/(https?:\/\/[^\s<]{120,})/g, '<a class="msg-link" href="$1" target="_blank" rel="noopener noreferrer">abrir link</a>');
+      return out.split(/\n\n+/).map((block) => {
+        block = block.trim();
+        if (!block) return '';
+        if (/^<(h3|div|table|ul)/.test(block)) return block;
+        if (block.startsWith('- ')) {
+          const items = block.split(/\n- /).map((li, idx) => (idx === 0 ? li.replace(/^- /, '') : li));
+          return '<ul>' + items.map((li) => '<li>' + li + '</li>').join('') + '</ul>';
+        }
+        return '<p>' + block.replace(/\n/g, '<br>') + '</p>';
+      }).join('');
     }
 
     function setBubbleContent(el, texto) {
@@ -796,8 +866,16 @@
       wrap.className = 'msg ' + papel;
       wrap.innerHTML = avatarHtml(papel);
       const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+
+      if (papel === 'assistant' && dados && ApuraPainel.flattenBlocks(dados).length) {
+        wrap.classList.add('has-painel');
+        const painel = ApuraPainel.buildPainelElement(dados);
+        if (painel) bubble.appendChild(painel);
+      }
+
       const b = document.createElement('div');
-      b.className = 'bubble';
+      b.className = 'bubble-text';
       if (papel === 'assistant') setBubbleContent(b, texto);
       else b.textContent = texto;
       bubble.appendChild(b);
