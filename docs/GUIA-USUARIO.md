@@ -1,8 +1,9 @@
 # Guia do usuário · Inteligência Eleitoral Brasil
 
 **Landing (comercial):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/  
+**Pedido de demo:** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/#demo  
 **Guia técnico (online):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia  
-**Apura (chat):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/apura
+**Apura (interno, sob convite):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/apura/app
 
 Versão 2.0 · 28/08/2026 — este arquivo é espelho estático; prefira a página web.
 
@@ -18,8 +19,8 @@ Dois modos de uso:
 
 | Modo | Para quem | Como acessar |
 |---|---|---|
-| **Apura** | Equipes de campanha, consultoria, imprensa | Chat em `/apura` — pergunta em linguagem normal |
-| **MCP + Skill** | Desenvolvedores e power users | Token + Cursor, Claude, GPT, Manus |
+| **Apura** | Equipes de campanha, consultoria, imprensa | Acesso sob convite — peça demo na landing |
+| **MCP + Skill** | Desenvolvedores e power users | Token sob contato + Cursor, Claude, GPT, Manus |
 
 Você **pergunta em linguagem normal** e a IA consulta a base — **sem inventar número**.
 
@@ -142,10 +143,13 @@ Lista vazia = **inexistente**, não zero.
 
 ### Apura (recomendado para equipes)
 
-1. Abra https://…/apura
-2. **Cadastre-se** ou entre com login fornecido pela equipe
-3. Ative **modo narrativa** quando quiser Fato + Programa + Clima
-4. Pergunte com **ano + cargo + lugar**
+1. Peça acesso em https://…/#demo (formulário ou WhatsApp)
+2. A equipe libera login
+3. Entre em `/apura/app` com o e-mail/senha fornecidos
+4. Ative **modo narrativa** quando quiser Fato + Programa + Clima
+5. Pergunte com **ano + cargo + lugar**
+
+Cadastro público está **desativado**.
 
 ### MCP (desenvolvedores e IAs)
 

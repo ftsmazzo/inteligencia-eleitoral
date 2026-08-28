@@ -909,7 +909,14 @@ if _LANDING_ASSETS.is_dir():
 
 
 @app.get("/apura")
-def apura() -> HTMLResponse:
+def apura() -> RedirectResponse:
+    """Acesso público ao chat fica sob contato — redireciona para o formulário."""
+    return RedirectResponse(url="/#demo", status_code=302)
+
+
+@app.get("/apura/app")
+def apura_interno() -> HTMLResponse:
+    """Acesso interno (conta já existente). Não linkado na landing."""
     return pagina_apura()
 
 

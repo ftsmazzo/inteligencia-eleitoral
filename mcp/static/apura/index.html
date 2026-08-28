@@ -303,10 +303,9 @@
     <div class="auth-card">
       <img class="auth-brand" src="/apura/assets/logo-apura.jpg" alt="Apura" width="72" height="72" />
       <h1>Apura</h1>
-                    <p class="sub">Conversa eleitoral com dados oficiais · demo com 5 perguntas</p>
+                    <p class="sub">Acesso sob convite · peça demo na página do produto</p>
       <div class="tabs-auth">
         <button type="button" class="active" data-tab="login">Entrar</button>
-        <button type="button" data-tab="registrar">Criar conta</button>
       </div>
       <form id="form-login">
         <label>E-mail</label>
@@ -315,16 +314,11 @@
         <input type="password" id="login-senha" required autocomplete="current-password" />
         <button class="btn btn-primary" type="submit">Entrar</button>
       </form>
-      <form id="form-registrar" class="hidden">
-        <label>Nome</label>
-        <input type="text" id="reg-nome" required minlength="2" />
-        <label>E-mail</label>
-        <input type="email" id="reg-email" required autocomplete="email" />
-        <label>Senha (mín. 8 caracteres)</label>
-        <input type="password" id="reg-senha" required minlength="8" autocomplete="new-password" />
-        <button class="btn btn-primary" type="submit">Criar conta</button>
-      </form>
       <p class="auth-err" id="auth-err"></p>
+      <p style="margin-top:16px;font-size:0.85rem;color:var(--muted);text-align:center">
+        Sem conta? <a href="/#demo" style="color:var(--brand);font-weight:600">Peça acesso</a>
+        ou <a href="https://wa.me/5516996480805?text=Ol%C3%A1%21%20Gostaria%20de%20acesso%20ao%20Apura." target="_blank" rel="noopener" style="color:var(--brand);font-weight:600">WhatsApp</a>
+      </p>
     </div>
   </div>
 
@@ -447,8 +441,6 @@
       btn.addEventListener('click', () => {
         document.querySelectorAll('.tabs-auth button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        $('form-login').classList.toggle('hidden', btn.dataset.tab !== 'login');
-        $('form-registrar').classList.toggle('hidden', btn.dataset.tab !== 'registrar');
         $('auth-err').textContent = '';
       });
     });
@@ -474,23 +466,6 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: $('login-email').value, senha: $('login-senha').value })
-        });
-        entrar(await parseResponse(r));
-      } catch (err) { $('auth-err').textContent = err.message; }
-    });
-
-    $('form-registrar').addEventListener('submit', async e => {
-      e.preventDefault();
-      $('auth-err').textContent = '';
-      try {
-        const r = await fetch(API + '/auth/registrar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            nome: $('reg-nome').value,
-            email: $('reg-email').value,
-            senha: $('reg-senha').value
-          })
         });
         entrar(await parseResponse(r));
       } catch (err) { $('auth-err').textContent = err.message; }

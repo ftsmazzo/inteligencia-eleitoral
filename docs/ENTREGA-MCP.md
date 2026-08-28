@@ -4,7 +4,8 @@ Versão 0.1 · 26/08/2026
 
 **Guia do usuário (página web):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia  
 **Landing comercial:** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/  
-**Apura (chat):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/apura  
+**Pedido de demo:** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/#demo  
+**Apura (interno):** https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/apura/app  
 **Skill para IAs:** download na página /guia ou `docs/SKILL-INTELIGENCIA-ELEITORAL.md`
 
 A pessoa designada **não recebe login do Postgres**. Acesso só via HTTP(S) com token.

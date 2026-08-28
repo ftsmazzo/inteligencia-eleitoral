@@ -17,5 +17,6 @@ Acervo / Radar (trilha B + clima): `docs/ACERVO.md`.
 
 Guia do usuário (página web): https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/guia  
 Landing comercial: https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/  
-Apura (chat): https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/apura  
+Apura (acesso interno, não público): https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/apura/app  
+Pedido de demo (público): https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/#demo  
 Skill portátil (Claude, GPT, Manus, Cursor): `docs/SKILL-INTELIGENCIA-ELEITORAL.md` ou download na página /guia.
