@@ -5,15 +5,18 @@ import html as html_module
 import hashlib
 import os
 import secrets
+import smtplib
 from datetime import date
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 
+import httpx
 import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 from apura.routes import pagina_apura, router as apura_router
 
@@ -39,14 +42,17 @@ _PATCH_TOKENS = Path(__file__).resolve().parent / "sql" / "patch_mcp_tokens.sql"
 _PATCH_PARTIDO = Path(__file__).resolve().parent / "sql" / "patch_partido_linha.sql"
 _PATCH_ACERVO = Path(__file__).resolve().parent / "sql" / "patch_acervo.sql"
 _PATCH_ANALITICO = Path(__file__).resolve().parent / "sql" / "patch_analitico.sql"
+_PATCH_PEDIDO = Path(__file__).resolve().parent / "sql" / "patch_pedido_demo.sql"
 _API_SQL = Path(__file__).resolve().parent / "sql" / "api.sql"
 _TOKENS_READY = False
+_PEDIDO_READY = False
 _API_PARTIDO_READY = False
 _ACERVO_READY = False
 _ANALITICO_READY = False
 _SKILL_PLACEHOLDER = "__SKILL_CONTENT__"
 _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 _DEMO_QUOTA_DEFAULT = 5
+_DEMO_EMAIL_TO = "fredmazzo@gmail.com"
 
 
 def _demo_quota_mcp() -> int:
@@ -77,6 +83,67 @@ def _ensure_tokens_table() -> None:
     with psycopg.connect(url, autocommit=True) as conn:
         conn.execute(sql)
     _TOKENS_READY = True
+
+
+def _ensure_pedido_demo() -> None:
+    global _PEDIDO_READY
+    if _PEDIDO_READY or not _PATCH_PEDIDO.exists():
+        return
+    url = _ddl_url()
+    if not url:
+        return
+    sql = _PATCH_PEDIDO.read_text(encoding="utf-8")
+    with psycopg.connect(url, autocommit=True) as conn:
+        conn.execute(sql)
+    _PEDIDO_READY = True
+
+
+def _demo_destinatario() -> str:
+    return (os.environ.get("DEMO_EMAIL_TO") or _DEMO_EMAIL_TO).strip()
+
+
+def _enviar_email_smtp(assunto: str, corpo: str, reply_to: str) -> bool:
+    host = (os.environ.get("SMTP_HOST") or "").strip()
+    user = (os.environ.get("SMTP_USER") or "").strip()
+    password = (os.environ.get("SMTP_PASSWORD") or "").strip()
+    if not host or not user or not password:
+        return False
+    port = int(os.environ.get("SMTP_PORT") or "587")
+    destin = _demo_destinatario()
+    msg = EmailMessage()
+    msg["Subject"] = assunto
+    msg["From"] = user
+    msg["To"] = destin
+    msg["Reply-To"] = reply_to
+    msg.set_content(corpo)
+    with smtplib.SMTP(host, port, timeout=20) as smtp:
+        smtp.starttls()
+        smtp.login(user, password)
+        smtp.send_message(msg)
+    return True
+
+
+def _enviar_email_formsubmit(nome: str, email: str, empresa: str, mensagem: str) -> bool:
+    destin = _demo_destinatario()
+    payload = {
+        "name": nome,
+        "email": email,
+        "empresa": empresa or "(não informado)",
+        "message": mensagem or "(sem mensagem)",
+        "_subject": f"Apura · Pedido de demo — {nome}",
+        "_template": "table",
+        "_captcha": "false",
+    }
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            r = client.post(
+                f"https://formsubmit.co/ajax/{destin}",
+                json=payload,
+                headers={"Accept": "application/json"},
+            )
+        return r.status_code < 400
+    except Exception:
+        return False
 
 
 def _run_sql_script(conn: psycopg.Connection, text: str) -> None:
@@ -413,6 +480,7 @@ def _seed_acervo_file(conn: psycopg.Connection, seed_path: Path) -> None:
 @app.on_event("startup")
 def _startup_ddl() -> None:
     _ensure_tokens_table()
+    _ensure_pedido_demo()
     _ensure_partido_linha()
     _ensure_acervo()
     _ensure_analitico()
@@ -730,6 +798,65 @@ def guia() -> HTMLResponse:
 
 class GerarTokenIn(BaseModel):
     rotulo: str = Field(min_length=2, max_length=80)
+
+
+class PedidoDemoIn(BaseModel):
+    nome: str = Field(min_length=2, max_length=80)
+    email: EmailStr
+    empresa: str = Field(default="", max_length=120)
+    mensagem: str = Field(default="", max_length=1000)
+
+
+@app.post("/api/pedido-demo")
+def pedido_demo(body: PedidoDemoIn) -> dict[str, str]:
+    """Recebe formulário da landing, grava no banco e envia e-mail."""
+    _ensure_pedido_demo()
+    nome = body.nome.strip()
+    email = str(body.email).strip().lower()
+    empresa = (body.empresa or "").strip()
+    mensagem = (body.mensagem or "").strip()
+    url = _db_url()
+    if url:
+        try:
+            with psycopg.connect(url) as conn:
+                conn.execute(
+                    """
+                    INSERT INTO ctl.pedido_demo (nome, email, empresa, mensagem)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (nome, email, empresa, mensagem),
+                )
+                conn.commit()
+        except Exception:
+            pass
+
+    assunto = f"Apura · Pedido de demo — {nome}"
+    corpo = (
+        f"Novo pedido de demo (landing)\n\n"
+        f"Nome: {nome}\n"
+        f"E-mail: {email}\n"
+        f"Empresa/campanha: {empresa or '(não informado)'}\n\n"
+        f"Mensagem:\n{mensagem or '(sem mensagem)'}\n"
+    )
+    enviado = False
+    try:
+        enviado = _enviar_email_smtp(assunto, corpo, email)
+    except Exception:
+        enviado = False
+    if not enviado:
+        enviado = _enviar_email_formsubmit(nome, email, empresa, mensagem)
+
+    if not enviado and not url:
+        raise HTTPException(503, "Não foi possível registrar o pedido agora. Use o WhatsApp.")
+
+    return {
+        "status": "ok",
+        "mensagem": (
+            "Pedido enviado! Entramos em contato em breve."
+            if enviado
+            else "Pedido registrado. Se preferir, fale agora no WhatsApp."
+        ),
+    }
 
 
 @app.post("/guia/api/gerar-token")

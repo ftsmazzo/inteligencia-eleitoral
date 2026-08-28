@@ -10,6 +10,7 @@ COPY sql/patch_apura.sql /app/sql/patch_apura.sql
 COPY sql/patch_partido_linha.sql /app/sql/patch_partido_linha.sql
 COPY sql/patch_acervo.sql /app/sql/patch_acervo.sql
 COPY sql/patch_analitico.sql /app/sql/patch_analitico.sql
+COPY sql/patch_pedido_demo.sql /app/sql/patch_pedido_demo.sql
 COPY sql/api.sql /app/sql/api.sql
 COPY mcp/radar_client.py /app/radar_client.py
 COPY mcp/clima_motores.py /app/clima_motores.py
