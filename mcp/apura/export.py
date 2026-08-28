@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import html as html_module
 import io
-import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -116,63 +116,256 @@ def exportar_xlsx(dados: dict[str, Any] | None, titulo: str = "Apura") -> bytes:
     return buf.getvalue()
 
 
+def _esc(text: str) -> str:
+    return html_module.escape(text, quote=True)
+
+
+def _inline_md(text: str) -> str:
+    s = _esc(text)
+    s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
+    s = re.sub(
+        r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
+        r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>',
+        s,
+    )
+    s = re.sub(
+        r"(https?://[^\s<]{80,})",
+        r'<a href="\1" target="_blank" rel="noopener noreferrer">abrir link</a>',
+        s,
+    )
+    return s
+
+
+def _md_block(text: str) -> str:
+    if not text.strip():
+        return ""
+    out: list[str] = []
+    in_ul = False
+
+    def close_ul() -> None:
+        nonlocal in_ul
+        if in_ul:
+            out.append("</ul>")
+            in_ul = False
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            close_ul()
+            continue
+        if stripped.startswith("### "):
+            close_ul()
+            out.append(f"<h4>{_inline_md(stripped[4:])}</h4>")
+        elif stripped.startswith("## "):
+            close_ul()
+            out.append(f"<h3>{_inline_md(stripped[3:])}</h3>")
+        elif stripped.startswith("- ") or stripped.startswith("* "):
+            if not in_ul:
+                out.append("<ul>")
+                in_ul = True
+            out.append(f"<li>{_inline_md(stripped[2:])}</li>")
+        else:
+            close_ul()
+            out.append(f"<p>{_inline_md(stripped)}</p>")
+    close_ul()
+    return "\n".join(out)
+
+
+def _secoes_from_md(text: str) -> list[tuple[str, str]]:
+    parts = re.split(r"^### (.+)$", text, flags=re.MULTILINE)
+    if len(parts) <= 1:
+        return [("Análise", text.strip())]
+    secoes: list[tuple[str, str]] = []
+    intro = parts[0].strip()
+    if intro:
+        secoes.append(("Introdução", intro))
+    for i in range(1, len(parts), 2):
+        titulo = parts[i].strip()
+        corpo = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        secoes.append((titulo, corpo))
+    return secoes
+
+
+def _classe_secao(titulo: str) -> str:
+    t = titulo.lower()
+    if "fato" in t:
+        return "sec-fato"
+    if "programa" in t or "acervo" in t:
+        return "sec-acervo"
+    if "clima" in t:
+        return "sec-clima"
+    if "implica" in t or "lacuna" in t or "próximo" in t:
+        return "sec-implica"
+    return "sec-default"
+
+
+def _html_tabela(rows: list[dict[str, Any]], max_cols: int = 8) -> str:
+    if not rows:
+        return ""
+    keys: list[str] = []
+    seen: set[str] = set()
+    prefer = (
+        "nm_urna", "nm_candidato", "qt_votos", "sg_partido", "vr_despesa", "vr_receita",
+        "ds_sit_tot_turno", "ano", "sg_uf", "ds_cargo", "titulo", "fonte", "resumo",
+    )
+    for k in prefer:
+        if any(k in row for row in rows) and k not in seen:
+            seen.add(k)
+            keys.append(k)
+    for row in rows:
+        for k in row:
+            if k not in seen and not k.startswith("_"):
+                seen.add(k)
+                keys.append(k)
+    keys = keys[:max_cols]
+    parts = ["<div class='table-wrap'><table><thead><tr>"]
+    parts.extend(f"<th>{_esc(k)}</th>" for k in keys)
+    parts.append("</tr></thead><tbody>")
+    for row in rows[:80]:
+        parts.append("<tr>")
+        parts.extend(f"<td>{_esc(str(row.get(k, '')))}</td>" for k in keys)
+        parts.append("</tr>")
+    parts.append("</tbody></table></div>")
+    if len(rows) > 80:
+        parts.append(f"<p class='table-note'>Exibindo 80 de {len(rows)} linhas. Exporte XLSX para o conjunto completo.</p>")
+    return "".join(parts)
+
+
+_REPORT_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap');
+:root {
+  --ink: #0c1222; --muted: #5c6478; --line: #e2e8f0;
+  --brand: #0d4f4a; --brand-light: #e6f4f2;
+  --acervo: #4338ca; --acervo-light: #eef2ff;
+  --clima: #b45309; --clima-light: #fffbeb;
+  --implica: #475569; --implica-light: #f1f5f9;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: "DM Sans", system-ui, sans-serif;
+  color: var(--ink); line-height: 1.65; margin: 0; background: #f4f6fa;
+}
+.page { max-width: 920px; margin: 0 auto; padding: 32px 20px 48px; }
+.hero {
+  background: linear-gradient(135deg, var(--brand) 0%, #1a7a72 100%);
+  color: #fff; border-radius: 20px; padding: 32px 36px; margin-bottom: 28px;
+  box-shadow: 0 16px 48px rgba(13,79,74,.22);
+}
+.hero-kicker { font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .85; }
+.hero h1 { font-family: Fraunces, serif; font-size: 1.75rem; margin: 10px 0 8px; line-height: 1.2; }
+.hero-meta { font-size: .88rem; opacity: .9; }
+.trilhas { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.pill {
+  display: inline-block; padding: 5px 12px; border-radius: 999px;
+  font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+}
+.pill-fato { background: var(--brand-light); color: var(--brand); }
+.pill-acervo { background: var(--acervo-light); color: var(--acervo); }
+.pill-clima { background: var(--clima-light); color: var(--clima); }
+.sec {
+  background: #fff; border: 1px solid var(--line); border-radius: 16px;
+  padding: 24px 28px; margin-bottom: 18px; border-left: 4px solid var(--brand);
+}
+.sec-fato { border-left-color: var(--brand); }
+.sec-acervo { border-left-color: var(--acervo); background: linear-gradient(90deg, var(--acervo-light) 0%, #fff 28%); }
+.sec-clima { border-left-color: var(--clima); background: linear-gradient(90deg, var(--clima-light) 0%, #fff 28%); }
+.sec-implica { border-left-color: var(--implica); background: linear-gradient(90deg, var(--implica-light) 0%, #fff 28%); }
+.sec h2 {
+  font-family: Fraunces, serif; font-size: 1.15rem; margin: 0 0 14px; color: var(--brand);
+}
+.sec-acervo h2 { color: var(--acervo); }
+.sec-clima h2 { color: var(--clima); }
+.sec-implica h2 { color: var(--implica); }
+.sec h3 { font-size: 1rem; margin: 18px 0 8px; }
+.sec h4 { font-size: .92rem; margin: 14px 0 6px; color: var(--muted); }
+.sec p { margin: 0 0 12px; color: #334155; }
+.sec ul { margin: 0 0 12px 1.2rem; color: #334155; }
+.sec li { margin-bottom: 6px; }
+.sec strong { color: var(--ink); }
+.sec a { color: #1a5f8a; }
+.appendix { margin-top: 32px; }
+.appendix h2 {
+  font-family: Fraunces, serif; font-size: 1.2rem; color: var(--brand);
+  margin: 0 0 16px; padding-bottom: 10px; border-bottom: 2px solid var(--brand-light);
+}
+.appendix-block { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+.appendix-block h3 { font-size: .95rem; margin: 0 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: var(--brand-light); color: var(--brand); font-weight: 600; }
+tr:nth-child(even) td { background: #f8fafc; }
+.table-note { font-size: .78rem; color: var(--muted); margin-top: 8px; }
+.footer {
+  margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line);
+  font-size: .82rem; color: var(--muted); text-align: center;
+}
+@media print {
+  body { background: #fff; }
+  .page { padding: 0; max-width: none; }
+  .hero { box-shadow: none; }
+  .sec { break-inside: avoid; }
+}
+"""
+
+
 def exportar_html(
     dados: dict[str, Any] | None,
     conteudo_md: str,
     titulo: str = "Apura · Relatório",
 ) -> str:
     camadas = _linhas_por_camada(dados)
-    esc = html_module.escape
+    gerado = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+    secoes = _secoes_from_md(conteudo_md or "")
+
     parts = [
         "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='utf-8'>",
-        f"<title>{esc(titulo)}</title>",
-        "<style>",
-        "body{font-family:system-ui,sans-serif;max-width:960px;margin:40px auto;padding:0 24px;color:#0c1222;line-height:1.6}",
-        "h1{font-size:1.6rem;color:#0d4f4a;border-bottom:2px solid #e6f4f2;padding-bottom:12px}",
-        "h2{font-size:1.1rem;color:#0d4f4a;margin:28px 0 12px}",
-        "h3{font-size:0.95rem;color:#64748b;margin:20px 0 8px;text-transform:uppercase;letter-spacing:.04em}",
-        "table{border-collapse:collapse;width:100%;margin:16px 0;font-size:0.88rem}",
-        "th,td{border:1px solid #e2e8f0;padding:8px 10px;text-align:left;vertical-align:top}",
-        "th{background:#e6f4f2}",
-        "tr:nth-child(even){background:#f8fafc}",
-        ".prose{line-height:1.65;color:#334155;white-space:pre-wrap;margin:20px 0}",
-        ".badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.75rem;font-weight:600;margin-right:6px}",
-        ".badge-fato{background:#dbeafe;color:#1e40af}",
-        ".badge-acervo{background:#fef3c7;color:#92400e}",
-        ".badge-clima{background:#fce7f3;color:#9d174d}",
-        ".meta{color:#64748b;font-size:0.85rem;margin-top:32px}",
-        "</style></head><body>",
-        f"<h1>{esc(titulo)}</h1>",
-        "<p><span class='badge badge-fato'>Fato</span><span class='badge badge-acervo'>Acervo</span>"
-        "<span class='badge badge-clima'>Clima</span></p>",
-        f"<div class='prose'>{esc(conteudo_md)}</div>",
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>",
+        f"<title>{_esc(titulo)}</title>",
+        f"<style>{_REPORT_CSS}</style></head><body><div class='page'>",
+        "<header class='hero'>",
+        "<div class='hero-kicker'>Inteligência Eleitoral Brasil · Apura</div>",
+        f"<h1>{_esc(titulo)}</h1>",
+        f"<p class='hero-meta'>Relatório analítico · Gerado em { _esc(gerado) }</p>",
+        "</header>",
+        "<div class='trilhas'>",
+        "<span class='pill pill-fato'>Trilha A · Fato</span>",
+        "<span class='pill pill-acervo'>Trilha B · Acervo</span>",
+        "<span class='pill pill-clima'>Trilha C · Clima</span>",
+        "</div>",
     ]
 
-    for label, key, badge in (
-        ("Dados oficiais (urna / contexto)", "fato", "badge-fato"),
-        ("Acervo (programas / fichas)", "acervo", "badge-acervo"),
-        ("Clima (indício)", "clima", "badge-clima"),
-    ):
-        rows = camadas[key]
-        if not rows:
+    for titulo_sec, corpo in secoes:
+        cls = _classe_secao(titulo_sec)
+        html_corpo = _md_block(corpo)
+        if not html_corpo:
             continue
-        parts.append(f"<h2><span class='badge {badge}'>{label.split()[0]}</span> {esc(label)}</h2>")
-        keys: list[str] = []
-        seen: set[str] = set()
-        for row in rows:
-            for k in row:
-                if k not in seen:
-                    seen.add(k)
-                    keys.append(k)
-        parts.append("<table><thead><tr>")
-        parts.extend(f"<th>{esc(k)}</th>" for k in keys)
-        parts.append("</tr></thead><tbody>")
-        for row in rows:
-            parts.append("<tr>")
-            parts.extend(f"<td>{esc(str(row.get(k, '')))}</td>" for k in keys)
-            parts.append("</tr>")
-        parts.append("</tbody></table>")
+        parts.append(f"<section class='sec {cls}'>")
+        parts.append(f"<h2>{_esc(titulo_sec)}</h2>")
+        parts.append(html_corpo)
+        parts.append("</section>")
 
-    parts.append(f"<p class='meta'>Gerado em {esc(datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M UTC'))} · Inteligência Eleitoral Brasil</p>")
-    parts.append("</body></html>")
+    has_dados = any(camadas[k] for k in camadas)
+    if has_dados:
+        parts.append("<div class='appendix'>")
+        parts.append("<h2>Anexo · dados consultados</h2>")
+        for label, key in (
+            ("Urna e contexto oficial", "fato"),
+            ("Acervo (trechos indexados)", "acervo"),
+            ("Clima (indícios)", "clima"),
+        ):
+            rows = camadas[key]
+            if not rows:
+                continue
+            parts.append("<div class='appendix-block'>")
+            parts.append(f"<h3>{_esc(label)} · {len(rows)} registro(s)</h3>")
+            parts.append(_html_tabela(rows))
+            parts.append("</div>")
+        parts.append("</div>")
+
+    parts.append(
+        "<footer class='footer'>Inteligência Eleitoral Brasil · Fontes: TSE, IBGE, MDS, Câmara · "
+        "Cifra só na Trilha A · Acervo e clima são contexto, não substituem urna</footer>"
+    )
+    parts.append("</div></body></html>")
     return "".join(parts)
