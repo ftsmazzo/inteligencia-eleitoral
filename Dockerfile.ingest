@@ -4,5 +4,6 @@ COPY mcp/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY scripts /app/scripts
 COPY sql /app/sql
+RUN mkdir -p /app/docs /app/data/raw /app/data/staging
 ENV PYTHONUNBUFFERED=1
 CMD ["python", "scripts/job_complementos.py"]

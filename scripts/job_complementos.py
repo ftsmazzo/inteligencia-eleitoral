@@ -72,10 +72,16 @@ def main() -> None:
     anos = [a.strip() for a in args.anos_contas.split(",") if a.strip()]
     _run("carregar_contas.py", *anos)
     _run("carregar_parlamento.py")
-    _run("fechar_base.py")
 
-    # patches analítico / grants (idempotente)
-    for patch in ("patch_populacao.sql", "patch_social.sql", "patch_contas.sql", "patch_parlamento.sql", "patch_analitico.sql"):
+    # patches analítico / grants (idempotente) — sem fechar_base (exige docs/ no repo)
+    for patch in (
+        "patch_ref_dicionario.sql",
+        "patch_populacao.sql",
+        "patch_social.sql",
+        "patch_contas.sql",
+        "patch_parlamento.sql",
+        "patch_analitico.sql",
+    ):
         p = ROOT / "sql" / patch
         if p.exists():
             with psycopg.connect(dsn(), autocommit=True) as conn:
