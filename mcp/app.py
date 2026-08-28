@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html as html_module
+import hashlib
 import os
 import secrets
 from datetime import date
@@ -154,6 +155,198 @@ def _ensure_analitico() -> None:
 
 
 _SEED_PLANOS = _SEED_DIR / "acervo_planos_2026.jsonl"
+_UFS_BR = (
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+    "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+)
+
+
+def _upsert_acervo_doc(conn: psycopg.Connection, doc: dict) -> None:
+    import json
+    import uuid as _uuid
+
+    dig = doc.get("sha256")
+    if not dig:
+        return
+    row = conn.execute(
+        "SELECT id FROM acervo.documento WHERE sha256 = %s AND tipo = %s",
+        (dig, doc.get("tipo") or "plano_governo"),
+    ).fetchone()
+    expected = len([c for c in (doc.get("chunks") or []) if (c.get("texto") or "").strip()])
+    if row:
+        n = conn.execute(
+            "SELECT count(*) FROM acervo.chunk WHERE documento_id = %s",
+            (row[0],),
+        ).fetchone()[0]
+        if n == expected and expected > 0:
+            return
+        doc_id = row[0]
+        conn.execute("DELETE FROM acervo.chunk WHERE documento_id = %s", (doc_id,))
+        conn.execute(
+            """
+            UPDATE acervo.documento SET
+              titulo=%s, descricao=%s, nivel=%s, ano_eleicao=%s,
+              vigencia_inicio=%s, vigencia_fim=%s, escopo=%s, sg_uf=%s,
+              nm_candidato=%s, cargo=%s, tags=%s, fonte_orgao=%s,
+              id_base_raw=%s, meta=%s::jsonb, ativo=true, atualizado_em=now()
+            WHERE id=%s
+            """,
+            (
+                doc["titulo"],
+                doc.get("descricao") or "",
+                doc.get("nivel") or "referencia",
+                doc.get("ano_eleicao"),
+                doc.get("vigencia_inicio"),
+                doc.get("vigencia_fim"),
+                doc.get("escopo") or "BR",
+                doc.get("sg_uf"),
+                doc.get("nm_candidato"),
+                doc.get("cargo"),
+                doc.get("tags") or [],
+                doc.get("fonte_orgao"),
+                doc.get("id_base_raw"),
+                json.dumps(doc.get("meta") or {}, ensure_ascii=False),
+                doc_id,
+            ),
+        )
+    else:
+        doc_id = _uuid.uuid4()
+        conn.execute(
+            """
+            INSERT INTO acervo.documento (
+              id, tipo, titulo, descricao, nivel, ano_eleicao,
+              vigencia_inicio, vigencia_fim, escopo, sg_uf, sg_partido,
+              nm_candidato, cargo, tags, fonte_orgao, sha256,
+              id_base_raw, meta
+            ) VALUES (
+              %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
+            )
+            """,
+            (
+                doc_id,
+                doc.get("tipo") or "plano_governo",
+                doc["titulo"],
+                doc.get("descricao") or "",
+                doc.get("nivel") or "referencia",
+                doc.get("ano_eleicao"),
+                doc.get("vigencia_inicio"),
+                doc.get("vigencia_fim"),
+                doc.get("escopo") or "BR",
+                doc.get("sg_uf"),
+                doc.get("sg_partido"),
+                doc.get("nm_candidato"),
+                doc.get("cargo"),
+                doc.get("tags") or [],
+                doc.get("fonte_orgao"),
+                dig,
+                doc.get("id_base_raw"),
+                json.dumps(doc.get("meta") or {}, ensure_ascii=False),
+            ),
+        )
+    for ch in doc.get("chunks") or []:
+        texto = (ch.get("texto") or "").strip()
+        if not texto:
+            continue
+        conn.execute(
+            """
+            INSERT INTO acervo.chunk (documento_id, ord, secao, texto, token_count)
+            VALUES (%s,%s,%s,%s,%s)
+            """,
+            (
+                doc_id,
+                int(ch.get("ord") or 0),
+                ch.get("secao") or "",
+                texto,
+                max(1, len(texto) // 4),
+            ),
+        )
+
+
+def _texto_ficha_territorial(conn: psycopg.Connection, uf: str, ano: int) -> str:
+    row = conn.execute(
+        """
+        SELECT
+          count(DISTINCT v.sq_candidato) FILTER (WHERE v.cd_cargo = 6),
+          count(DISTINCT v.sq_candidato) FILTER (
+            WHERE v.cd_cargo = 3 AND api._eh_eleito(v.ds_sit_tot_turno)
+          ),
+          coalesce(sum(v.qt_votos) FILTER (WHERE v.cd_cargo = 3 AND v.nr_turno = 1), 0)::bigint
+        FROM eleicao.votacao v
+        WHERE v.ano = %s AND v.sg_uf = %s
+        """,
+        (ano, uf),
+    ).fetchone()
+    ele = conn.execute(
+        """
+        SELECT sg_partido, count(*)::int
+        FROM (
+          SELECT DISTINCT ON (sq_candidato) sq_candidato, sg_partido
+          FROM eleicao.votacao
+          WHERE ano = %s AND sg_uf = %s AND cd_cargo = 6 AND api._eh_eleito(ds_sit_tot_turno)
+        ) t
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 5
+        """,
+        (ano, uf),
+    ).fetchall()
+    eleitorado = conn.execute(
+        "SELECT coalesce(sum(qt_eleitores), 0)::bigint FROM eleicao.eleitorado WHERE ano = %s AND sg_uf = %s",
+        (ano, uf),
+    ).fetchone()[0]
+    linhas = [
+        f"# Perfil eleitoral {uf} · urna {ano}",
+        "",
+        f"Eleitorado cadastrado (perfil TSE, soma municipal): {eleitorado:,} eleitores.",
+        f"Candidatos a deputado federal distintos na urna: {row[0] or 0}.",
+        f"Governador eleito (turno registrado): {row[1] or 0}.",
+        f"Votos nominais 1º turno governador (soma UF): {row[2] or 0:,}.",
+        "",
+        "## Top partidos — cadeiras deputado federal",
+    ]
+    if ele:
+        linhas.extend(f"- {sg}: {n} eleito(s)" for sg, n in ele)
+    else:
+        linhas.append("- (sem eleitos federais neste filtro)")
+    linhas.extend(
+        [
+            "",
+            "Fonte: Trilha A (eleicao.votacao, eleicao.eleitorado). "
+            "Texto derivado — cifras oficiais via api.eleitos/votacao.",
+        ]
+    )
+    return "\n".join(linhas)
+
+
+def _bootstrap_fichas_territoriais(conn: psycopg.Connection, ano: int = 2022) -> None:
+    n = conn.execute(
+        "SELECT count(*) FROM acervo.documento WHERE ativo AND tipo = 'ficha_territorial' AND ano_eleicao = %s",
+        (ano,),
+    ).fetchone()[0]
+    if n >= len(_UFS_BR):
+        return
+    print(f"[acervo] bootstrap fichas territoriais {ano} ({len(_UFS_BR)} UFs)")
+    for uf in _UFS_BR:
+        body = _texto_ficha_territorial(conn, uf, ano)
+        digest = hashlib.sha256(f"ficha_{uf}_{ano}_{body[:200]}".encode()).hexdigest()
+        _upsert_acervo_doc(
+            conn,
+            {
+                "tipo": "ficha_territorial",
+                "titulo": f"Ficha territorial {uf} · {ano}",
+                "descricao": f"Perfil eleitoral derivado da urna {ano} para {uf}.",
+                "nivel": "referencia",
+                "ano_eleicao": ano,
+                "vigencia_inicio": f"{ano}-01-01",
+                "vigencia_fim": f"{ano}-12-31",
+                "escopo": "UF",
+                "sg_uf": uf,
+                "tags": ["ficha_territorial", uf, str(ano)],
+                "fonte_orgao": "Derivado Trilha A · TSE",
+                "sha256": digest,
+                "id_base_raw": "acervo_ficha_territorial",
+                "meta": {"uf": uf, "ano": ano},
+                "chunks": [{"ord": 0, "secao": f"Perfil {uf}", "texto": body}],
+            },
+        )
 
 
 def _ensure_acervo() -> None:
@@ -184,6 +377,7 @@ def _ensure_acervo() -> None:
                 pass
             for seed_path in sorted(_SEED_DIR.glob("acervo_*.jsonl")):
                 _seed_acervo_file(conn, seed_path)
+            _bootstrap_fichas_territoriais(conn)
         _ACERVO_READY = True
     except Exception:
         _ACERVO_READY = False
@@ -192,7 +386,6 @@ def _ensure_acervo() -> None:
 def _seed_acervo_file(conn: psycopg.Connection, seed_path: Path) -> None:
     """Carga idempotente de um arquivo seed JSONL (sha256 por documento)."""
     import json
-    import uuid as _uuid
 
     if not seed_path.exists():
         return
@@ -203,101 +396,7 @@ def _seed_acervo_file(conn: psycopg.Connection, seed_path: Path) -> None:
             if not line:
                 continue
             doc = json.loads(line)
-            dig = doc.get("sha256")
-            if not dig:
-                continue
-            row = conn.execute(
-                "SELECT id FROM acervo.documento WHERE sha256 = %s AND tipo = %s",
-                (dig, doc.get("tipo") or "plano_governo"),
-            ).fetchone()
-            expected = len([c for c in (doc.get("chunks") or []) if (c.get("texto") or "").strip()])
-            if row:
-                n = conn.execute(
-                    "SELECT count(*) FROM acervo.chunk WHERE documento_id = %s",
-                    (row[0],),
-                ).fetchone()[0]
-                if n == expected and expected > 0:
-                    continue
-                doc_id = row[0]
-                conn.execute("DELETE FROM acervo.chunk WHERE documento_id = %s", (doc_id,))
-                conn.execute(
-                    """
-                    UPDATE acervo.documento SET
-                      titulo=%s, descricao=%s, nivel=%s, ano_eleicao=%s,
-                      vigencia_inicio=%s, vigencia_fim=%s, escopo=%s, sg_uf=%s,
-                      nm_candidato=%s, cargo=%s, tags=%s, fonte_orgao=%s,
-                      id_base_raw=%s, meta=%s::jsonb, ativo=true, atualizado_em=now()
-                    WHERE id=%s
-                    """,
-                    (
-                        doc["titulo"],
-                        doc.get("descricao") or "",
-                        doc.get("nivel") or "referencia",
-                        doc.get("ano_eleicao"),
-                        doc.get("vigencia_inicio"),
-                        doc.get("vigencia_fim"),
-                        doc.get("escopo") or "BR",
-                        doc.get("sg_uf"),
-                        doc.get("nm_candidato"),
-                        doc.get("cargo"),
-                        doc.get("tags") or [],
-                        doc.get("fonte_orgao"),
-                        doc.get("id_base_raw"),
-                        json.dumps(doc.get("meta") or {}, ensure_ascii=False),
-                        doc_id,
-                    ),
-                )
-            else:
-                doc_id = _uuid.uuid4()
-                conn.execute(
-                    """
-                    INSERT INTO acervo.documento (
-                      id, tipo, titulo, descricao, nivel, ano_eleicao,
-                      vigencia_inicio, vigencia_fim, escopo, sg_uf, sg_partido,
-                      nm_candidato, cargo, tags, fonte_orgao, sha256,
-                      id_base_raw, meta
-                    ) VALUES (
-                      %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
-                    )
-                    """,
-                    (
-                        doc_id,
-                        doc.get("tipo") or "plano_governo",
-                        doc["titulo"],
-                        doc.get("descricao") or "",
-                        doc.get("nivel") or "referencia",
-                        doc.get("ano_eleicao"),
-                        doc.get("vigencia_inicio"),
-                        doc.get("vigencia_fim"),
-                        doc.get("escopo") or "BR",
-                        doc.get("sg_uf"),
-                        doc.get("sg_partido"),
-                        doc.get("nm_candidato"),
-                        doc.get("cargo"),
-                        doc.get("tags") or [],
-                        doc.get("fonte_orgao"),
-                        dig,
-                        doc.get("id_base_raw"),
-                        json.dumps(doc.get("meta") or {}, ensure_ascii=False),
-                    ),
-                )
-            for ch in doc.get("chunks") or []:
-                texto = (ch.get("texto") or "").strip()
-                if not texto:
-                    continue
-                conn.execute(
-                    """
-                    INSERT INTO acervo.chunk (documento_id, ord, secao, texto, token_count)
-                    VALUES (%s,%s,%s,%s,%s)
-                    """,
-                    (
-                        doc_id,
-                        int(ch.get("ord") or 0),
-                        ch.get("secao") or "",
-                        texto,
-                        max(1, len(texto) // 4),
-                    ),
-                )
+            _upsert_acervo_doc(conn, doc)
 
 
 @app.on_event("startup")
@@ -567,8 +666,12 @@ def health() -> dict[str, Any]:
             with psycopg.connect(url) as conn:
                 n_doc = conn.execute("SELECT count(*) FROM acervo.documento WHERE ativo").fetchone()[0]
                 n_chunk = conn.execute("SELECT count(*) FROM acervo.chunk").fetchone()[0]
+                n_ficha = conn.execute(
+                    "SELECT count(*) FROM acervo.documento WHERE ativo AND tipo = 'ficha_territorial'"
+                ).fetchone()[0]
                 out["acervo_docs"] = int(n_doc)
                 out["acervo_chunks"] = int(n_chunk)
+                out["acervo_fichas"] = int(n_ficha)
                 out["db_date"] = str(conn.execute("SELECT CURRENT_DATE").fetchone()[0])
         except Exception as e:
             out["acervo_stats_erro"] = type(e).__name__

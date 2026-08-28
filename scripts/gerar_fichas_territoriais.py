@@ -137,8 +137,14 @@ def main() -> None:
     ufs = [u.upper() for u in args.uf] if args.uf else UFS
 
     load_env()
-    with psycopg.connect(dsn()) as conn:
-        docs = gerar_docs(conn, ufs, args.ano)
+    try:
+        with psycopg.connect(dsn(), connect_timeout=15) as conn:
+            docs = gerar_docs(conn, ufs, args.ano)
+    except Exception as e:
+        raise SystemExit(
+            f"Postgres indisponível daqui ({type(e).__name__}). "
+            "Rode no servidor/EasyPanel: python scripts/gerar_fichas_territoriais.py --so-seed"
+        ) from e
     escrever_seed(docs)
     if args.so_seed:
         return
