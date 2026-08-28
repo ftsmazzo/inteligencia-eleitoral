@@ -283,6 +283,10 @@
     .badge-soon { background: var(--gold-soft); color: var(--gold); }
 
     /* Roadmap */
+    #roadmap {
+      padding-top: 88px;
+      padding-bottom: 96px;
+    }
     .roadmap { display: flex; gap: 0; overflow-x: auto; padding-bottom: 8px; }
     .road-item {
       flex: 1; min-width: 200px; padding: 24px 20px; border-left: 2px solid var(--line);
@@ -300,10 +304,16 @@
     .road-item h4 { margin: 18px 0 8px; font-size: 0.95rem; }
     .road-item p { font-size: 0.82rem; color: var(--muted); }
 
-    /* CTA */
+    /* CTA — afastado do roadmap */
+    .cta-band {
+      padding: 48px 0 80px;
+    }
     .cta {
-      margin: 72px 24px 80px; max-width: 1120px; margin-left: auto; margin-right: auto;
-      padding: 56px 40px; border-radius: 28px; text-align: center;
+      margin: 0 auto;
+      max-width: 1120px;
+      padding: 56px 40px;
+      border-radius: 28px;
+      text-align: center;
       background: linear-gradient(135deg, rgba(20,184,166,.15), rgba(99,102,241,.1));
       border: 1px solid rgba(20,184,166,.3);
       box-shadow: 0 24px 80px rgba(20,184,166,.12);
@@ -628,7 +638,7 @@
       </div>
     </section>
 
-    <section id="roadmap" class="light" style="padding-bottom: 48px;">
+    <section id="roadmap" class="light">
       <div class="wrap">
         <div class="section-head reveal">
           <h2>Roadmap · produto em expansão</h2>
@@ -659,6 +669,8 @@
       </div>
     </section>
 
+    <section class="cta-band" aria-label="Pedido de demonstração">
+    <div class="wrap">
     <div class="cta reveal" id="demo">
       <h2>Mostre ao seu cliente em 5 minutos</h2>
       <p class="cta-lead">Peça uma demo comercial pelo formulário — chega no nosso e-mail. Ou fale direto no WhatsApp.</p>
@@ -690,6 +702,8 @@
       </div>
       <p class="cta-note">Os pedidos vão para fredmazzo@gmail.com · WhatsApp (16) 99648-0805</p>
     </div>
+    </div>
+    </section>
   </main>
 
   <footer>
