@@ -340,7 +340,8 @@ MCP_TOOLS: list[dict] = [
         "function": {
             "name": "consultar_acervo",
             "description": (
-                "Acervo semântico: planos de governo, fichas territoriais, notas TSE. "
+                "Acervo semântico: planos, fichas territoriais, notas TSE, glossário e playbooks. "
+                "Tema/estratégia: tipo=playbook_estrategia ou glossario. "
                 "Para candidato: query=tema, ano_eleicao, tipo=plano_governo, nm_candidato. "
                 "Cifra no texto é pista, não fato."
             ),
@@ -349,7 +350,13 @@ MCP_TOOLS: list[dict] = [
                 "properties": {
                     "query": {"type": "string"},
                     "ano_eleicao": {"type": "integer"},
-                    "tipo": {"type": "string", "description": "plano_governo|ficha_territorial|nota_tse|programa_partido"},
+                    "tipo": {
+                        "type": "string",
+                        "description": (
+                            "plano_governo|ficha_territorial|nota_tse|programa_partido|"
+                            "glossario|playbook_estrategia"
+                        ),
+                    },
                     "uf": {"type": "string"},
                     "sg_partido": {"type": "string"},
                     "nm_candidato": {"type": "string"},

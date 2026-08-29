@@ -36,11 +36,16 @@ Cada documento: `tipo`, `vigencia_inicio`, `vigencia_fim`, `ano_eleicao`, `escop
 1. **Planos de governo — presidente** (2014, 2018, 2022; 2026 quando publicado)  
 2. **Programas / estatutos partidários** por ciclo (usar linha PL↔PSL, MDB↔PMDB via `ref.partido_linha`)  
 3. **Resoluções e notas TSE** do ciclo (coligação 2014 ≠ federação 2022, calendário, cláusulas)  
-4. **Fichas territoriais curtas** geradas da Trilha A (ex.: perfil eleitoral UF) — texto derivado, não PDF externo
+4. **Fichas territoriais curtas** geradas da Trilha A (ex.: perfil eleitoral UF) — texto derivado, não PDF externo  
+5. **Glossário de campanha** (`tipo=glossario`) — FEFC, quociente, turno, sq_candidato, trilhas A/B/C  
+6. **Playbooks de estratégia** (`tipo=playbook_estrategia`) — gasto×voto, cadeiras, território, ângulo, risco, pergunta certa
+
+Seeds versionados em `mcp/seed/acervo_*.jsonl` (bootstrap no startup do `mcp-api`).
 
 ### Depois
 
 - Planos de governador (UF sob demanda)  
+- **Promoção de planos presidente 2018/2022** a partir de PDF oficial em `data/raw/` (ainda não no seed — não inventar texto de plano)  
 - Resumos semânticos de proposições/votos Câmara por tema + ano  
 - Trechos de legislação eleitoral vigente por ano (não PDF monolítico)
 
@@ -49,7 +54,8 @@ Cada documento: `tipo`, `vigencia_inicio`, `vigencia_fim`, `ano_eleicao`, `escop
 - Clipping como fato  
 - Pesquisa eleitoral sem módulo próprio  
 - PDF temático NE9 (ANP, CNES…)  
-- Stream bruto do Radar gravado como documento “oficial”
+- Stream bruto do Radar gravado como documento “oficial”  
+- Manual genérico de marketing político sem vigência/escopo
 
 ---
 
@@ -170,8 +176,10 @@ data/raw/acervo_nota_tse/<YYYY-MM-DD>/
 |---|---|
 | 0 | Este doc + DDL `patch_acervo.sql` |
 | 1 | Extensão pgvector no Postgres + tool `consultar_acervo` (stub → busca lexical se embedding ausente) |
-| 2 | Carga planos presidente 2018 e 2022 |
+| 2 | Carga planos presidente 2018 e 2022 (**pendente** — promover PDF oficial para `data/raw/`) |
 | 2b | **Carga planos presidente 2026** (seed `mcp/seed/acervo_planos_2026.jsonl` + bootstrap no startup) |
+| 2c | **Glossário + playbooks + notas TSE extras** (`acervo_glossario_*.jsonl`, `acervo_playbook_*.jsonl`) |
+| 2d | **Fichas territoriais 2018 e 2022** (bootstrap Trilha A, 27 UFs) |
 | 3 | Conector `consultar_clima` → API Radar (env `RADAR_API_URL` + token) |
 | 4 | Apura: orquestrador chama B/C; redator com template fato/programa/clima |
 | 5 | Programas partidários + notas TSE |

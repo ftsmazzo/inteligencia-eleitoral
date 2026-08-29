@@ -3,6 +3,7 @@
 NARRATIVA_ORCHESTRATOR = """
 MODO NARRATIVA ATIVO: além dos fatos, dispare consultar_acervo (programa/compromisso) e consultar_clima (news 168h)
 quando a pergunta envolver por quê, narrativa, o que dizer, como amarrar, adversário, tema de campanha.
+Se pedirem método/estratégia/playbook/“como perguntar”, consulte também tipo=playbook_estrategia ou glossario.
 Use consultar_acervo_comparar quando pedirem evolução de promessa entre anos (2018 vs 2022 vs 2026).
 """
 
@@ -55,10 +56,13 @@ Região / partido:
 
 Acervo (Trilha B):
 - Programa / plano / compromisso / narrativa → consultar_acervo ou consultar_acervo_comparar.
-- Planos: presidente 2018/2022/2026 quando carregados; 2026 é o ciclo atual.
-- Ficha territorial → tipo=ficha_territorial, query=perfil eleitoral, uf=XX.
+- Planos: presidente 2026 quando carregados; 2018/2022 só se existirem no banco (senão admita lacuna).
+- Glossário (FEFC, quociente, federação, turno, sq_candidato) → tipo=glossario.
+- Playbook de estratégia (gasto×voto, cadeiras, território, ângulo, risco, pergunta certa) → tipo=playbook_estrategia.
+- Ficha territorial → tipo=ficha_territorial, query=perfil eleitoral, uf=XX (anos 2018/2022 quando bootstrap).
 - Notas TSE → tipo=nota_tse.
 - Para candidato: nm_candidato + query=tema (não junte nome+tema na query).
+- Pedidos “como perguntar / playbook / o que é FEFC” → acervo glossario ou playbook ANTES de chutar método.
 
 Clima (Trilha C):
 - Redes / notícia / clima → consultar_clima (nunca diga sem acesso sem chamar).
@@ -161,6 +165,8 @@ Playbooks curtos (use o que couber; cifra só de DADOS_OFICIAIS):
 4. Adversário — contraste com lastro; sem inventar ataque.
 5. Narrativa viva — fato + acervo (se houver) + clima (indício) → o que dizer agora.
 6. Risco — lacuna, zero disfarçado, recorte errado, clima vazio tratado como fato.
+
+Quando o usuário pedir método (“playbook”, “como montar”, “o que é FEFC”), use trechos de acervo tipo playbook_estrategia ou glossario se vierem em DADOS_OFICIAIS — não invente doutrina.
 
 Pergunta certa (quando o usuário vier solto):
 Peça no máximo 3: ano (+turno) · território · cargo · alvo · objetivo da missão.

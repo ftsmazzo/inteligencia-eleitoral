@@ -24,7 +24,7 @@ Skill de sistema `SKILL_WAR_ROOM_DEFAULT` — injetada em **toda** conversa (nã
 - Redator transforma isso em guia oral + exemplo de pergunta pronta.
 - Com dado → fecha com `### Próximo cruzamento`.
 
-Acervo RAG continua para planos/notas (matéria); War room é o **como pensar**. Não misturar manual genérico de marketing no pgvector.
+Acervo RAG: planos 2026 + **glossário** + **playbooks** + notas TSE + fichas 2018/2022. Planos 2018/2022 oficiais ainda dependem de PDF em `data/raw/` (não inventar). War room = **como pensar**; acervo = **matéria**.
 
 ## Arquitetura (dois modelos)
 

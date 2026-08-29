@@ -455,7 +455,8 @@ def _ensure_acervo() -> None:
                 pass
             for seed_path in sorted(_SEED_DIR.glob("acervo_*.jsonl")):
                 _seed_acervo_file(conn, seed_path)
-            _bootstrap_fichas_territoriais(conn)
+            _bootstrap_fichas_territoriais(conn, ano=2022)
+            _bootstrap_fichas_territoriais(conn, ano=2018)
         _ACERVO_READY = True
     except Exception:
         _ACERVO_READY = False
