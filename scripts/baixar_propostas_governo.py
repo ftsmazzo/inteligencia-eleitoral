@@ -88,6 +88,34 @@ def download(url: str, dest: Path) -> None:
     part.replace(dest)
 
 
+def _log_db(ano: int, status: str, detalhe: str) -> None:
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from tse_util import dsn, load_env
+        import psycopg
+
+        load_env()
+        with psycopg.connect(dsn(), autocommit=True) as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ctl.ingest_log (
+                  id bigserial PRIMARY KEY,
+                  job text NOT NULL,
+                  ano int,
+                  status text NOT NULL,
+                  detalhe text,
+                  criado_em timestamptz NOT NULL DEFAULT now()
+                )
+                """
+            )
+            conn.execute(
+                "INSERT INTO ctl.ingest_log (job, ano, status, detalhe) VALUES (%s,%s,%s,%s)",
+                ("propostas_governo", ano, status, detalhe[:2000]),
+            )
+    except Exception as e:
+        print("log_db skip", e)
+
+
 def main() -> None:
     anos = [int(a) for a in sys.argv[1:]] or ANOS
     falhas: list[dict] = []
@@ -96,6 +124,7 @@ def main() -> None:
         dest = dest_dir / "origem.zip"
         if dest.exists() and dest.stat().st_size > 10_000:
             print("JA TEM propostas", ano, round(dest.stat().st_size / 1e6, 1), "MB")
+            _log_db(ano, "ja_tem", f"bytes={dest.stat().st_size}")
             continue
         candidatos = url_cdn(ano)
         try:
@@ -119,6 +148,7 @@ def main() -> None:
                 print("FALHA", ano, e)
         if not ok:
             falhas.append({"ano": ano, "erro": last_err})
+            _log_db(ano, "falha", last_err)
             continue
         digest = sha256_file(dest)
         (dest_dir / "origem.sha256").write_text(digest + "\n", encoding="utf-8")
@@ -136,6 +166,7 @@ def main() -> None:
         }
         (dest_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         print("OK propostas", ano, round(dest.stat().st_size / 1e6, 1), "MB")
+        _log_db(ano, "ok", f"url={used} bytes={dest.stat().st_size}")
     if falhas:
         print("FALTAS", json.dumps(falhas, ensure_ascii=False))
     print("DOWNLOAD_PROPOSTAS_FIM")
