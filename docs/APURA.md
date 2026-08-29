@@ -16,6 +16,16 @@ Painel web com chat analítico sobre dados eleitorais oficiais do Brasil.
 
 O Apura **não** imita a voz de um candidato. Usa a mesma *estrutura* de guia de voz (essência, tom, caso concreto, oralidade, contraste, checagem) para personificar um **estrategista de marketing político**: firme, oral, de war room — sempre lastreado em `DADOS_OFICIAIS`. Cifra inventada ou biografia fingida = proibido. Prompt em `mcp/apura/prompt.py` (`SYSTEM_WRITER`).
 
+## War room (método)
+
+Skill de sistema `SKILL_WAR_ROOM_DEFAULT` — injetada em **toda** conversa (não gasta as 3 skills do usuário). Ver `docs/SKILL-APURA-WAR-ROOM.md`.
+
+- Pergunta vaga → orquestrador responde `PENDENTE` (máx. 3 recortes) **antes** de chamar tools.
+- Redator transforma isso em guia oral + exemplo de pergunta pronta.
+- Com dado → fecha com `### Próximo cruzamento`.
+
+Acervo RAG continua para planos/notas (matéria); War room é o **como pensar**. Não misturar manual genérico de marketing no pgvector.
+
 ## Arquitetura (dois modelos)
 
 | Papel | Variável | Padrão | Função |

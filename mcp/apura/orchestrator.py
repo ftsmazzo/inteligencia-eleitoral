@@ -11,7 +11,7 @@ import httpx
 
 from apura.export import exportar_html
 from apura.mcp_client import chamar_mcp, resumir_resultado
-from apura.prompt import NARRATIVA_ORCHESTRATOR, SKILL_NARRATIVA_DEFAULT, SYSTEM_ORCHESTRATOR, SYSTEM_WRITER
+from apura.prompt import NARRATIVA_ORCHESTRATOR, SYSTEM_ORCHESTRATOR, SYSTEM_WRITER
 from apura.tools import MCP_TOOLS
 
 _OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"

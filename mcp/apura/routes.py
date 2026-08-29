@@ -23,7 +23,7 @@ from apura.auth import (
 )
 from apura.export import exportar_html, exportar_xlsx
 from apura.orchestrator import executar_chat
-from apura.prompt import SKILL_NARRATIVA_DEFAULT
+from apura.prompt import SKILL_NARRATIVA_DEFAULT, SKILL_WAR_ROOM_DEFAULT
 from apura.skills import (
     MAX_ATIVAS,
     MAX_CONTEUDO,
@@ -371,6 +371,8 @@ async def chat(
 
     with _db() as conn:
         skills_txt = texto_skills_ativas(conn, uid)
+        if SKILL_WAR_ROOM_DEFAULT not in skills_txt:
+            skills_txt = (SKILL_WAR_ROOM_DEFAULT + "\n\n" + skills_txt).strip()
         if body.modo_narrativa and SKILL_NARRATIVA_DEFAULT not in skills_txt:
             skills_txt = (skills_txt + "\n\n" + SKILL_NARRATIVA_DEFAULT).strip()
 
