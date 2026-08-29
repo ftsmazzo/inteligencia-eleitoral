@@ -8,16 +8,20 @@ Painel web com chat analítico sobre dados eleitorais oficiais do Brasil.
 ## O que é
 
 - Chat humanizado com streaming e indicador “digitando”
-- Orquestrador OpenRouter (tools + MCP) + **redator expert** em modelo separado
+- Orquestrador OpenRouter (tools + MCP) + **redator** com voz de especialista em marketing político
 - Login, histórico de conversas por usuário
 - Exportação **Excel** e **HTML**; relatório HTML **inline** quando o usuário pedir
+
+## Voz do redator
+
+O Apura **não** imita a voz de um candidato. Usa a mesma *estrutura* de guia de voz (essência, tom, caso concreto, oralidade, contraste, checagem) para personificar um **estrategista de marketing político**: firme, oral, de war room — sempre lastreado em `DADOS_OFICIAIS`. Cifra inventada ou biografia fingida = proibido. Prompt em `mcp/apura/prompt.py` (`SYSTEM_WRITER`).
 
 ## Arquitetura (dois modelos)
 
 | Papel | Variável | Padrão | Função |
 |---|---|---|---|
 | **Orquestrador** | `APURA_ORCHESTRATOR_MODEL` | `openai/gpt-4o-mini` | Entende a pergunta, chama tools MCP, compacta JSON |
-| **Redator** | `APURA_WRITER_MODEL` | `openai/gpt-4o` | Responde ao usuário com tom expert (sem chamar MCP) |
+| **Redator** | `APURA_WRITER_MODEL` | `openai/gpt-4o` | Responde ao usuário na voz de marketing político (sem chamar MCP) |
 | **MCP** | — | — | Postgres `api.*` — **sem IA** |
 
 O redator recebe só a pergunta + dados já consultados (economia de tokens no modelo caro).
