@@ -64,7 +64,7 @@ O Apura, no **modo narrativa**, estrutura respostas em: **Fato → Programa/acer
 
 **Importante:** despesas/receitas por candidato exigem `sq_candidato` (obtido via votação ou nominata). Candidato eliminado no 1º turno tem contas do ano inteiro, mas votos só no 1º turno.
 
-**Anos carregados hoje:** contas **2018 e 2022**. Anos anteriores/posteriores entram conforme carga.
+**Anos carregados hoje:** contas **2014, 2016, 2018, 2020, 2022 e 2024** (federais e municipais no recorte).
 
 ### Contexto social e territorial (Trilha A)
 
