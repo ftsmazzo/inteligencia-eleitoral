@@ -25,6 +25,11 @@ def main() -> None:
     _run("baixar_propostas_governo.py", *anos)
     _run("carregar_propostas_governo.py", *anos)
     print("JOB_PROPOSTAS_OK", anos, flush=True)
+    secs = int(os.environ.get("JOB_SLEEP_AFTER", "3600"))
+    print(f"sleep {secs}s (logs)", flush=True)
+    import time
+
+    time.sleep(secs)
 
 
 if __name__ == "__main__":
