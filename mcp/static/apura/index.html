@@ -247,10 +247,18 @@
 
     /* Painel visual (canvas inline) */
     .apura-painel {
-      margin: 0 0 16px; border: 1px solid #c5ddd9; border-radius: 14px; overflow: hidden;
+      margin: 12px 0 0; border: 1px solid #c5ddd9; border-radius: 14px; overflow: hidden;
       background: linear-gradient(180deg, #f4faf9 0%, #fff 48%);
       box-shadow: 0 4px 20px rgba(13, 79, 74, 0.08);
     }
+    .apura-painel > summary.painel-cap {
+      cursor: pointer; list-style: none; user-select: none;
+    }
+    .apura-painel > summary.painel-cap::-webkit-details-marker { display: none; }
+    .apura-painel > summary.painel-cap::before {
+      content: '▸ '; font-size: 0.85em; opacity: 0.7;
+    }
+    .apura-painel[open] > summary.painel-cap::before { content: '▾ '; }
     .painel-cap {
       padding: 8px 14px; font-size: 0.68rem; font-weight: 800; letter-spacing: .1em;
       text-transform: uppercase; color: var(--brand); background: var(--brand-light);
@@ -853,8 +861,6 @@
 
       if (papel === 'assistant' && dados && ApuraPainel.flattenBlocks(dados).length) {
         wrap.classList.add('has-painel');
-        const painel = ApuraPainel.buildPainelElement(dados);
-        if (painel) bubble.appendChild(painel);
       }
 
       const b = document.createElement('div');
@@ -862,6 +868,11 @@
       if (papel === 'assistant') setBubbleContent(b, texto);
       else b.textContent = texto;
       bubble.appendChild(b);
+
+      if (papel === 'assistant' && dados && ApuraPainel.flattenBlocks(dados).length) {
+        const painel = ApuraPainel.buildPainelElement(dados);
+        if (painel) bubble.appendChild(painel);
+      }
       if (papel === 'assistant' && id) {
         const actions = document.createElement('div');
         actions.className = 'msg-actions';

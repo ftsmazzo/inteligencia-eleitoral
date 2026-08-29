@@ -167,15 +167,30 @@
     const blocks = flattenBlocks(dados);
     if (!blocks.length) return null;
 
-    const panel = document.createElement('div');
-    panel.className = 'apura-painel';
-    panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', 'Painel de dados');
+    const nTools = blocks.length;
+    const nRows = blocks.reduce((s, b) => s + b.rows.length, 0);
 
-    const cap = document.createElement('div');
-    cap.className = 'painel-cap';
-    cap.textContent = 'Painel · dados oficiais';
-    panel.appendChild(cap);
+    const details = document.createElement('details');
+    details.className = 'apura-painel apura-painel-collapsed';
+    details.setAttribute('role', 'region');
+    details.setAttribute('aria-label', 'Consultas oficiais (recolhido)');
+
+    const summary = document.createElement('summary');
+    summary.className = 'painel-cap';
+    summary.textContent =
+      'Consultas oficiais · ' +
+      nTools +
+      ' painel(is) · ' +
+      nRows.toLocaleString('pt-BR') +
+      ' linha(s) — abrir só se precisar do bruto';
+    details.appendChild(summary);
+
+    const note = document.createElement('p');
+    note.className = 'painel-more';
+    note.style.padding = '0 16px 8px';
+    note.textContent =
+      'A análise acima já sintetiza o que importa. Aqui ficam as consultas intermediárias do orquestrador (útil para auditoria / Excel).';
+    details.appendChild(note);
 
     for (const block of blocks) {
       const section = document.createElement('section');
@@ -195,9 +210,9 @@
       head.appendChild(count);
       section.appendChild(head);
       section.appendChild(buildTable(block.rows));
-      panel.appendChild(section);
+      details.appendChild(section);
     }
-    return panel;
+    return details;
   }
 
   function parseMarkdownTables(text) {

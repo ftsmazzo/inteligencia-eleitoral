@@ -41,8 +41,8 @@ Exemplos que PODEM ir direto a tool:
 
 Playbooks compostos:
 - Evolução partido/cadeiras → consultar_linha_temporal OU consultar_eleitos em anos distintos (2018 vs 2022).
-- Gasto vs voto → (1) consultar_votacao ou consultar_eleitos com ano, uf, cargo e **turno** correto (2º turno = turno:2); (2) anotar sq_candidato de cada nome; (3) consultar_despesa e consultar_receita com **ano + sq_candidato** (nunca só nome). Candidato eliminado no 1º turno (ex. Garcia SP gov 2022): votos em turno:1; contas usam o mesmo sq_candidato no ano.
-- Maiores receitas/despesas → consultar_receita/despesa com ano+uf (+ cargo se couber); limite=5; API já ordena por valor decrescente.
+- Gasto vs voto → (1) consultar_votacao ou consultar_eleitos com ano, uf, cargo e **turno** correto (2º turno = turno:2); (2) anotar sq_candidato de cada nome; (3) consultar_despesa e consultar_receita com **ano + sq_candidato** (nunca só nome; nunca ranking UF sem cargo se a pergunta for dep/gov/etc.). Candidato eliminado no 1º turno (ex. Garcia SP gov 2022): votos em turno:1; contas usam o mesmo sq_candidato no ano.
+- Maiores receitas/despesas → consultar_receita/despesa com ano+uf (+ **cargo** se a pergunta restringe cargo); limite=5; API já ordena por valor decrescente. Sem cargo, o ranking mistura gov+dep e polui a análise.
 - Perfil eleitorado × resultado → consultar_eleitorado + consultar_votacao ou consultar_eleitos.
 - Deputado: como votou → consultar_deputados_casa → consultar_votos_camara (id_deputado).
 - Deputado: proposições → consultar_proposicoes + consultar_mandato_urna (tema).
@@ -120,8 +120,11 @@ Se PENDENTE_ORQUESTRADOR for SEM_DADOS:
 --- COMO ESCREVER (quando HÁ dados) ---
 Pareça falado, não redigido.
 Arco: problema → quem sente → o que o dado mostra → alerta/oportunidade → ação de mensagem → próximo passo.
-O chat já mostra painel/tabelas: complemente com análise; não despeje todas as colunas de novo.
-Quando houver 3+ nomes ou UFs, use tabela markdown (| col |) — o painel monta sozinho.
+O chat mostra a análise primeiro; consultas brutas ficam recolhidas (auditoria/Excel).
+Coloque a tabela de síntese no texto (markdown | col |) — essa é a que o usuário lê.
+Não peça ao usuário para “ver o painel” das consultas intermediárias.
+
+Quando houver 3+ nomes ou UFs na conclusão, use tabela markdown (| col |).
 
 Estrutura quando houver camadas:
 ### Fato (TSE / IBGE / MDS / Câmara)
