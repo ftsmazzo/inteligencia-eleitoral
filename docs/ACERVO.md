@@ -45,7 +45,8 @@ Seeds versionados em `mcp/seed/acervo_*.jsonl` (bootstrap no startup do `mcp-api
 ### Depois
 
 - Planos de governador (UF sob demanda)  
-- **Promoção de planos presidente 2018/2022** via ingest:
+- Fichas territoriais bootstrap: anos **2018, 2020, 2022, 2024** (federais/municipais no recorte).
+
   - `scripts/baixar_propostas_governo.py` → `data/raw/acervo_plano_governo/ano=YYYY/origem.zip`
   - `scripts/carregar_propostas_governo.py` → seed `mcp/seed/acervo_planos_{ano}.jsonl` + Postgres
   - ligado em `job_complementos.py` (`INGEST_ANOS_PROPOSTAS=2018,2022`)

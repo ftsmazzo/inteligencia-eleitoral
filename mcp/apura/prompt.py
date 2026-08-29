@@ -41,8 +41,8 @@ Exemplos que PODEM ir direto a tool:
 
 Playbooks compostos:
 - Evolução partido/cadeiras → consultar_linha_temporal OU consultar_eleitos em anos distintos (2018 vs 2022).
-- Gasto vs voto → (1) consultar_votacao ou consultar_eleitos com ano, uf, cargo e **turno** correto (2º turno = turno:2); (2) anotar sq_candidato de cada nome; (3) consultar_despesa e consultar_receita com **ano + sq_candidato** (nunca só nome; nunca ranking UF sem cargo se a pergunta for dep/gov/etc.). Candidato eliminado no 1º turno (ex. Garcia SP gov 2022): votos em turno:1; contas usam o mesmo sq_candidato no ano.
-- Maiores receitas/despesas → consultar_receita/despesa com ano+uf (+ **cargo** se a pergunta restringe cargo); limite=5; API já ordena por valor decrescente. Sem cargo, o ranking mistura gov+dep e polui a análise.
+- Gasto vs voto → preferir **1×** consultar_votacao/eleitos (ano+uf+cargo+turno) + **1×** consultar_contas_resumo (ano+uf+cargo e/ou sq_candidato; incluir_votos=true). NÃO dispare dezenas de consultar_despesa por NF. Só use consultar_despesa se pedirem fornecedor/categoria específica (aí passe categoria=). Candidato eliminado no 1º turno: votos em turno:1; contas usam o mesmo sq_candidato no ano.
+- Maiores receitas/despesas / eficiência de gasto → **consultar_contas_resumo** com ano+uf (+ **cargo** obrigatório se a pergunta restringe cargo) + sg_partido se houver; limite≤30. Sem cargo, o ranking mistura gov+dep. consultar_receita/despesa só para detalhe de linha.
 - Perfil eleitorado × resultado → consultar_eleitorado + consultar_votacao ou consultar_eleitos.
 - Deputado: como votou → consultar_deputados_casa → consultar_votos_camara (id_deputado).
 - Deputado: proposições → consultar_proposicoes + consultar_mandato_urna (tema).
@@ -59,7 +59,7 @@ Acervo (Trilha B):
 - Planos: presidente 2026 quando carregados; 2018/2022 só se existirem no banco (senão admita lacuna).
 - Glossário (FEFC, quociente, federação, turno, sq_candidato) → tipo=glossario.
 - Playbook de estratégia (gasto×voto, cadeiras, território, ângulo, risco, pergunta certa) → tipo=playbook_estrategia.
-- Ficha territorial → tipo=ficha_territorial, query=perfil eleitoral, uf=XX (anos 2018/2022 quando bootstrap).
+- Ficha territorial → tipo=ficha_territorial, query=perfil eleitoral, uf=XX (anos 2018/2020/2022/2024 quando bootstrap).
 - Notas TSE → tipo=nota_tse.
 - Para candidato: nm_candidato + query=tema (não junte nome+tema na query).
 - Pedidos “como perguntar / playbook / o que é FEFC” → acervo glossario ou playbook ANTES de chutar método.
@@ -163,7 +163,7 @@ Mapa de intenções (nomeie a missão quando der):
 
 Playbooks curtos (use o que couber; cifra só de DADOS_OFICIAIS):
 1. Evolução de cadeiras/votos — anos distintos no recorte; diga o que mudou e o ângulo.
-2. Gasto × voto — turno certo + sq_candidato; onde o dinheiro não virou voto = risco de narrativa.
+2. Gasto × voto — consultar_contas_resumo (totais + custo/voto); turno certo; cargo no filtro. NFs só se pedirem detalhe.
 3. Território — eleitorado/social × resultado; quem sente o problema.
 4. Adversário — contraste com lastro; sem inventar ataque.
 5. Narrativa viva — fato + acervo (se houver) + clima (indício) → o que dizer agora.

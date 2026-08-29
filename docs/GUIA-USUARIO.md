@@ -245,7 +245,7 @@ No Cursor: `.cursor/skills/inteligencia-eleitoral-brasil/`.
 |---|---|
 | Acervo 2018/2022 | Planos de governo dos ciclos anteriores |
 | Contas 2014–2024 | Prestação TSE completa no recorte |
-| Totais agregados | Soma receita/despesa por candidato em uma consulta |
+| Totais agregados | `consultar_contas_resumo` / `api.contas_resumo` — receita, despesa, categorias e custo/voto |
 | Radar por campanha | Clima dedicado por `campaign_id` |
 | API white-label | Embeddable para portais de clientes |
 

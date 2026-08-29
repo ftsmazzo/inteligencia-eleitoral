@@ -164,7 +164,10 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_despesa",
-            "description": "Despesas de campanha (prestação TSE). Ordenação: maior valor primeiro. Consulta por UF retorna só linhas com candidato.",
+            "description": (
+                "Linhas de despesa (NF/prestação TSE). Preferir consultar_contas_resumo para totais. "
+                "categoria opcional: publicidade|eventos|juridico|pessoal|logistica|estrutura|outros."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -174,6 +177,34 @@ MCP_TOOLS: list[dict] = [
                     "sg_partido": {"type": "string"},
                     "cargo": {"type": "string"},
                     "limite": {"type": "integer", "default": 50},
+                    "categoria": {
+                        "type": "string",
+                        "description": "publicidade|eventos|juridico|pessoal|logistica|estrutura|outros",
+                    },
+                },
+                "required": ["ano"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_contas_resumo",
+            "description": (
+                "Totais de receita/despesa por candidato + breakdown por categoria + qt_votos e custo_por_voto. "
+                "Use para ranking de gasto e gasto×voto (não liste NFs). Exige ano e (sq_candidato ou uf); "
+                "passe cargo quando a pergunta restringe cargo."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "sq_candidato": {"type": "integer"},
+                    "uf": {"type": "string"},
+                    "sg_partido": {"type": "string"},
+                    "cargo": {"type": "string"},
+                    "limite": {"type": "integer", "default": 30},
+                    "incluir_votos": {"type": "boolean", "default": True},
                 },
                 "required": ["ano"],
             },
@@ -485,6 +516,7 @@ TOOL_TO_MCP: dict[str, str] = {
     "consultar_bem": "bem",
     "consultar_receita": "receita",
     "consultar_despesa": "despesa",
+    "consultar_contas_resumo": "contas_resumo",
     "consultar_eleitos": "eleitos",
     "consultar_populacao": "populacao",
     "consultar_cadunico": "cadunico",

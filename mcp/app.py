@@ -43,12 +43,14 @@ _PATCH_PARTIDO = Path(__file__).resolve().parent / "sql" / "patch_partido_linha.
 _PATCH_ACERVO = Path(__file__).resolve().parent / "sql" / "patch_acervo.sql"
 _PATCH_ANALITICO = Path(__file__).resolve().parent / "sql" / "patch_analitico.sql"
 _PATCH_PEDIDO = Path(__file__).resolve().parent / "sql" / "patch_pedido_demo.sql"
+_PATCH_CONTAS_RESUMO = Path(__file__).resolve().parent / "sql" / "patch_contas_resumo.sql"
 _API_SQL = Path(__file__).resolve().parent / "sql" / "api.sql"
 _TOKENS_READY = False
 _PEDIDO_READY = False
 _API_PARTIDO_READY = False
 _ACERVO_READY = False
 _ANALITICO_READY = False
+_CONTAS_RESUMO_READY = False
 _SKILL_PLACEHOLDER = "__SKILL_CONTENT__"
 _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 _DEMO_QUOTA_DEFAULT = 5
@@ -204,6 +206,22 @@ def _ensure_partido_linha() -> None:
         _API_PARTIDO_READY = False
 
 
+def _ensure_contas_resumo() -> None:
+    """Totais + categorias de despesa + custo/voto (após api.sql)."""
+    global _CONTAS_RESUMO_READY
+    if _CONTAS_RESUMO_READY or not _PATCH_CONTAS_RESUMO.exists():
+        return
+    url = _ddl_url()
+    if not url:
+        return
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            _run_sql_script(conn, _PATCH_CONTAS_RESUMO.read_text(encoding="utf-8"))
+        _CONTAS_RESUMO_READY = True
+    except Exception:
+        _CONTAS_RESUMO_READY = False
+
+
 _SEED_DIR = Path(__file__).resolve().parent / "seed"
 
 
@@ -341,18 +359,23 @@ def _upsert_acervo_doc(conn: psycopg.Connection, doc: dict) -> None:
 
 
 def _texto_ficha_territorial(conn: psycopg.Connection, uf: str, ano: int) -> str:
+    municipal = ano in (2016, 2020, 2024)
+    cargo_prop = 13 if municipal else 6  # vereador | dep. federal
+    cargo_maj = 11 if municipal else 3  # prefeito | governador
+    label_prop = "vereador" if municipal else "deputado federal"
+    label_maj = "prefeito" if municipal else "governador"
     row = conn.execute(
         """
         SELECT
-          count(DISTINCT v.sq_candidato) FILTER (WHERE v.cd_cargo = 6),
+          count(DISTINCT v.sq_candidato) FILTER (WHERE v.cd_cargo = %s),
           count(DISTINCT v.sq_candidato) FILTER (
-            WHERE v.cd_cargo = 3 AND api._eh_eleito(v.ds_sit_tot_turno)
+            WHERE v.cd_cargo = %s AND api._eh_eleito(v.ds_sit_tot_turno)
           ),
-          coalesce(sum(v.qt_votos) FILTER (WHERE v.cd_cargo = 3 AND v.nr_turno = 1), 0)::bigint
+          coalesce(sum(v.qt_votos) FILTER (WHERE v.cd_cargo = %s AND v.nr_turno = 1), 0)::bigint
         FROM eleicao.votacao v
         WHERE v.ano = %s AND v.sg_uf = %s
         """,
-        (ano, uf),
+        (cargo_prop, cargo_maj, cargo_maj, ano, uf),
     ).fetchone()
     ele = conn.execute(
         """
@@ -360,11 +383,11 @@ def _texto_ficha_territorial(conn: psycopg.Connection, uf: str, ano: int) -> str
         FROM (
           SELECT DISTINCT ON (sq_candidato) sq_candidato, sg_partido
           FROM eleicao.votacao
-          WHERE ano = %s AND sg_uf = %s AND cd_cargo = 6 AND api._eh_eleito(ds_sit_tot_turno)
+          WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s AND api._eh_eleito(ds_sit_tot_turno)
         ) t
         GROUP BY 1 ORDER BY 2 DESC LIMIT 5
         """,
-        (ano, uf),
+        (ano, uf, cargo_prop),
     ).fetchall()
     eleitorado = conn.execute(
         "SELECT coalesce(sum(qt_eleitores), 0)::bigint FROM eleicao.eleitorado WHERE ano = %s AND sg_uf = %s",
@@ -374,16 +397,16 @@ def _texto_ficha_territorial(conn: psycopg.Connection, uf: str, ano: int) -> str
         f"# Perfil eleitoral {uf} · urna {ano}",
         "",
         f"Eleitorado cadastrado (perfil TSE, soma municipal): {eleitorado:,} eleitores.",
-        f"Candidatos a deputado federal distintos na urna: {row[0] or 0}.",
-        f"Governador eleito (turno registrado): {row[1] or 0}.",
-        f"Votos nominais 1º turno governador (soma UF): {row[2] or 0:,}.",
+        f"Candidatos a {label_prop} distintos na urna: {row[0] or 0}.",
+        f"{label_maj.capitalize()} eleito (turno registrado, contagem distinta): {row[1] or 0}.",
+        f"Votos nominais 1º turno {label_maj} (soma UF): {row[2] or 0:,}.",
         "",
-        "## Top partidos — cadeiras deputado federal",
+        f"## Top partidos — cadeiras {label_prop}",
     ]
     if ele:
         linhas.extend(f"- {sg}: {n} eleito(s)" for sg, n in ele)
     else:
-        linhas.append("- (sem eleitos federais neste filtro)")
+        linhas.append(f"- (sem eleitos a {label_prop} neste filtro)")
     linhas.extend(
         [
             "",
@@ -457,6 +480,8 @@ def _ensure_acervo() -> None:
                 _seed_acervo_file(conn, seed_path)
             _bootstrap_fichas_territoriais(conn, ano=2022)
             _bootstrap_fichas_territoriais(conn, ano=2018)
+            _bootstrap_fichas_territoriais(conn, ano=2020)
+            _bootstrap_fichas_territoriais(conn, ano=2024)
         _ACERVO_READY = True
     except Exception:
         _ACERVO_READY = False
@@ -483,6 +508,7 @@ def _startup_ddl() -> None:
     _ensure_tokens_table()
     _ensure_pedido_demo()
     _ensure_partido_linha()
+    _ensure_contas_resumo()
     _ensure_acervo()
     _ensure_analitico()
 
@@ -616,6 +642,17 @@ class ContasIn(BaseModel):
     sg_partido: str | None = None
     cargo: str | None = None
     limite: int = 200
+    categoria: str | None = None
+
+
+class ContasResumoIn(BaseModel):
+    ano: int
+    sq_candidato: int | None = None
+    uf: str | None = None
+    sg_partido: str | None = None
+    cargo: str | None = None
+    limite: int = 30
+    incluir_votos: bool = True
 
 
 class EleitosIn(BaseModel):
@@ -749,11 +786,13 @@ def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
 def health() -> dict[str, Any]:
     _ensure_tokens_table()
     _ensure_partido_linha()
+    _ensure_contas_resumo()
     _ensure_acervo()
     _ensure_analitico()
     out: dict[str, Any] = {
         "status": "ok",
         "partido_linha": "ready" if _API_PARTIDO_READY else "pending",
+        "contas_resumo": "ready" if _CONTAS_RESUMO_READY else "pending",
         "acervo": "ready" if _ACERVO_READY else "pending",
         "analitico": "ready" if _ANALITICO_READY else "pending",
         "seed_planos": _SEED_PLANOS.exists(),
@@ -1053,11 +1092,36 @@ def receita(body: ContasIn, authorization: str | None = Header(default=None), x_
 @app.post("/v1/despesa")
 def despesa(body: ContasIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token)
+    _ensure_contas_resumo()
     with db() as conn:
         return _one(
             conn,
-            "SELECT api.despesa(%s,%s,%s,%s,%s,%s)",
-            (body.ano, body.sq_candidato, body.uf, body.sg_partido, body.cargo, body.limite),
+            "SELECT api.despesa(%s,%s,%s,%s,%s,%s,%s)",
+            (body.ano, body.sq_candidato, body.uf, body.sg_partido, body.cargo, body.limite, body.categoria),
+        )
+
+
+@app.post("/v1/contas_resumo")
+def contas_resumo(
+    body: ContasResumoIn,
+    authorization: str | None = Header(default=None),
+    x_token: str | None = Header(default=None),
+) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_contas_resumo()
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.contas_resumo(%s,%s,%s,%s,%s,%s,%s)",
+            (
+                body.ano,
+                body.uf,
+                body.cargo,
+                body.sg_partido,
+                body.sq_candidato,
+                body.limite,
+                body.incluir_votos,
+            ),
         )
 
 
@@ -1290,6 +1354,8 @@ async def mcp(body: McpCall, authorization: str | None = Header(default=None), x
         return receita(ContasIn(**p), authorization, x_token)
     if name == "despesa":
         return despesa(ContasIn(**p), authorization, x_token)
+    if name == "contas_resumo":
+        return contas_resumo(ContasResumoIn(**p), authorization, x_token)
     if name == "eleitos":
         return eleitos(EleitosIn(**p), authorization, x_token)
     if name == "populacao":
