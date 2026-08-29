@@ -27,4 +27,8 @@ ano (+turno) · território · cargo · alvo · objetivo da missão
 
 fato → leitura → ângulo → peça (1 frase) → **Próximo cruzamento**
 
-Prompt canônico: `mcp/apura/prompt.py` → `SKILL_WAR_ROOM_DEFAULT`.
+## Playbooks de contas
+
+- Gasto × voto / eficiência → `consultar_contas_resumo` (totais + custo/voto), **não** parede de NF.
+- Cargo no filtro é obrigatório se a pergunta restringe cargo (ex.: dep. federal ≠ governador).
+- Prompt canônico: `mcp/apura/prompt.py` → `SKILL_WAR_ROOM_DEFAULT`.

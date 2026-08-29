@@ -49,7 +49,11 @@ def _downloads_ready() -> bool:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-download", action="store_true")
-    ap.add_argument("--anos-contas", default="2018,2022", help="Anos contas (CSV) — default leve")
+    ap.add_argument(
+        "--anos-contas",
+        default=os.environ.get("INGEST_ANOS_CONTAS", "2014,2016,2018,2020,2022,2024"),
+        help="Anos contas — default todos no banco (TRUNCATE exige lista completa)",
+    )
     args = ap.parse_args()
 
     load_env()
@@ -57,6 +61,8 @@ def main() -> None:
         raise SystemExit("Núcleo ausente no Postgres — abortando job complementos.")
 
     skip_dl = args.skip_download or os.environ.get("INGEST_SKIP_DOWNLOAD", "").strip() in ("1", "true", "yes")
+    skip_prop = os.environ.get("INGEST_SKIP_PROPOSTAS", "").strip() in ("1", "true", "yes")
+    skip_contas = os.environ.get("INGEST_SKIP_CONTAS", "").strip() in ("1", "true", "yes")
     anos_prop = os.environ.get("INGEST_ANOS_PROPOSTAS", "2018,2022").replace(",", " ").split()
     if not skip_dl and _downloads_ready():
         print("AVISO: downloads já em data/raw — pulando baixar_ibge/parlamento/contas", flush=True)
@@ -70,16 +76,23 @@ def main() -> None:
             _run(s)
         _run("baixar_contas.py", *anos_dl)
 
-    # propostas: baixa se faltar ZIP (independente do skip dos outros)
+    # propostas: baixa se faltar ZIP (respeita skip_dl e INGEST_SKIP_PROPOSTAS)
     faltam_prop = [
         a
         for a in anos_prop
         if not (ROOT / "data" / "raw" / "acervo_plano_governo" / f"ano={a}" / "origem.zip").exists()
     ]
-    if faltam_prop and not args.skip_download:
-        _run("baixar_propostas_governo.py", *faltam_prop)
+    if faltam_prop and not skip_dl and not skip_prop:
+        try:
+            _run("baixar_propostas_governo.py", *faltam_prop)
+        except subprocess.CalledProcessError as e:
+            print("AVISO: download propostas falhou (ex. CDN 403) —", e, flush=True)
+    elif skip_prop:
+        print("SKIP propostas (INGEST_SKIP_PROPOSTAS)", flush=True)
     elif not faltam_prop:
         print("JA TEM propostas", ",".join(anos_prop), flush=True)
+    else:
+        print("AVISO: propostas ZIP ausente e download pulado", flush=True)
 
     _run("carregar_populacao.py")
 
@@ -91,22 +104,52 @@ def main() -> None:
         print("AVISO: social skip — zips MDS ausentes (promover inbox ou copiar raw)", flush=True)
 
     anos = [a.strip() for a in args.anos_contas.split(",") if a.strip()]
-    _run("carregar_contas.py", *anos)
+    if skip_contas:
+        print("SKIP carregar_contas (INGEST_SKIP_CONTAS) — evita TRUNCATE", flush=True)
+    else:
+        _run("carregar_contas.py", *anos)
     _run("carregar_parlamento.py")
 
     prop_ok = any(
         (ROOT / "data" / "raw" / "acervo_plano_governo" / f"ano={a}" / "origem.zip").exists()
         for a in anos_prop
     )
-    if prop_ok:
+    if prop_ok and not skip_prop:
         try:
             _run("carregar_propostas_governo.py", *anos_prop)
         except subprocess.CalledProcessError as e:
             print("AVISO: carga propostas falhou —", e, flush=True)
     else:
-        print("AVISO: propostas skip — rode baixar_propostas_governo.py", flush=True)
+        print("AVISO: propostas skip — ZIP ausente ou INGEST_SKIP_PROPOSTAS", flush=True)
 
     # patches analítico / grants (idempotente) — sem fechar_base (exige docs/ no repo)
+    def _apply_sql_file(path: Path) -> None:
+        text = path.read_text(encoding="utf-8")
+        stmts: list[str] = []
+        buf: list[str] = []
+        in_dollar = False
+        for line in text.splitlines():
+            if not in_dollar and line.strip().startswith("--"):
+                continue
+            parts = line.split("$$")
+            if len(parts) > 1 and (len(parts) - 1) % 2 == 1:
+                in_dollar = not in_dollar
+            buf.append(line)
+            if not in_dollar and line.rstrip().endswith(";"):
+                stmt = "\n".join(buf).strip()
+                buf = []
+                if stmt:
+                    stmts.append(stmt)
+        tail = "\n".join(buf).strip()
+        if tail:
+            stmts.append(tail)
+        with psycopg.connect(dsn(), autocommit=True) as conn:
+            for stmt in stmts:
+                try:
+                    conn.execute(stmt)
+                except Exception as e:
+                    print("AVISO patch", path.name, e, flush=True)
+
     for patch in (
         "patch_ref_dicionario.sql",
         "patch_populacao.sql",
@@ -114,11 +157,11 @@ def main() -> None:
         "patch_contas.sql",
         "patch_parlamento.sql",
         "patch_analitico.sql",
+        "patch_contas_resumo.sql",
     ):
         p = ROOT / "sql" / patch
         if p.exists():
-            with psycopg.connect(dsn(), autocommit=True) as conn:
-                conn.execute(p.read_text(encoding="utf-8"))
+            _apply_sql_file(p)
 
     with psycopg.connect(dsn(), connect_timeout=30) as conn:
         stats = {

@@ -70,7 +70,8 @@ Chame `catalogo` primeiro se não souber o que existe.
 | `coligacao` | Coligações | `ano`, `cargo` + filtros |
 | `vagas` | Cadeiras | `ano`, `cargo` + filtros |
 | `bem` | Patrimônio declarado | `ano`, `sq_candidato` |
-| `receita` / `despesa` | Contas de campanha | `ano` + `sq_candidato` ou `uf` |
+| `receita` / `despesa` | Linhas de contas (NF); `despesa` aceita `categoria` | `ano` + `sq_candidato` ou `uf` (+ `cargo` recomendado) |
+| `contas_resumo` | **Totais** receita/despesa + categorias + `custo_por_voto` | `ano` + `sq_candidato` ou `uf` (+ **`cargo`** se a pergunta restringe cargo) |
 | `eleitos` | Quem foi eleito | `ano`, `cargo` + território |
 | `populacao` | População IBGE | `ano` + território |
 | `cadunico` | CadÚnico municipal | `ano_mes` (ex. 202607) + território |
@@ -177,6 +178,24 @@ Atalhos aceitos em algumas tools: `pres`, `gov`, `sen`, `dep_fed` (preferir `dep
 }
 ```
 
+### Contas resumo — dep. federal Republicanos SP 2022
+
+```json
+{
+  "method": "contas_resumo",
+  "params": {
+    "ano": 2022,
+    "uf": "SP",
+    "cargo": "deputado_federal",
+    "sg_partido": "REPUBLICANOS",
+    "limite": 10,
+    "incluir_votos": true
+  }
+}
+```
+
+Prefira `contas_resumo` a dezenas de `despesa` por NF. Categorias são **heurística** sobre o texto da prestação (não classificação oficial TSE).
+
 ### Proposições PL 2024
 
 ```json
@@ -203,6 +222,7 @@ Atalhos aceitos em algumas tools: `pres`, `gov`, `sen`, `dep_fed` (preferir `dep
 
 ## Limites conhecidos (informar se perguntarem)
 
+- **Planos de governo 2018/2022:** CDN TSE 403 — ausentes até ZIP manual.
 - **Urna 2026:** só candidatura até apuração oficial.
 - **População 2023 e 2026:** IBGE não publicou estimativa municipal usada aqui.
 - **CadÚnico / Bolsa:** snapshot jul/2026 e ago/2026 (não série histórica completa).

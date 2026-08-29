@@ -25,7 +25,8 @@ Fora do recorte → texto seco da skill completa. Sem estimativa.
 
 ## Regras
 
-- Número só via tools MCP (`catalogo`, `nominata`, `votacao`, …).
+- Número só via tools MCP (`catalogo`, `nominata`, `votacao`, `contas_resumo`, …).
+- Preferir `contas_resumo` a listar NFs de `despesa` para gasto×voto.
 - Lista vazia = inexistente, não zero.
 - Não usar campanha NE9 nem `Arquitetura/` como fonte.
 - `inbox/` só leitura; canônico em `data/`.
