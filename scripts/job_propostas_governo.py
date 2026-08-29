@@ -22,14 +22,24 @@ def _run(name: str, *extra: str) -> None:
 
 def main() -> None:
     anos = os.environ.get("INGEST_ANOS_PROPOSTAS", "2018,2022").replace(",", " ").split()
-    _run("baixar_propostas_governo.py", *anos)
-    _run("carregar_propostas_governo.py", *anos)
-    print("JOB_PROPOSTAS_OK", anos, flush=True)
+    code = 0
+    try:
+        _run("baixar_propostas_governo.py", *anos)
+    except subprocess.CalledProcessError:
+        code = 1
+        print("AVISO: download propostas com falha", flush=True)
+    try:
+        _run("carregar_propostas_governo.py", *anos)
+    except subprocess.CalledProcessError as e:
+        code = max(code, e.returncode or 1)
+        print("AVISO: carga propostas com falha", flush=True)
+    print("JOB_PROPOSTAS_FIM", "code", code, anos, flush=True)
     secs = int(os.environ.get("JOB_SLEEP_AFTER", "3600"))
     print(f"sleep {secs}s (logs)", flush=True)
     import time
 
     time.sleep(secs)
+    raise SystemExit(code)
 
 
 if __name__ == "__main__":

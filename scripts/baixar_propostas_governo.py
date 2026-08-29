@@ -169,6 +169,8 @@ def main() -> None:
         _log_db(ano, "ok", f"url={used} bytes={dest.stat().st_size}")
     if falhas:
         print("FALTAS", json.dumps(falhas, ensure_ascii=False))
+        print("DOWNLOAD_PROPOSTAS_FIM")
+        raise SystemExit(1)
     print("DOWNLOAD_PROPOSTAS_FIM")
 
 

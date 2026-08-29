@@ -146,7 +146,8 @@ def docs_from_zip(ano: int) -> list[dict]:
     d = year_dir(ID_BASE, ano)
     zpath = find_zip(d)
     if not zpath:
-        raise SystemExit(f"ZIP ausente: {d}/origem.zip — rode baixar_propostas_governo.py {ano}")
+        print(f"AVISO: ZIP ausente para {ano}: {d}/origem.zip")
+        return []
 
     mapa = _mapa_presidente(ano)
     pdf_dir = d / "pdfs"
@@ -239,8 +240,11 @@ def main() -> None:
         escrever_seed(docs, ano)
         all_docs.extend(docs)
 
-    if args.so_seed or not all_docs:
+    if args.so_seed:
         return
+    if not all_docs:
+        print("AVISO: nada para carregar — baixe os ZIPs antes")
+        raise SystemExit(0)
     try:
         carregar_db(all_docs)
     except Exception as e:
