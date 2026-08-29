@@ -45,7 +45,10 @@ Seeds versionados em `mcp/seed/acervo_*.jsonl` (bootstrap no startup do `mcp-api
 ### Depois
 
 - Planos de governador (UF sob demanda)  
-- **Promoção de planos presidente 2018/2022** a partir de PDF oficial em `data/raw/` (ainda não no seed — não inventar texto de plano)  
+- **Promoção de planos presidente 2018/2022** via ingest:
+  - `scripts/baixar_propostas_governo.py` → `data/raw/acervo_plano_governo/ano=YYYY/origem.zip`
+  - `scripts/carregar_propostas_governo.py` → seed `mcp/seed/acervo_planos_{ano}.jsonl` + Postgres
+  - ligado em `job_complementos.py` (`INGEST_ANOS_PROPOSTAS=2018,2022`)
 - Resumos semânticos de proposições/votos Câmara por tema + ano  
 - Trechos de legislação eleitoral vigente por ano (não PDF monolítico)
 
@@ -176,7 +179,7 @@ data/raw/acervo_nota_tse/<YYYY-MM-DD>/
 |---|---|
 | 0 | Este doc + DDL `patch_acervo.sql` |
 | 1 | Extensão pgvector no Postgres + tool `consultar_acervo` (stub → busca lexical se embedding ausente) |
-| 2 | Carga planos presidente 2018 e 2022 (**pendente** — promover PDF oficial para `data/raw/`) |
+| 2 | Carga planos presidente 2018 e 2022 via `baixar_propostas_governo` + `carregar_propostas_governo` (ingest) |
 | 2b | **Carga planos presidente 2026** (seed `mcp/seed/acervo_planos_2026.jsonl` + bootstrap no startup) |
 | 2c | **Glossário + playbooks + notas TSE extras** (`acervo_glossario_*.jsonl`, `acervo_playbook_*.jsonl`) |
 | 2d | **Fichas territoriais 2018 e 2022** (bootstrap Trilha A, 27 UFs) |

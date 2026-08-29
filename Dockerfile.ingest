@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
 COPY mcp/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt pypdf>=5.0.0
 COPY scripts /app/scripts
 COPY sql /app/sql
 RUN mkdir -p /app/docs /app/data/raw /app/data/staging

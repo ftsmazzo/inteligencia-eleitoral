@@ -57,8 +57,9 @@ def main() -> None:
         raise SystemExit("Núcleo ausente no Postgres — abortando job complementos.")
 
     skip_dl = args.skip_download or os.environ.get("INGEST_SKIP_DOWNLOAD", "").strip() in ("1", "true", "yes")
+    anos_prop = os.environ.get("INGEST_ANOS_PROPOSTAS", "2018,2022").replace(",", " ").split()
     if not skip_dl and _downloads_ready():
-        print("AVISO: downloads já em data/raw — pulando baixar_*", flush=True)
+        print("AVISO: downloads já em data/raw — pulando baixar_ibge/parlamento/contas", flush=True)
         skip_dl = True
     if not skip_dl:
         anos_dl = args.anos_contas.replace(",", " ").split()
@@ -68,6 +69,17 @@ def main() -> None:
         ):
             _run(s)
         _run("baixar_contas.py", *anos_dl)
+
+    # propostas: baixa se faltar ZIP (independente do skip dos outros)
+    faltam_prop = [
+        a
+        for a in anos_prop
+        if not (ROOT / "data" / "raw" / "acervo_plano_governo" / f"ano={a}" / "origem.zip").exists()
+    ]
+    if faltam_prop and not args.skip_download:
+        _run("baixar_propostas_governo.py", *faltam_prop)
+    elif not faltam_prop:
+        print("JA TEM propostas", ",".join(anos_prop), flush=True)
 
     _run("carregar_populacao.py")
 
@@ -81,6 +93,18 @@ def main() -> None:
     anos = [a.strip() for a in args.anos_contas.split(",") if a.strip()]
     _run("carregar_contas.py", *anos)
     _run("carregar_parlamento.py")
+
+    prop_ok = any(
+        (ROOT / "data" / "raw" / "acervo_plano_governo" / f"ano={a}" / "origem.zip").exists()
+        for a in anos_prop
+    )
+    if prop_ok:
+        try:
+            _run("carregar_propostas_governo.py", *anos_prop)
+        except subprocess.CalledProcessError as e:
+            print("AVISO: carga propostas falhou —", e, flush=True)
+    else:
+        print("AVISO: propostas skip — rode baixar_propostas_governo.py", flush=True)
 
     # patches analítico / grants (idempotente) — sem fechar_base (exige docs/ no repo)
     for patch in (

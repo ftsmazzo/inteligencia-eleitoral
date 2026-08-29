@@ -24,7 +24,8 @@ Skill de sistema `SKILL_WAR_ROOM_DEFAULT` — injetada em **toda** conversa (nã
 - Redator transforma isso em guia oral + exemplo de pergunta pronta.
 - Com dado → fecha com `### Próximo cruzamento`.
 
-Acervo RAG: planos 2026 + **glossário** + **playbooks** + notas TSE + fichas 2018/2022. Planos 2018/2022 oficiais ainda dependem de PDF em `data/raw/` (não inventar). War room = **como pensar**; acervo = **matéria**.
+Acervo RAG: planos 2026 + **glossário** + **playbooks** + notas TSE + fichas 2018/2022.  
+Planos 2018/2022: pipeline `baixar_propostas_governo` + `carregar_propostas_governo` (ver `docs/CARGA-PROPOSTAS-GOVERNO.md`).
 
 ## Arquitetura (dois modelos)
 
