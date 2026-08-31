@@ -494,7 +494,7 @@
               <li>Notícias 24h / 168h</li>
               <li>Menções em redes</li>
               <li>Amarra narrativa ao fato</li>
-              <li>Radar dedicado por campanha — em breve</li>
+              <li>Painel Radar por campanha — em expansão</li>
             </ul>
           </article>
         </div>
@@ -531,7 +531,7 @@
             <div class="feat"><div class="feat-icon">🏠</div><h4>Bens declarados</h4><p>Patrimônio TSE por candidato.</p></div>
             <div class="feat"><div class="feat-icon">🔗</div><h4>Redes sociais TSE</h4><p>URLs e handles declarados na candidatura.</p><p class="ex">“Instagram do candidato X, 2022”</p></div>
             <div class="feat"><div class="feat-icon">📋</div><h4>Perfil complementar</h4><p>Reeleição, teto de gastos, situação pleito/urna.</p></div>
-            <div class="feat"><div class="feat-icon">⚖️</div><h4>Gasto vs voto</h4><p>Análise composta automática.</p></div>
+            <div class="feat"><div class="feat-icon">⚖️</div><h4>Gasto vs voto</h4><p>Totais agregados (contas_resumo) + custo por voto.</p></div>
           </div>
           <p style="margin-top:20px;font-size:0.85rem;color:var(--muted);text-align:center">Contas carregadas: <strong style="color:var(--brand)">2014–2024</strong> · redes/complementar: <strong style="color:var(--brand)">2020–2026</strong></p>
         </div>
@@ -627,14 +627,14 @@
               <li>População, CadÚnico, Bolsa Família</li>
               <li>Câmara: deputados, PLs, votos nominais</li>
               <li>Acervo planos TSE 2018–2026 (~30,7k docs) · comparador · fichas</li>
-              <li>Clima News/Instagram · export HTML/XLSX · modo narrativa</li>
+              <li>Totais de contas (contas_resumo) · ranking e custo/voto</li>
+              <li>Clima/Radar sob demanda (News + Instagram) · export · narrativa</li>
             </ul>
           </div>
           <div class="pain-card bad" style="background:rgba(251,191,36,.06);border-color:rgba(251,191,36,.25)">
             <h3>◷ Em expansão (roadmap)</h3>
             <ul>
-              <li>Totais agregados receita/despesa na API</li>
-              <li>Radar dedicado por campanha</li>
+              <li>Radar dedicado por campanha (alertas + painel isolado)</li>
               <li>API white-label / multi-tenant</li>
             </ul>
           </div>
@@ -657,13 +657,17 @@
             <h4>Acervo de planos TSE</h4>
             <p>Gov 2018/2022, pref 2020/2024, pres 2026 · ~30,7k docs · comparador multi-ciclo · fichas por UF.</p>
           </div>
-          <div class="road-item soon">
-            <h4>API de totais</h4>
-            <p>Agregados receita/despesa por candidato e ranking já na tool.</p>
+          <div class="road-item now">
+            <h4>Totais de contas</h4>
+            <p>contas_resumo: agregados receita/despesa, categorias, ranking e custo por voto — sem parede de NF.</p>
+          </div>
+          <div class="road-item now">
+            <h4>Clima / Radar</h4>
+            <p>Google News e Instagram sob demanda (consultar_clima) — sempre indício, integrado ao Apura.</p>
           </div>
           <div class="road-item soon">
             <h4>Radar por campanha</h4>
-            <p>Clima dedicado, alertas, integração com painel eleitoral.</p>
+            <p>Stream dedicado por campanha (campaign_id), alertas e painel isolado por cliente.</p>
           </div>
           <div class="road-item soon">
             <h4>White-label</h4>
