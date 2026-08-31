@@ -32,19 +32,26 @@ def url_ano(ano: int) -> str:
 
 def urls_ckan(ano: int) -> list[str]:
     """Fallback via portal Dados Abertos (CKAN) quando o CDN retorna 403."""
-    api = f"https://dadosabertos.tse.jus.br/api/3/action/package_show?id=prestacao-de-contas-eleitorais-{ano}"
-    ctx = ssl.create_default_context()
-    req = urllib.request.Request(api, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, context=ctx, timeout=120) as resp:
-        pkg = json.loads(resp.read()).get("result") or {}
     out: list[str] = []
-    for res in pkg.get("resources") or []:
-        u = (res.get("url") or "").strip()
-        if not u.lower().endswith(".zip"):
+    ctx = ssl.create_default_context()
+    for pid in (
+        f"dadosabertos-tse-jus-br-dataset-prestacao-de-contas-eleitorais-{ano}",
+        f"prestacao-de-contas-eleitorais-{ano}",
+    ):
+        api = f"https://dadosabertos.tse.jus.br/api/3/action/package_show?id={pid}"
+        try:
+            req = urllib.request.Request(api, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, context=ctx, timeout=120) as resp:
+                pkg = json.loads(resp.read()).get("result") or {}
+        except Exception:
             continue
-        blob = f"{res.get('name','')} {res.get('description','')} {u}".lower()
-        if "candidat" in blob or f"candidatos_{ano}" in blob:
-            out.append(u)
+        for res in pkg.get("resources") or []:
+            u = (res.get("url") or "").strip()
+            if not u.lower().endswith(".zip"):
+                continue
+            blob = f"{res.get('name','')} {res.get('description','')} {u}".lower()
+            if "candidat" in blob or f"candidatos_{ano}" in blob:
+                out.append(u)
     return out
 
 

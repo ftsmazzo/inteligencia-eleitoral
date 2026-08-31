@@ -144,6 +144,43 @@ MCP_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "consultar_rede_social",
+            "description": (
+                "URLs/handles oficiais de redes sociais declarados ao TSE. "
+                "Exige ano+sq_candidato (obtenha sq via consultar_nominata). Anos: 2020/2022/2024/2026."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "sq_candidato": {"type": "integer"},
+                    "limite": {"type": "integer", "default": 20},
+                },
+                "required": ["ano", "sq_candidato"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_complementar",
+            "description": (
+                "Informações complementares TSE (reeleição, teto de gastos, situação pleito/urna, etc.). "
+                "Exige ano+sq_candidato. Sem CPF."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "sq_candidato": {"type": "integer"},
+                },
+                "required": ["ano", "sq_candidato"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "consultar_receita",
             "description": "Receitas de campanha (prestação TSE). Ordenação: maior valor primeiro. Consulta por UF retorna só linhas com candidato (sq_candidato); use cargo para filtrar governador etc.",
             "parameters": {
@@ -514,6 +551,8 @@ TOOL_TO_MCP: dict[str, str] = {
     "consultar_coligacao": "coligacao",
     "consultar_vagas": "vagas",
     "consultar_bem": "bem",
+    "consultar_rede_social": "rede_social",
+    "consultar_complementar": "complementar",
     "consultar_receita": "receita",
     "consultar_despesa": "despesa",
     "consultar_contas_resumo": "contas_resumo",

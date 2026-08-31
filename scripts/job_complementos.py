@@ -158,6 +158,7 @@ def main() -> None:
         "patch_parlamento.sql",
         "patch_analitico.sql",
         "patch_contas_resumo.sql",
+        "patch_rede_complementar_api.sql",
     ):
         p = ROOT / "sql" / patch
         if p.exists():

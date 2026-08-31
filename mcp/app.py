@@ -44,6 +44,7 @@ _PATCH_ACERVO = Path(__file__).resolve().parent / "sql" / "patch_acervo.sql"
 _PATCH_ANALITICO = Path(__file__).resolve().parent / "sql" / "patch_analitico.sql"
 _PATCH_PEDIDO = Path(__file__).resolve().parent / "sql" / "patch_pedido_demo.sql"
 _PATCH_CONTAS_RESUMO = Path(__file__).resolve().parent / "sql" / "patch_contas_resumo.sql"
+_PATCH_REDE_COMPLEMENTAR = Path(__file__).resolve().parent / "sql" / "patch_rede_complementar_api.sql"
 _API_SQL = Path(__file__).resolve().parent / "sql" / "api.sql"
 _TOKENS_READY = False
 _PEDIDO_READY = False
@@ -51,6 +52,7 @@ _API_PARTIDO_READY = False
 _ACERVO_READY = False
 _ANALITICO_READY = False
 _CONTAS_RESUMO_READY = False
+_REDE_COMPLEMENTAR_READY = False
 _SKILL_PLACEHOLDER = "__SKILL_CONTENT__"
 _NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 _DEMO_QUOTA_DEFAULT = 5
@@ -220,6 +222,22 @@ def _ensure_contas_resumo() -> None:
         _CONTAS_RESUMO_READY = True
     except Exception:
         _CONTAS_RESUMO_READY = False
+
+
+def _ensure_rede_complementar() -> None:
+    """Redes sociais + informações complementares TSE."""
+    global _REDE_COMPLEMENTAR_READY
+    if _REDE_COMPLEMENTAR_READY or not _PATCH_REDE_COMPLEMENTAR.exists():
+        return
+    url = _ddl_url()
+    if not url:
+        return
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            _run_sql_script(conn, _PATCH_REDE_COMPLEMENTAR.read_text(encoding="utf-8"))
+        _REDE_COMPLEMENTAR_READY = True
+    except Exception:
+        _REDE_COMPLEMENTAR_READY = False
 
 
 _SEED_DIR = Path(__file__).resolve().parent / "seed"
@@ -635,6 +653,17 @@ class BemIn(BaseModel):
     limite: int = 200
 
 
+class RedeSocialIn(BaseModel):
+    ano: int
+    sq_candidato: int
+    limite: int = 50
+
+
+class ComplementarIn(BaseModel):
+    ano: int
+    sq_candidato: int
+
+
 class ContasIn(BaseModel):
     ano: int
     sq_candidato: int | None = None
@@ -787,12 +816,14 @@ def health() -> dict[str, Any]:
     _ensure_tokens_table()
     _ensure_partido_linha()
     _ensure_contas_resumo()
+    _ensure_rede_complementar()
     _ensure_acervo()
     _ensure_analitico()
     out: dict[str, Any] = {
         "status": "ok",
         "partido_linha": "ready" if _API_PARTIDO_READY else "pending",
         "contas_resumo": "ready" if _CONTAS_RESUMO_READY else "pending",
+        "rede_complementar": "ready" if _REDE_COMPLEMENTAR_READY else "pending",
         "acervo": "ready" if _ACERVO_READY else "pending",
         "analitico": "ready" if _ANALITICO_READY else "pending",
         "seed_planos": _SEED_PLANOS.exists(),
@@ -1078,6 +1109,34 @@ def bem(body: BemIn, authorization: str | None = Header(default=None), x_token: 
         )
 
 
+@app.post("/v1/rede_social")
+def rede_social(
+    body: RedeSocialIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)
+) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_rede_complementar()
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.rede_social(%s,%s,%s)",
+            (body.ano, body.sq_candidato, body.limite),
+        )
+
+
+@app.post("/v1/complementar")
+def complementar(
+    body: ComplementarIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)
+) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_rede_complementar()
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.complementar(%s,%s)",
+            (body.ano, body.sq_candidato),
+        )
+
+
 @app.post("/v1/receita")
 def receita(body: ContasIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token)
@@ -1350,6 +1409,10 @@ async def mcp(body: McpCall, authorization: str | None = Header(default=None), x
         return vagas(VagasIn(**p), authorization, x_token)
     if name == "bem":
         return bem(BemIn(**p), authorization, x_token)
+    if name == "rede_social":
+        return rede_social(RedeSocialIn(**p), authorization, x_token)
+    if name == "complementar":
+        return complementar(ComplementarIn(**p), authorization, x_token)
     if name == "receita":
         return receita(ContasIn(**p), authorization, x_token)
     if name == "despesa":

@@ -55,7 +55,8 @@ def skip_member(name: str) -> bool:
     u = name.replace("\\", "/").split("/")[-1].upper()
     if not u.endswith(".CSV"):
         return True
-    if "BRASIL" in u:
+    # arquivo nacional agregado — evita duplicar UFs
+    if u.endswith("_BRASIL.CSV") or "_BRASIL_" in u:
         return True
     return False
 

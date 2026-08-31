@@ -188,11 +188,13 @@ def audit_modulos_posteriores(conn: psycopg.Connection, checks: list[Check]) -> 
         ("contexto", "cadunico_mun", 1000, "cadunico"),
         ("contexto", "bolsa_familia_mun", 1000, "bolsa_familia"),
         ("eleicao", "bem", 10000, "bens"),
+        ("eleicao", "rede_social", 100000, "rede_social"),
+        ("eleicao", "candidato_complementar", 100000, "candidato_complementar"),
         ("eleicao", "receita", 10000, "contas_receita"),
         ("eleicao", "despesa", 10000, "contas_despesa"),
         ("parlamentar", "deputado", 400, "camara_deputados"),
         ("parlamentar", "proposicao", 1000, "camara_proposicoes"),
-        ("acervo", "documento", 1, "acervo_docs"),
+        ("acervo", "documento", 5000, "acervo_docs"),
         ("acervo", "chunk", 10, "acervo_chunks"),
     ]
     for schema, table, min_n, label in packs:

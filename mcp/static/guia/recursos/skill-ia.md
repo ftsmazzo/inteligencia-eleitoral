@@ -70,6 +70,8 @@ Chame `catalogo` primeiro se não souber o que existe.
 | `coligacao` | Coligações | `ano`, `cargo` + filtros |
 | `vagas` | Cadeiras | `ano`, `cargo` + filtros |
 | `bem` | Patrimônio declarado | `ano`, `sq_candidato` |
+| `rede_social` | URLs/handles TSE | `ano`, `sq_candidato` |
+| `complementar` | Campos extras TSE (sem CPF) | `ano`, `sq_candidato` |
 | `receita` / `despesa` | Linhas de contas (NF); `despesa` aceita `categoria` | `ano` + `sq_candidato` ou `uf` (+ `cargo` recomendado) |
 | `contas_resumo` | **Totais** receita/despesa + categorias + `custo_por_voto` | `ano` + `sq_candidato` ou `uf` (+ **`cargo`** se a pergunta restringe cargo) |
 | `eleitos` | Quem foi eleito | `ano`, `cargo` + território |

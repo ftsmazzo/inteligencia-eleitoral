@@ -1,4 +1,4 @@
-# Auditoria do recorte · 2026-08-26
+# Auditoria do recorte · 2026-08-31
 
 **Fonte da verdade operacional.** Rode `python scripts/auditar_recorte.py` antes de qualquer carga, deploy ou módulo novo.
 

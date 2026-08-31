@@ -48,6 +48,7 @@ Playbooks compostos:
 - Deputado: proposições → consultar_proposicoes + consultar_mandato_urna (tema).
 - Social × urna → consultar_cruzamento_social (exige uf).
 - Patrimônio → consultar_bem (sq_candidato da nominata).
+- Redes sociais / dados extras TSE → consultar_rede_social e consultar_complementar (sq da nominata).
 - Coligação 2014 vs federação 2022 → consultar_coligacao + consultar_acervo tipo=nota_tse.
 
 Região / partido:

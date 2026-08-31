@@ -217,31 +217,57 @@ def docs_from_raw(raw_dir: Path, ano: int) -> list[dict]:
     return docs
 
 
+def _sanitize_unicode(s: str) -> str:
+    if not s:
+        return s or ""
+    return "".join(
+        ch if not (0xD800 <= ord(ch) <= 0xDFFF) else "\ufffd" for ch in s
+    )
+
+
+def _sanitize_doc(obj):
+    if isinstance(obj, str):
+        return _sanitize_unicode(obj)
+    if isinstance(obj, list):
+        return [_sanitize_doc(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _sanitize_doc(v) for k, v in obj.items()}
+    return obj
+
+
 def escrever_seed(docs: list[dict], ano: int) -> Path:
     SEED_DIR.mkdir(parents=True, exist_ok=True)
     seed_path = SEED_DIR / f"acervo_planos_{ano}.jsonl"
     with seed_path.open("w", encoding="utf-8") as f:
         for doc in docs:
-            f.write(json.dumps(doc, ensure_ascii=False) + "\n")
+            f.write(json.dumps(_sanitize_doc(doc), ensure_ascii=False) + "\n")
     print("seed", seed_path, "docs", len(docs))
     return seed_path
 
 
-def carregar_db(docs: list[dict]) -> None:
+_SCHEMA_READY = False
+
+
+def carregar_db(docs: list[dict], batch_size: int = 25) -> None:
+    global _SCHEMA_READY
     load_env()
     url = dsn()
-    with psycopg.connect(url) as conn:
-        # garante schema (idempotente)
-        patch = ROOT / "sql" / "patch_partido_linha.sql"
-        acervo = ROOT / "sql" / "patch_acervo.sql"
-        if patch.exists():
-            conn.execute(patch.read_text(encoding="utf-8"))
-        if acervo.exists():
-            conn.execute(acervo.read_text(encoding="utf-8"))
-        conn.commit()
+    # keepalives evitam queda silenciosa em flush longo (UF grande)
+    with psycopg.connect(
+        url,
+        connect_timeout=30,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5,
+    ) as conn:
+        if not _SCHEMA_READY:
+            _SCHEMA_READY = True
+            conn.commit()
 
         with conn.cursor() as cur:
-            for doc in docs:
+            for i, doc in enumerate(docs, 1):
+                doc = _sanitize_doc(doc)
                 dig = doc["sha256"]
                 cur.execute(
                     "SELECT id FROM acervo.documento WHERE sha256 = %s AND tipo = %s",
@@ -256,7 +282,7 @@ def carregar_db(docs: list[dict]) -> None:
                         UPDATE acervo.documento SET
                           titulo=%s, descricao=%s, nivel=%s, ano_eleicao=%s,
                           vigencia_inicio=%s, vigencia_fim=%s, escopo=%s,
-                          nm_candidato=%s, cargo=%s, tags=%s, fonte_orgao=%s,
+                          sg_uf=%s, nm_candidato=%s, cargo=%s, tags=%s, fonte_orgao=%s,
                           id_base_raw=%s, meta=%s, ativo=true, atualizado_em=now()
                         WHERE id=%s
                         """,
@@ -268,6 +294,7 @@ def carregar_db(docs: list[dict]) -> None:
                             doc["vigencia_inicio"],
                             doc["vigencia_fim"],
                             doc["escopo"],
+                            doc.get("sg_uf"),
                             doc["nm_candidato"],
                             doc["cargo"],
                             doc["tags"],
@@ -283,11 +310,11 @@ def carregar_db(docs: list[dict]) -> None:
                         """
                         INSERT INTO acervo.documento (
                           id, tipo, titulo, descricao, nivel, ano_eleicao,
-                          vigencia_inicio, vigencia_fim, escopo, sg_partido,
+                          vigencia_inicio, vigencia_fim, escopo, sg_uf, sg_partido,
                           nm_candidato, cargo, tags, fonte_orgao, sha256,
                           id_base_raw, meta
                         ) VALUES (
-                          %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
+                          %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb
                         )
                         """,
                         (
@@ -300,6 +327,7 @@ def carregar_db(docs: list[dict]) -> None:
                             doc["vigencia_inicio"],
                             doc["vigencia_fim"],
                             doc["escopo"],
+                            doc.get("sg_uf"),
                             doc["sg_partido"],
                             doc["nm_candidato"],
                             doc["cargo"],
@@ -310,22 +338,28 @@ def carregar_db(docs: list[dict]) -> None:
                             json.dumps(doc["meta"], ensure_ascii=False),
                         ),
                     )
-                for ch in doc["chunks"]:
-                    cur.execute(
+                chunk_rows = [
+                    (
+                        doc_id,
+                        ch["ord"],
+                        ch["secao"],
+                        ch["texto"],
+                        max(1, len(ch["texto"]) // 4),
+                    )
+                    for ch in doc["chunks"]
+                ]
+                if chunk_rows:
+                    cur.executemany(
                         """
                         INSERT INTO acervo.chunk (documento_id, ord, secao, texto, token_count)
                         VALUES (%s,%s,%s,%s,%s)
                         """,
-                        (
-                            doc_id,
-                            ch["ord"],
-                            ch["secao"],
-                            ch["texto"],
-                            max(1, len(ch["texto"]) // 4),
-                        ),
+                        chunk_rows,
                     )
-        conn.commit()
-    print("carga ok", len(docs), "documentos")
+                if i % batch_size == 0 or i == len(docs):
+                    conn.commit()
+                    print(f"DB_PROG {i}/{len(docs)}", flush=True)
+    print("carga ok", len(docs), "documentos", flush=True)
 
 
 def main() -> None:
