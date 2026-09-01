@@ -13,7 +13,11 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_nominata",
-            "description": "Candidatos inscritos (nominata).",
+            "description": (
+                "Candidatos inscritos (nominata). Para presidente/governador/senador/deputado federal/estadual "
+                "use UF (ex. SP) — NÃO passe cod_ibge salvo se pedirem domicílio/naturalidade. "
+                "Prefeito/vereador: cod_ibge ou UF+município. 2026 = só candidatura (sem votos na urna)."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -22,6 +26,7 @@ MCP_TOOLS: list[dict] = [
                     "uf": {"type": "string"},
                     "cod_ibge": {"type": "integer"},
                     "sg_partido": {"type": "string"},
+                    "nr_candidato": {"type": "integer"},
                     "nm_urna": {"type": "string"},
                     "limite": {"type": "integer", "default": 50},
                 },
