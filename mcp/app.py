@@ -45,6 +45,7 @@ _PATCH_ANALITICO = Path(__file__).resolve().parent / "sql" / "patch_analitico.sq
 _PATCH_PEDIDO = Path(__file__).resolve().parent / "sql" / "patch_pedido_demo.sql"
 _PATCH_CONTAS_RESUMO = Path(__file__).resolve().parent / "sql" / "patch_contas_resumo.sql"
 _PATCH_REDE_COMPLEMENTAR = Path(__file__).resolve().parent / "sql" / "patch_rede_complementar_api.sql"
+_PATCH_NOMINATA_CARGO = Path(__file__).resolve().parent / "sql" / "patch_nominata_cargo_geral.sql"
 _API_SQL = Path(__file__).resolve().parent / "sql" / "api.sql"
 _TOKENS_READY = False
 _PEDIDO_READY = False
@@ -238,6 +239,25 @@ def _ensure_rede_complementar() -> None:
         _REDE_COMPLEMENTAR_READY = True
     except Exception:
         _REDE_COMPLEMENTAR_READY = False
+
+
+_NOMINATA_CARGO_READY = False
+
+
+def _ensure_nominata_cargo_geral() -> None:
+    """Evita falso vazio: cod_ibge em nominata de cargo geral."""
+    global _NOMINATA_CARGO_READY
+    if _NOMINATA_CARGO_READY or not _PATCH_NOMINATA_CARGO.exists():
+        return
+    url = _ddl_url()
+    if not url:
+        return
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            _run_sql_script(conn, _PATCH_NOMINATA_CARGO.read_text(encoding="utf-8"))
+        _NOMINATA_CARGO_READY = True
+    except Exception:
+        _NOMINATA_CARGO_READY = False
 
 
 _SEED_DIR = Path(__file__).resolve().parent / "seed"
@@ -527,6 +547,7 @@ def _startup_ddl() -> None:
     _ensure_pedido_demo()
     _ensure_partido_linha()
     _ensure_contas_resumo()
+    _ensure_nominata_cargo_geral()
     _ensure_acervo()
     _ensure_analitico()
 

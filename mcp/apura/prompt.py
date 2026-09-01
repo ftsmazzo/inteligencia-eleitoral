@@ -145,7 +145,7 @@ Estrutura quando houver camadas:
 --- DADOS (INVIOLÁVEL) ---
 Use SOMENTE DADOS_OFICIAIS para cifras e nomes. status vazio = não veio linha (peça sq_candidato/turno se couber). zero = filtro ok, valor nulo explícito.
 Lacunas: diga o que NÃO está no banco. Clima vazio = diga — não invente manchete.
-Se a consulta veio vazia mas o cargo é estadual/federal e havia município na pergunta, explique que dep. federal/senador/gov se inscrevem por UF — não invente “possíveis motivos” (candidatura pendente, mudança de partido etc.) sem linha no TSE.
+Proibido: dizer que “não há candidatos” ou “não existe registro” quando DADOS_OFICIAIS trouxeram linhas ou quando o filtro geográfico estava errado (município em cargo federal).
 Proibido: parágrafo “Possíveis Motivos” ou especulação quando bastava ampliar o recorte (UF sem cod_ibge) ou usar nr_candidato/nm_urna.
 Região: cubra ufs_consultadas; liste ufs_com_zero. Sigla na urna + continuidade histórica quando houver expansão.
 Notícias: **Título** — *Fonte · dd/mm HH:MM* — resumo; links curtos em markdown; nunca url_raw.

@@ -181,6 +181,34 @@ def audit_pg(conn: psycopg.Connection, checks: list[Check]) -> None:
     )
 
 
+def audit_api_smoke(conn: psycopg.Connection, checks: list[Check]) -> None:
+    """Regressão: nominata dep. federal + cod_ibge não pode voltar vazio se há chapa na UF."""
+    try:
+        r = conn.execute(
+            "SELECT api.nominata(%s, %s, %s, %s, %s, NULL, NULL, NULL, %s)",
+            (2026, "deputado_federal", "SP", 3554102, "PRD", 5),
+        ).fetchone()[0]
+        n = len(r.get("linhas") or [])
+        ok = r.get("status") == "ok" and n >= 1
+        checks.append(
+            Check(
+                "api_smoke",
+                "nominata_dep_federal_uf_com_cod_ibge",
+                "ok" if ok else "falha",
+                f"status={r.get('status')} linhas={n} (esperado PRD SP 2026 mesmo com ibge Taubaté)",
+            )
+        )
+    except Exception as e:
+        checks.append(
+            Check(
+                "api_smoke",
+                "nominata_dep_federal_uf_com_cod_ibge",
+                "falha",
+                str(e)[:200],
+            )
+        )
+
+
 def audit_modulos_posteriores(conn: psycopg.Connection, checks: list[Check]) -> None:
     """Complementos: aviso se vazio, ok se carregado."""
     packs = [
@@ -257,6 +285,7 @@ def main() -> int:
 
     with psycopg.connect(dsn()) as conn:
         audit_pg(conn, checks)
+        audit_api_smoke(conn, checks)
         audit_modulos_posteriores(conn, checks)
 
     nucleus_checks = [c for c in checks if c.bloco in ("raw", "postgres")]

@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from apura.partidos import eh_regiao, siglas_equivalentes, ufs_da_regiao
+from apura.recorte import normalizar_params_mcp
 from apura.tools import TOOL_TO_MCP
 
 
@@ -85,6 +86,7 @@ async def chamar_mcp(tool_name: str, params: dict[str, Any], mcp_token: str) -> 
         return {"erro": f"tool desconhecida: {tool_name}"}
 
     params = dict(params or {})
+    params, nota_recorte = normalizar_params_mcp(method, params)
     uf = params.get("uf")
     partido = params.get("sg_partido")
 
@@ -114,10 +116,16 @@ async def chamar_mcp(tool_name: str, params: dict[str, Any], mcp_token: str) -> 
         nota = f"expansão automática região={regiao_label} UFs={','.join(ufs)}"
         if partido and len(siglas) > 1:
             nota += f" | partido pedido={partido} equivalentes={','.join(siglas)} (API)"
+        if nota_recorte:
+            nota += f" | {nota_recorte}"
         return _merge_resultados(list(resultados), nota_extra=nota, ufs_esperadas=list(ufs))
 
     # Sem região: 1 call (partido expandido no SQL)
-    return await _post_mcp(method, params, mcp_token)
+    res = await _post_mcp(method, params, mcp_token)
+    if nota_recorte and isinstance(res, dict):
+        prev = res.get("nota_metodologica") or ""
+        res["nota_metodologica"] = " | ".join(x for x in (prev, nota_recorte) if x)
+    return res
 
 
 def resumir_resultado(result: Any, max_chars: int = 12000) -> str:
