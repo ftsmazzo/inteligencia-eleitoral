@@ -286,6 +286,25 @@ def main() -> int:
     with psycopg.connect(dsn()) as conn:
         audit_pg(conn, checks)
         audit_api_smoke(conn, checks)
+        # municipio resolver
+        try:
+            r = conn.execute(
+                "SELECT api.municipio(%s,%s,%s)", ("Taubate", "SP", 3)
+            ).fetchone()[0]
+            n = len(r.get("linhas") or [])
+            ok = r.get("status") == "ok" and n >= 1
+            checks.append(
+                Check(
+                    "api_smoke",
+                    "municipio_nome_para_ibge",
+                    "ok" if ok else "falha",
+                    f"status={r.get('status')} linhas={n}",
+                )
+            )
+        except Exception as e:
+            checks.append(
+                Check("api_smoke", "municipio_nome_para_ibge", "falha", str(e)[:200])
+            )
         audit_modulos_posteriores(conn, checks)
 
     nucleus_checks = [c for c in checks if c.bloco in ("raw", "postgres")]

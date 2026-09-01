@@ -46,6 +46,7 @@ _PATCH_PEDIDO = Path(__file__).resolve().parent / "sql" / "patch_pedido_demo.sql
 _PATCH_CONTAS_RESUMO = Path(__file__).resolve().parent / "sql" / "patch_contas_resumo.sql"
 _PATCH_REDE_COMPLEMENTAR = Path(__file__).resolve().parent / "sql" / "patch_rede_complementar_api.sql"
 _PATCH_NOMINATA_CARGO = Path(__file__).resolve().parent / "sql" / "patch_nominata_cargo_geral.sql"
+_PATCH_MUNICIPIO = Path(__file__).resolve().parent / "sql" / "patch_municipio_api.sql"
 _API_SQL = Path(__file__).resolve().parent / "sql" / "api.sql"
 _TOKENS_READY = False
 _PEDIDO_READY = False
@@ -242,6 +243,7 @@ def _ensure_rede_complementar() -> None:
 
 
 _NOMINATA_CARGO_READY = False
+_MUNICIPIO_READY = False
 
 
 def _ensure_nominata_cargo_geral() -> None:
@@ -258,6 +260,22 @@ def _ensure_nominata_cargo_geral() -> None:
         _NOMINATA_CARGO_READY = True
     except Exception:
         _NOMINATA_CARGO_READY = False
+
+
+def _ensure_municipio_api() -> None:
+    """api.municipio: nome → cod_ibge."""
+    global _MUNICIPIO_READY
+    if _MUNICIPIO_READY or not _PATCH_MUNICIPIO.exists():
+        return
+    url = _ddl_url()
+    if not url:
+        return
+    try:
+        with psycopg.connect(url, autocommit=True) as conn:
+            _run_sql_script(conn, _PATCH_MUNICIPIO.read_text(encoding="utf-8"))
+        _MUNICIPIO_READY = True
+    except Exception:
+        _MUNICIPIO_READY = False
 
 
 _SEED_DIR = Path(__file__).resolve().parent / "seed"
@@ -548,6 +566,7 @@ def _startup_ddl() -> None:
     _ensure_partido_linha()
     _ensure_contas_resumo()
     _ensure_nominata_cargo_geral()
+    _ensure_municipio_api()
     _ensure_acervo()
     _ensure_analitico()
 
@@ -605,6 +624,12 @@ def db() -> psycopg.Connection:
     if not url:
         raise HTTPException(500, "DATABASE_URL ausente")
     return psycopg.connect(url)
+
+
+class MunicipioIn(BaseModel):
+    nome: str
+    uf: str | None = None
+    limite: int = 10
 
 
 class NominataIn(BaseModel):
@@ -1022,6 +1047,22 @@ def catalogo(
         return _one(conn, "SELECT api.catalogo()", ())
 
 
+@app.post("/v1/municipio")
+def municipio(
+    body: MunicipioIn,
+    authorization: str | None = Header(default=None),
+    x_token: str | None = Header(default=None),
+) -> Any:
+    _token_ok(authorization, x_token)
+    _ensure_municipio_api()
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.municipio(%s,%s,%s)",
+            (body.nome, body.uf, body.limite),
+        )
+
+
 @app.post("/v1/nominata")
 def nominata(body: NominataIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token)
@@ -1416,6 +1457,8 @@ async def mcp(body: McpCall, authorization: str | None = Header(default=None), x
     p = body.params
     if name == "catalogo":
         return catalogo(authorization, x_token)
+    if name == "municipio":
+        return municipio(MunicipioIn(**p), authorization, x_token)
     if name == "nominata":
         return nominata(NominataIn(**p), authorization, x_token)
     if name == "votacao":

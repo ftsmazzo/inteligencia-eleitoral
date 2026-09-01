@@ -12,11 +12,32 @@ MCP_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "consultar_municipio",
+            "description": (
+                "Resolve nome de município → cod_ibge (e cd_municipio_tse). "
+                "Chame ANTES de votacao/comparecimento/eleitorado/populacao/prefeito/vereador "
+                "quando o usuário citar cidade pelo nome (ex. Taubaté, Recife). Passe uf se souber."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "nome": {"type": "string"},
+                    "uf": {"type": "string"},
+                    "limite": {"type": "integer", "default": 10},
+                },
+                "required": ["nome"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "consultar_nominata",
             "description": (
-                "Candidatos inscritos (nominata). Para presidente/governador/senador/deputado federal/estadual "
-                "use UF (ex. SP) — NÃO passe cod_ibge salvo se pedirem domicílio/naturalidade. "
-                "Prefeito/vereador: cod_ibge ou UF+município. 2026 = só candidatura (sem votos na urna)."
+                "Candidatos inscritos (chapa). Geografia = território de INSCRIÇÃO: "
+                "presidente/gov/senador/dep.federal/dep.estadual → UF (município NÃO filtra a lista); "
+                "prefeito/vereador → cod_ibge (obtenha via consultar_municipio). "
+                "2026 = só candidatura (sem votos)."
             ),
             "parameters": {
                 "type": "object",
@@ -38,7 +59,12 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_votacao",
-            "description": "Votos na urna por candidato.",
+            "description": (
+                "Votos na urna. Geografia = ONDE o eleitor votou: "
+                "cod_ibge do município é válido para QUALQUER cargo "
+                "(ex. votos a presidente/dep.federal/senador EM Taubaté). "
+                "Também aceita uf ou nacional=true. Resolve cidade com consultar_municipio."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -61,7 +87,10 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "consultar_comparecimento",
-            "description": "Aptos, comparecimento, brancos, nulos e válidos.",
+            "description": (
+                "Aptos, comparecimento, brancos, nulos e válidos. "
+                "Aceita cod_ibge (cidade) ou uf/nacional — para qualquer cargo."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -549,6 +578,7 @@ MCP_TOOLS: list[dict] = [
 
 TOOL_TO_MCP: dict[str, str] = {
     "consultar_catalogo": "catalogo",
+    "consultar_municipio": "municipio",
     "consultar_nominata": "nominata",
     "consultar_votacao": "votacao",
     "consultar_comparecimento": "comparecimento",

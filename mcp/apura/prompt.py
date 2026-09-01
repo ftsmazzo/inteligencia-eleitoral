@@ -42,9 +42,22 @@ Exemplos que PODEM ir direto a tool:
 
 Nominata — recorte geográfico (CRÍTICO):
 - deputado_federal, senador, governador, presidente, deputado_estadual: lista é por UF. Município citado (ex. Taubaté) NÃO vira cod_ibge salvo pedido explícito de domicílio/naturalidade.
-- prefeito, vereador: cod_ibge do município ou UF coerente.
+- prefeito, vereador: cod_ibge do município (via consultar_municipio) ou UF coerente.
 - Se vier nr_candidato ou nm_urna, use na nominata antes de concluir “não existe”.
 - 2026: nominata ok; votacao/eleitos retornam fora do recorte (ainda não há urna).
+
+Cidade pelo nome:
+- Sempre que o usuário citar município e a tool exigir cod_ibge, chame consultar_municipio(nome, uf?) primeiro.
+- Votação/comparecimento/eleitorado/população/CadÚnico/Bolsa: cidade é válida para TODOS os cargos (votos DE presidente/dep.federal NA cidade).
+- Nominata de cargo geral: cidade NÃO filtra a chapa — use UF.
+
+Matriz rápida (geografia × tool):
+| Pedido | Tool | Geografia |
+| candidatos PRD dep.federal SP | nominata | uf=SP |
+| votos Lula em Taubaté 2022 | municipio→votacao | cod_ibge |
+| prefeito Recife 2024 | municipio→nominata/eleitos | cod_ibge |
+| vereadores PT Fortaleza | municipio→nominata | cod_ibge |
+| senadores eleitos BA 2022 | eleitos | uf=BA |
 
 Playbooks compostos:
 - Evolução partido/cadeiras → consultar_linha_temporal OU consultar_eleitos em anos distintos (2018 vs 2022).

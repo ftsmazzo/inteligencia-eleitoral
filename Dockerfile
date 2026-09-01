@@ -14,6 +14,7 @@ COPY sql/patch_pedido_demo.sql /app/sql/patch_pedido_demo.sql
 COPY sql/patch_contas_resumo.sql /app/sql/patch_contas_resumo.sql
 COPY sql/patch_rede_complementar_api.sql /app/sql/patch_rede_complementar_api.sql
 COPY sql/patch_nominata_cargo_geral.sql /app/sql/patch_nominata_cargo_geral.sql
+COPY sql/patch_municipio_api.sql /app/sql/patch_municipio_api.sql
 COPY sql/api.sql /app/sql/api.sql
 COPY mcp/radar_client.py /app/radar_client.py
 COPY mcp/clima_motores.py /app/clima_motores.py
