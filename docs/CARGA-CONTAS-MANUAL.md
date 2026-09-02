@@ -44,7 +44,7 @@ Carregado no Postgres: **2014, 2016, 2018, 2020, 2022, 2024** (~9,8M receitas ·
 ```bash
 curl -s -H "Authorization: Bearer $MCP_TOKEN" -H "Content-Type: application/json" \
   -d '{"ano":2022,"uf":"SP","limite":3}' \
-  https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/v1/receita
+  https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/v1/receita
 ```
 
 Status `ok` com linhas = carga OK. Status `vazio` = zip ausente ou ano não carregado.

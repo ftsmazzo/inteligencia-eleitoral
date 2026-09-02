@@ -26,7 +26,7 @@ Guia humano: `docs/GUIA-USUARIO.md`
 
 | Campo | Valor |
 |---|---|
-| URL | `https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/mcp` |
+| URL | `https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp` |
 | Método | `POST` |
 | Auth | Header `Authorization: Bearer <TOKEN>` ou `X-Token: <TOKEN>` |
 | Corpo | `{"method": "<tool>", "params": { ... }}` |

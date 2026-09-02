@@ -1,7 +1,7 @@
-{
+﻿{
   "mcpServers": {
     "inteligencia-eleitoral-brasil": {
-      "url": "https://inteligencia-eleitoral-brasil-mcp-api.kxryyk.easypanel.host/mcp",
+      "url": "https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp",
       "headers": {
         "Authorization": "Bearer SEU_TOKEN_AQUI"
       }
