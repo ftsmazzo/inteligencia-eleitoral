@@ -35,7 +35,7 @@ Arquivo-chave: **votação nominal por município e zona** + **detalhe da apura�
 | 2020 municipal | [Resultados 2020](https://dadosabertos.tse.jus.br/dataset/resultados-2020) | Pref + ver |
 | 2022 geral | [Resultados 2022](https://dadosabertos.tse.jus.br/dataset/resultados-2022) | Inclui [votação mun/zona](https://dadosabertos.tse.jus.br/dataset/resultados-2022/resource/40fdcf49-256a-4c81-87cf-711545bd1528) |
 | 2024 municipal | [Resultados 2024](https://dadosabertos.tse.jus.br/dataset/resultados-2024) | Pref + ver (última urna municipal do recorte) |
-| 2026 geral | resultado **ainda não** | Só candidatura até a apuração oficial |
+| 2026 geral | resultado **ainda não** | Só candidatura até a apuração oficial. **Não** criar `votacao_2026` / `detalhe_2026` vazias fingindo urna. |
 
 Ids de produto (partição por `ano` + `cargo`, não uma tabela `ne9_*` por cargo):
 

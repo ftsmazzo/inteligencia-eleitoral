@@ -189,6 +189,16 @@ def _ensure_partido_linha() -> None:
         return
     try:
         with psycopg.connect(url, autocommit=True) as conn:
+            already = conn.execute(
+                """
+                SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'api' AND p.proname = 'siglas_equivalentes'
+                """
+            ).fetchone()
+            if already and int(already[0]) > 0:
+                _API_PARTIDO_READY = True
+                return
             if _PATCH_PARTIDO.exists():
                 _run_sql_script(conn, _PATCH_PARTIDO.read_text(encoding="utf-8"))
             if _API_SQL.exists():

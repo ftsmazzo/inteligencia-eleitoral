@@ -81,3 +81,18 @@
 | postgres | ref.municipio | ok | n=5,571 |
 | api_smoke | nominata_dep_federal_uf_com_cod_ibge | ok | status=ok linhas=5 (esperado PRD SP 2026 mesmo com ibge Taubaté) |
 | api_smoke | municipio_nome_para_ibge | ok | status=ok linhas=1 |
+
+## Pós-corte VPS se860g · 2026-09-02
+
+| Item | Status | Detalhe |
+|---|---|---|
+| Produção canônica | ok | só `se860g`; mcp-api `kxryyk` desligado (503) |
+| Postgres antigo | backup frio | destruir em **2026-09-09** (`docs/CORTE-VPS.md`) |
+| candidatura 2026 | ok | ~20.7k |
+| receita/despesa 2026 | ok | 99.880 / 13.473 (ZIP parcial TSE ~12 MB) |
+| planos gov 2026 | ok | ~189 + OCR BA/PE/RJ/RO/SC; AP 5/5 |
+| planos pres 2026 | ok | dedupe seed×carga |
+| votacao/detalhe 2026 | inexistente | correto até urna oficial |
+| nominata sen/dep AP | ok | smoke 2026 |
+| contas_resumo 2026 AP | ok | |
+
