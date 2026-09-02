@@ -285,10 +285,8 @@
         </a>
         <a href="#o-que-e">Capacidades</a>
         <a href="#apura">Apura</a>
+        <a href="#cadastro">Cadastro</a>
         <a href="#trilhas">Trilhas</a>
-        <a href="#token">Token</a>
-        <a href="#conectar">Conectar</a>
-        <a href="#skill">Skill</a>
         <a href="#perguntas">Perguntas</a>
       </nav>
       <div class="status-pill"><span class="dot" id="health-dot"></span><span id="health-text">Verificando…</span></div>
@@ -300,13 +298,13 @@
       <div class="wrap hero-grid">
         <div>
           <h1>Dados eleitorais do Brasil, prontos para sua IA</h1>
-          <p class="lead">Urna TSE, contas de campanha, redes e perfil declarado do candidato, população, CadÚnico, Bolsa Família, Câmara, acervo de planos e clima midiático — fontes oficiais, sem inventar número. Use o <strong>Apura</strong> (chat) ou conecte via MCP.</p>
+          <p class="lead">Urna TSE, contas de campanha, redes e perfil declarado do candidato, população, CadÚnico, Bolsa Família, Câmara, acervo de planos e clima midiático — fontes oficiais, sem inventar número. Solicite cadastro no <strong>Apura</strong> (chat) ou peça demo comercial.</p>
           <div class="hero-actions">
-            <a class="btn btn-apura" href="/#demo">
+            <a class="btn btn-apura" href="#cadastro">
               <img src="/apura/assets/avatar-apura.jpg" alt="" width="28" height="28" />
-              Pedir demo
+              Solicitar cadastro Apura
             </a>
-            <a class="btn btn-primary" href="#token">Gerar meu token</a>
+            <a class="btn btn-primary" href="/apura/app">Já tenho acesso · Entrar</a>
             <a class="btn btn-secondary" href="https://wa.me/5516996480805?text=Ol%C3%A1%21%20Gostaria%20de%20acesso%20ao%20Apura%20%2F%20MCP." target="_blank" rel="noopener">WhatsApp</a>
           </div>
         </div>
@@ -373,90 +371,41 @@
       </div>
     </section>
 
-    <section id="token">
+    <section id="cadastro">
       <div class="wrap">
         <div class="section-head">
-          <h2>Seu token de acesso</h2>
-          <p>Gere um token <strong>demo</strong> (5 consultas MCP). Ideal para testar Cursor/Claude. Guarde-o — não exibimos de novo.</p>
+          <h2>Solicitar cadastro no Apura</h2>
+          <p>Preencha o formulário. Se a campanha existir, o acesso é aprovado na hora. Você recebe um token para entrar em <a href="/apura/app">/apura/app</a> (e-mail + token como senha).</p>
         </div>
-        <div class="connect-box" style="padding:24px">
-          <div class="token-gen">
-            <div style="flex:1;min-width:200px">
-              <label for="rotulo" style="display:block;font-size:0.85rem;font-weight:600;margin-bottom:6px">Nome ou equipe</label>
-              <input type="text" id="rotulo" placeholder="Ex.: João · Equipe Fabria" maxlength="80" />
-            </div>
-            <button class="btn btn-primary" type="button" id="gerar-token">Gerar token</button>
-          </div>
-          <div id="token-result" class="token-result" hidden>
-            <strong>Token gerado</strong>
-            <p style="margin-top:8px;font-size:0.9rem;color:var(--muted)" id="token-aviso"></p>
-            <code id="token-novo"></code>
-            <button class="btn btn-secondary" type="button" id="usar-token" style="margin-top:12px">Usar este token abaixo</button>
-          </div>
-          <p style="margin-top:16px;font-size:0.85rem;color:var(--muted)">Quem já tem token mestre (admin) pode colar direto na seção Conectar.</p>
-        </div>
-      </div>
-    </section>
-
-    <section id="conectar" class="alt">
-      <div class="wrap">
-        <div class="section-head">
-          <h2>Conectar em 4 passos</h2>
-          <p>Cole seu token uma vez — os blocos abaixo atualizam automaticamente.</p>
-        </div>
-        <div class="connect-box">
-          <div class="token-row">
-            <div style="flex:1;min-width:240px">
-              <label for="token">Seu token de acesso</label>
-              <input type="password" id="token" placeholder="Cole o token que você recebeu" autocomplete="off" />
-            </div>
-            <button class="btn btn-secondary" type="button" id="toggle-token">Mostrar</button>
-          </div>
-          <ol class="steps wrap" style="padding:24px 24px 8px">
-            <li><strong>Gere ou cole</strong> seu token na seção acima.</li>
-            <li>Escolha sua IA abaixo e <strong>cole a configuração</strong>.</li>
-            <li>Instale a <strong>Skill</strong> (seção Skill) nas instruções do agente.</li>
-            <li>Faça uma pergunta com <strong>ano + cargo + lugar</strong>.</li>
-          </ol>
-          <div class="tabs" role="tablist">
-            <button class="tab active" data-tab="cursor">Cursor</button>
-            <button class="tab" data-tab="claude">Claude</button>
-            <button class="tab" data-tab="outras">ChatGPT · Manus · Outras</button>
-            <button class="tab" data-tab="teste">Teste rápido</button>
-          </div>
-          <div class="tab-panel active" id="panel-cursor">
-            <p style="color:var(--muted);margin-bottom:12px">Settings → MCP → cole este JSON:</p>
-            <div class="code-block">
-              <button class="copy-btn" data-copy="cfg-cursor">Copiar</button>
-              <pre id="cfg-cursor"></pre>
-            </div>
-          </div>
-          <div class="tab-panel" id="panel-claude">
-            <p style="color:var(--muted);margin-bottom:12px">Configuração MCP remota (Claude Desktop):</p>
-            <div class="code-block">
-              <button class="copy-btn" data-copy="cfg-claude">Copiar</button>
-              <pre id="cfg-claude"></pre>
-            </div>
-          </div>
-          <div class="tab-panel" id="panel-outras">
-            <p style="color:var(--muted);margin-bottom:16px">Copie a <strong>Skill</strong> (seção Skill) e cole nas instruções do agente. Informe URL e token:</p>
-            <div class="code-block">
-              <button class="copy-btn" data-copy="cfg-url">Copiar URL</button>
-              <pre id="cfg-url"></pre>
-            </div>
-          </div>
-          <div class="tab-panel" id="panel-teste">
-            <p style="color:var(--muted);margin-bottom:12px">Exemplo para testar (Postman, Insomnia ou extensão REST):</p>
-            <div class="code-block">
-              <button class="copy-btn" data-copy="cfg-teste">Copiar</button>
-              <pre id="cfg-teste"></pre>
-            </div>
+        <div class="connect-box" style="padding:28px;max-width:520px;margin:0 auto">
+          <form id="form-cadastro">
+            <label for="cad-nome">Nome *</label>
+            <input type="text" id="cad-nome" required maxlength="80" autocomplete="name" style="width:100%;padding:12px 16px;border-radius:10px;border:1px solid var(--line);font:inherit;margin-bottom:14px" />
+            <label for="cad-email">E-mail *</label>
+            <input type="email" id="cad-email" required autocomplete="email" style="width:100%;padding:12px 16px;border-radius:10px;border:1px solid var(--line);font:inherit;margin-bottom:14px" />
+            <label for="cad-telefone">Telefone</label>
+            <input type="tel" id="cad-telefone" maxlength="32" autocomplete="tel" placeholder="Opcional" style="width:100%;padding:12px 16px;border-radius:10px;border:1px solid var(--line);font:inherit;margin-bottom:14px" />
+            <label for="cad-campanha">Campanha *</label>
+            <select id="cad-campanha" required style="width:100%;padding:12px 16px;border-radius:10px;border:1px solid var(--line);font:inherit;margin-bottom:20px">
+              <option value="">Carregando campanhas…</option>
+            </select>
+            <button class="btn btn-primary" type="submit" id="cad-submit" style="width:100%">Solicitar cadastro</button>
+          </form>
+          <p id="cad-err" style="color:#b91c1c;font-size:0.85rem;margin-top:12px;min-height:1.2em"></p>
+          <div id="cad-success" class="token-result" hidden>
+            <strong>Cadastro aprovado</strong>
+            <p style="margin-top:8px;font-size:0.9rem;color:var(--muted)">Guarde seu token — não será exibido de novo.</p>
+            <p style="margin-top:12px;font-size:0.9rem"><strong>Seu token:</strong></p>
+            <code id="cad-token"></code>
+            <p style="margin-top:12px;font-size:0.85rem;color:var(--muted)">Use e-mail + token como senha em <a href="/apura/app">/apura/app</a>.</p>
+            <button class="btn btn-secondary" type="button" id="cad-copy" style="margin-top:12px">Copiar token</button>
+            <a class="btn btn-primary" href="/apura/app" style="margin-top:12px;margin-left:8px">Ir para o Apura</a>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="perguntas">
+    <section id="perguntas" class="alt">
       <div class="wrap">
         <div class="section-head">
           <h2>Como formular boas perguntas</h2>
@@ -474,39 +423,7 @@
         <details><summary>Posso pedir resultado de 2026?</summary><p>Só candidaturas (quem se inscreveu). Votos só depois da apuração oficial.</p></details>
         <details><summary>A IA pode estimar se faltar dado?</summary><p>Não. Esta ferramenta proíbe inventar. Fora do recorte, a resposta é seca: dado inexistente.</p></details>
         <details><summary>É a ferramenta da campanha NE9?</summary><p>Não. É o Brasil inteiro, produto separado, fontes TSE/IBGE/MDS/Câmara.</p></details>
-      </div>
-    </section>
-
-    <section id="skill" class="alt">
-      <div class="wrap">
-        <div class="section-head">
-          <h2>Skill para IA</h2>
-          <p>Instruções completas para Claude, GPT, Manus, Cursor e outros agentes. Cole nas regras ou anexe como skill.</p>
-        </div>
-        <div class="skill-box">
-          <div class="code-block">
-            <button class="copy-btn" data-copy="skill-full">Copiar Skill</button>
-            <pre id="skill-full">__SKILL_CONTENT__</pre>
-          </div>
-        </div>
-        <div class="resource-list" style="margin-top:24px">
-          <a class="resource" href="/guia/recursos/skill-ia.md" download id="skill-download">
-            <div><strong>Baixar skill-ia.md</strong><span>Arquivo para importar no Cursor ou anexar ao agente</span></div>
-            <span class="resource-dl">Baixar ↓</span>
-          </a>
-          <a class="resource" href="/guia/recursos/mcp-cursor.json" download>
-            <div><strong>Config MCP · Cursor</strong><span>JSON pronto (token do campo acima)</span></div>
-            <span class="resource-dl">Baixar ↓</span>
-          </a>
-          <a class="resource" href="/guia/recursos/mcp-claude.json" download>
-            <div><strong>Config MCP · Claude</strong><span>JSON pronto (token do campo acima)</span></div>
-            <span class="resource-dl">Baixar ↓</span>
-          </a>
-          <a class="resource" href="/guia/recursos/catalogo.json" download>
-            <div><strong>Catálogo da base</strong><span>Lista formal de pacotes e indicadores</span></div>
-            <span class="resource-dl">Baixar ↓</span>
-          </a>
-        </div>
+        <details><summary>Onde baixo a Skill para IA?</summary><p><a href="/guia/recursos/skill-ia.md" download>skill-ia.md</a> — para quem integra via MCP com token comercial.</p></details>
       </div>
     </section>
   </main>
@@ -523,123 +440,69 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const BASE = window.location.origin;
-      const MCP = BASE + '/mcp';
-      const STORAGE_KEY = 'ie-brasil-mcp-token';
-
+      const APURA_API = BASE + '/apura/api';
       const $ = (id) => document.getElementById(id);
 
-      function apiErrorDetail(d) {
+      function apiError(d) {
         if (typeof d.detail === 'string') return d.detail;
         if (Array.isArray(d.detail)) return d.detail.map(x => x.msg || x).join(', ');
         return 'Falha na requisição';
       }
 
-      function token() {
-        const t = ($('token')?.value || '').trim();
-        return t || 'SEU_TOKEN_AQUI';
-      }
-
-      function saveToken(t) {
-        if (t) localStorage.setItem(STORAGE_KEY, t);
-      }
-
-      function loadToken() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved && $('token')) {
-          $('token').value = saved;
-        }
-      }
-
-      function mcpConfig() {
-        return JSON.stringify({
-          mcpServers: {
-            'inteligencia-eleitoral-brasil': {
-              url: MCP,
-              headers: { Authorization: 'Bearer ' + token() }
-            }
-          }
-        }, null, 2);
-      }
-
-      function refreshBlocks() {
-        const cfg = mcpConfig();
-        if ($('cfg-cursor')) $('cfg-cursor').textContent = cfg;
-        if ($('cfg-claude')) $('cfg-claude').textContent = cfg;
-        if ($('cfg-url')) {
-          $('cfg-url').textContent = 'URL MCP: ' + MCP + '\nToken: (use o campo acima — não compartilhe publicamente)';
-        }
-        if ($('cfg-teste')) {
-          $('cfg-teste').textContent = [
-            'POST ' + MCP,
-            'Authorization: Bearer ' + token(),
-            'Content-Type: application/json',
-            '',
-            JSON.stringify({
-              method: 'nominata',
-              params: { ano: 2022, cargo: 'deputado_federal', uf: 'SP', sg_partido: 'PL', limite: 5 }
-            }, null, 2)
-          ].join('\n');
-        }
-      }
-
-      loadToken();
-      refreshBlocks();
-
-      $('token')?.addEventListener('input', () => {
-        saveToken(($('token').value || '').trim());
-        refreshBlocks();
-      });
-
-      $('gerar-token')?.addEventListener('click', async () => {
-        const rotulo = ($('rotulo')?.value || '').trim();
-        if (rotulo.length < 2) {
-          alert('Informe seu nome ou equipe (mínimo 2 caracteres).');
-          return;
-        }
-        const btn = $('gerar-token');
-        btn.disabled = true;
-        btn.textContent = 'Gerando…';
+      async function loadCampanhas() {
+        const sel = $('cad-campanha');
+        if (!sel) return;
         try {
-          const r = await fetch(BASE + '/guia/api/gerar-token', {
+          const r = await fetch(APURA_API + '/cadastro/campanhas');
+          const items = await r.json();
+          if (!r.ok) throw new Error(apiError(items));
+          sel.innerHTML = '<option value="">Selecione a campanha</option>';
+          items.forEach(c => {
+            const o = document.createElement('option');
+            o.value = c.nome;
+            o.textContent = c.nome;
+            sel.appendChild(o);
+          });
+        } catch (e) {
+          sel.innerHTML = '<option value="">Erro ao carregar campanhas</option>';
+        }
+      }
+
+      $('form-cadastro')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        $('cad-err').textContent = '';
+        const btn = $('cad-submit');
+        btn.disabled = true;
+        btn.textContent = 'Processando…';
+        try {
+          const r = await fetch(APURA_API + '/cadastro/solicitar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ rotulo })
+            body: JSON.stringify({
+              nome: $('cad-nome').value.trim(),
+              email: $('cad-email').value.trim(),
+              telefone: $('cad-telefone').value.trim(),
+              campanha_nome: $('cad-campanha').value
+            })
           });
           const d = await r.json();
-          if (!r.ok) throw new Error(apiErrorDetail(d));
-          $('token-novo').textContent = d.token;
-          $('token-aviso').textContent = d.aviso;
-          $('token-result').hidden = false;
-        } catch (e) {
-          alert(e.message || 'Não foi possível gerar o token.');
+          if (!r.ok) throw new Error(apiError(d));
+          const tr = await fetch(APURA_API + '/cadastro/token/' + encodeURIComponent(d.request_id));
+          const td = await tr.json();
+          if (!tr.ok) throw new Error(apiError(td));
+          $('cad-token').textContent = td.token;
+          $('form-cadastro').hidden = true;
+          $('cad-success').hidden = false;
+        } catch (err) {
+          $('cad-err').textContent = err.message || 'Não foi possível concluir o cadastro.';
         } finally {
           btn.disabled = false;
-          btn.textContent = 'Gerar token';
+          btn.textContent = 'Solicitar cadastro';
         }
       });
 
-      $('usar-token')?.addEventListener('click', () => {
-        const t = ($('token-novo')?.textContent || '').trim();
-        if ($('token')) $('token').value = t;
-        saveToken(t);
-        refreshBlocks();
-        $('conectar')?.scrollIntoView({ behavior: 'smooth' });
-        showToast();
-      });
-
-      $('toggle-token')?.addEventListener('click', () => {
-        const inp = $('token');
-        if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
-      });
-
-      document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-          document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-          tab.classList.add('active');
-          const panel = $('panel-' + tab.dataset.tab);
-          if (panel) panel.classList.add('active');
-        });
+      $('cad-copy')?.addEventListener('click', () => {
+        navigator.clipboard.writeText($('cad-token').textContent).then(showToast);
       });
 
       function showToast() {
@@ -649,14 +512,7 @@
         setTimeout(() => el.classList.remove('show'), 2000);
       }
 
-      document.querySelectorAll('.copy-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = btn.dataset.copy;
-          const node = id ? $(id) : null;
-          if (!node) return;
-          navigator.clipboard.writeText(node.textContent).then(showToast);
-        });
-      });
+      loadCampanhas();
 
       fetch(BASE + '/health').then(r => r.json()).then(d => {
         if (d.status === 'ok') {

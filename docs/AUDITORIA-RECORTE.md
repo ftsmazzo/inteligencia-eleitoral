@@ -1,4 +1,4 @@
-# Auditoria do recorte · 2026-08-31
+# Auditoria do recorte · 2026-09-02
 
 **Fonte da verdade operacional.** Rode `python scripts/auditar_recorte.py` antes de qualquer carga, deploy ou módulo novo.
 
@@ -79,3 +79,5 @@
 | postgres | eleitorado/2024 | ok | n=1,464,192 uf=26 mun=5569 |
 | postgres | coligacao/2024 | ok | n=157,082 |
 | postgres | ref.municipio | ok | n=5,571 |
+| api_smoke | nominata_dep_federal_uf_com_cod_ibge | ok | status=ok linhas=5 (esperado PRD SP 2026 mesmo com ibge Taubaté) |
+| api_smoke | municipio_nome_para_ibge | ok | status=ok linhas=1 |

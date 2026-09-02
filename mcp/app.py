@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
-from apura.routes import pagina_apura, router as apura_router
+from apura.routes import pagina_apura, pagina_cadastro, router as apura_router
 
 app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
 app.include_router(apura_router)
@@ -1035,6 +1035,12 @@ def apura() -> RedirectResponse:
 def apura_interno() -> HTMLResponse:
     """Acesso interno (conta já existente). Não linkado na landing."""
     return pagina_apura()
+
+
+@app.get("/apura/cadastro")
+def apura_cadastro() -> HTMLResponse:
+    """Formulário de solicitação de cadastro (auto-aprovação)."""
+    return pagina_cadastro()
 
 
 @app.get("/v1/catalogo")

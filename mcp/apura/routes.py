@@ -21,6 +21,7 @@ from apura.auth import (
     registrar_usuario,
     usuario_por_id,
 )
+from apura.cadastro import entregar_token, listar_campanhas_ativas, solicitar_cadastro
 from apura.export import exportar_html, exportar_xlsx
 from apura.orchestrator import executar_chat
 from apura.prompt import SKILL_NARRATIVA_DEFAULT, SKILL_WAR_ROOM_DEFAULT
@@ -37,9 +38,12 @@ from apura.skills import (
 
 router = APIRouter(prefix="/apura/api", tags=["apura"])
 _STATIC = Path(__file__).resolve().parents[1] / "static" / "apura"
-_PATCH = Path(__file__).resolve().parents[1] / "sql" / "patch_apura.sql"
-_PATCH_TOKENS = Path(__file__).resolve().parents[1] / "sql" / "patch_mcp_tokens.sql"
-_SCHEMA_VER = 6
+_SQL = Path(__file__).resolve().parents[1] / "sql"
+if not (_SQL / "patch_apura.sql").exists():
+    _SQL = Path(__file__).resolve().parents[2] / "sql"
+_PATCH = _SQL / "patch_apura.sql"
+_PATCH_TOKENS = _SQL / "patch_mcp_tokens.sql"
+_SCHEMA_VER = 7
 _READY_VER = 0
 
 
@@ -148,6 +152,38 @@ class SkillPatchIn(BaseModel):
     nome: str | None = Field(default=None, min_length=2, max_length=MAX_NOME)
     conteudo: str | None = Field(default=None, min_length=10, max_length=MAX_CONTEUDO)
     ativo: bool | None = None
+
+
+class CadastroSolicitarIn(BaseModel):
+    nome: str = Field(min_length=2, max_length=80)
+    email: EmailStr
+    telefone: str = Field(default="", max_length=32)
+    campanha_nome: str = Field(min_length=2, max_length=80)
+
+
+@router.get("/cadastro/campanhas")
+def cadastro_campanhas() -> list[dict[str, str]]:
+    with _db() as conn:
+        return listar_campanhas_ativas(conn)
+
+
+@router.post("/cadastro/solicitar")
+def cadastro_solicitar(body: CadastroSolicitarIn) -> dict[str, str]:
+    with _db() as conn:
+        return solicitar_cadastro(
+            conn,
+            body.nome,
+            str(body.email),
+            body.telefone,
+            body.campanha_nome,
+        )
+
+
+@router.get("/cadastro/token/{request_id}")
+def cadastro_token(request_id: str) -> dict[str, str]:
+    with _db() as conn:
+        token = entregar_token(conn, request_id)
+    return {"token": token}
 
 
 @router.post("/auth/registrar")
@@ -495,6 +531,16 @@ def pagina_apura() -> HTMLResponse:
     path = _STATIC / "index.html"
     if not path.exists():
         raise HTTPException(404, "Apura indisponível")
+    return HTMLResponse(
+        path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},
+    )
+
+
+def pagina_cadastro() -> HTMLResponse:
+    path = _STATIC / "cadastro.html"
+    if not path.exists():
+        raise HTTPException(404, "Cadastro indisponível")
     return HTMLResponse(
         path.read_text(encoding="utf-8"),
         headers={"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"},

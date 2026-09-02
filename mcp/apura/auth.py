@@ -61,29 +61,113 @@ def _demo_quota() -> int:
     return max(1, min(n, 100))
 
 
+def _token_precadastrado(
+    conn: psycopg.Connection, email: str
+) -> tuple[str, str | None, str | None] | None:
+    """Token MCP pré-emitido (cadastrar_pessoa) ainda sem apura_usuario."""
+    row = conn.execute(
+        """
+        SELECT token, campanha_id::text, nome
+        FROM ctl.mcp_token
+        WHERE lower(email) = lower(%s)
+          AND apura_usuario_id IS NULL
+          AND ativo IS TRUE
+        ORDER BY criado_em DESC
+        LIMIT 1
+        FOR UPDATE
+        """,
+        (email,),
+    ).fetchone()
+    if not row:
+        return None
+    return row[0], row[1], row[2]
+
+
 def registrar_usuario(conn: psycopg.Connection, email: str, senha: str, nome: str) -> dict[str, str]:
+    from fastapi import HTTPException
+
     email = email.strip().lower()
-    mcp_tok = gerar_mcp_token()
+    existe = conn.execute(
+        "SELECT 1 FROM ctl.apura_usuario WHERE lower(email) = %s",
+        (email,),
+    ).fetchone()
+    if existe:
+        raise HTTPException(409, "E-mail já cadastrado")
+
+    precad = _token_precadastrado(conn, email)
     uid = str(uuid.uuid4())
     quota = _demo_quota()
-    conn.execute(
-        """
-        INSERT INTO ctl.apura_usuario (
-          id, email, nome, senha_hash, mcp_token, quota_perguntas_max, quota_perguntas_used
+    display_nome = nome.strip() or (precad[2] if precad and precad[2] else "")
+
+    if precad:
+        mcp_tok, campanha_id, _ = precad
+        if not campanha_id:
+            raise HTTPException(
+                400,
+                "Token pré-cadastrado sem campanha. Peça novo acesso à equipe.",
+            )
+        conn.execute(
+            """
+            INSERT INTO ctl.apura_usuario (
+              id, email, nome, senha_hash, mcp_token, campanha_id,
+              quota_perguntas_max, quota_perguntas_used
+            )
+            VALUES (%s::uuid, %s, %s, %s, %s, %s::uuid, %s, 0)
+            """,
+            (
+                uid,
+                email,
+                display_nome,
+                hash_senha(senha),
+                mcp_tok,
+                campanha_id,
+                quota,
+            ),
         )
-        VALUES (%s::uuid, %s, %s, %s, %s, %s, 0)
-        """,
-        (uid, email, nome.strip(), hash_senha(senha), mcp_tok, quota),
-    )
-    # Token interno do Apura: sem cota MCP (uma pergunta dispara várias tools).
-    conn.execute(
-        """
-        INSERT INTO ctl.mcp_token (token, rotulo, quota_max, quota_used)
-        VALUES (%s, %s, NULL, 0)
-        ON CONFLICT (token) DO NOTHING
-        """,
-        (mcp_tok, f"apura:{email}"),
-    )
+        conn.execute(
+            """
+            UPDATE ctl.mcp_token
+            SET apura_usuario_id = %s::uuid,
+                nome = COALESCE(NULLIF(nome, ''), %s),
+                email = COALESCE(email, %s)
+            WHERE token = %s
+            """,
+            (uid, display_nome, email, mcp_tok),
+        )
+    else:
+        mcp_tok = gerar_mcp_token()
+        campanha_row = conn.execute(
+            "SELECT id::text FROM ctl.campanha WHERE nome = %s AND ativo IS TRUE",
+            ("governador-amapa",),
+        ).fetchone()
+        if not campanha_row:
+            raise HTTPException(503, "Campanha padrão indisponível")
+        conn.execute(
+            """
+            INSERT INTO ctl.apura_usuario (
+              id, email, nome, senha_hash, mcp_token, campanha_id,
+              quota_perguntas_max, quota_perguntas_used
+            )
+            VALUES (%s::uuid, %s, %s, %s, %s, %s::uuid, %s, 0)
+            """,
+            (
+                uid,
+                email,
+                display_nome,
+                hash_senha(senha),
+                mcp_tok,
+                campanha_row[0],
+                quota,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO ctl.mcp_token (token, rotulo, nome, email, campanha_id, apura_usuario_id, quota_max, quota_used)
+            VALUES (%s, %s, %s, %s, %s::uuid, %s::uuid, NULL, 0)
+            ON CONFLICT (token) DO NOTHING
+            """,
+            (mcp_tok, f"apura:{email}", display_nome, email, campanha_row[0], uid),
+        )
     return {"id": uid, "email": email, "token": criar_token_jwt(uid, email)}
 
 

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apura · Solicitar cadastro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #eef1f6; --surface: #fff; --ink: #0c1222; --muted: #5c6478;
+      --line: #dde3ec; --brand: #0d4f4a; --brand-light: #e6f4f2;
+      --ok: #15803d; --shadow: 0 8px 32px rgba(12,18,34,.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: linear-gradient(160deg, var(--brand-light), var(--bg));
+      color: var(--ink); min-height: 100dvh; padding: 32px 20px;
+    }
+    .wrap { max-width: 480px; margin: 0 auto; }
+    .card {
+      background: var(--surface); border-radius: 20px; padding: 36px;
+      box-shadow: var(--shadow); border: 1px solid var(--line);
+    }
+    h1 { font-family: Fraunces, serif; font-size: 1.85rem; color: var(--brand); margin-bottom: 6px; }
+    .sub { color: var(--muted); margin-bottom: 28px; font-size: 0.95rem; line-height: 1.5; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
+    input, select {
+      width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px;
+      font: inherit; margin-bottom: 14px;
+    }
+    input:focus, select:focus { outline: 2px solid var(--brand); border-color: transparent; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 20px; border: none; border-radius: 12px; font-weight: 600; font-size: 0.95rem;
+      cursor: pointer; transition: .15s; text-decoration: none;
+    }
+    .btn-primary { background: var(--brand); color: #fff; width: 100%; }
+    .btn-primary:hover { background: #0a3d39; }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-secondary { background: var(--surface); color: var(--brand); border: 1px solid var(--line); }
+    .btn-secondary:hover { border-color: var(--brand); }
+    .err { color: #b91c1c; font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
+    .hidden { display: none !important; }
+    .success { text-align: center; }
+    .token-box {
+      margin: 20px 0; padding: 16px; background: var(--brand-light); border-radius: 12px;
+      border: 1px dashed #9ec5c0; word-break: break-all; font-family: Consolas, Monaco, monospace;
+      font-size: 0.85rem; text-align: left;
+    }
+    .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+    .back { display: block; text-align: center; margin-top: 20px; font-size: 0.85rem; color: var(--muted); }
+    .back a { color: var(--brand); font-weight: 600; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="form-panel">
+      <h1>Solicitar cadastro</h1>
+      <p class="sub">Preencha seus dados. Se a campanha existir, o acesso é aprovado na hora e você recebe um token para entrar no Apura.</p>
+      <form id="form-cadastro">
+        <label for="nome">Nome *</label>
+        <input type="text" id="nome" required maxlength="80" autocomplete="name" />
+        <label for="email">E-mail *</label>
+        <input type="email" id="email" required autocomplete="email" />
+        <label for="telefone">Telefone</label>
+        <input type="tel" id="telefone" maxlength="32" autocomplete="tel" placeholder="Opcional" />
+        <label for="campanha">Campanha *</label>
+        <select id="campanha" required>
+          <option value="">Carregando campanhas…</option>
+        </select>
+        <button class="btn btn-primary" type="submit" id="btn-submit">Solicitar cadastro</button>
+      </form>
+      <p class="err" id="err"></p>
+    </div>
+
+    <div class="card success hidden" id="success-panel">
+      <h1>Cadastro aprovado</h1>
+      <p class="sub">Guarde seu token — ele não será exibido de novo.</p>
+      <p><strong>Seu token é:</strong></p>
+      <div class="token-box" id="token-val"></div>
+      <p class="sub">Use esse e-mail e o token como <strong>senha</strong> para logar em <a href="/apura/app">/apura/app</a>.</p>
+      <div class="actions">
+        <button class="btn btn-primary" type="button" id="btn-copy">Copiar token</button>
+        <a class="btn btn-secondary" href="/apura/app">Feito, ir para o Apura</a>
+      </div>
+    </div>
+
+    <p class="back"><a href="/guia">← Voltar ao guia</a></p>
+  </div>
+
+  <script>
+    const API = window.location.origin + '/apura/api';
+    const $ = (id) => document.getElementById(id);
+
+    function apiError(d) {
+      if (typeof d.detail === 'string') return d.detail;
+      if (Array.isArray(d.detail)) return d.detail.map(x => x.msg || x).join(', ');
+      return 'Falha na requisição';
+    }
+
+    async function loadCampanhas() {
+      const sel = $('campanha');
+      try {
+        const r = await fetch(API + '/cadastro/campanhas');
+        const items = await r.json();
+        if (!r.ok) throw new Error(apiError(items));
+        sel.innerHTML = '<option value="">Selecione a campanha</option>';
+        items.forEach(c => {
+          const o = document.createElement('option');
+          o.value = c.nome;
+          o.textContent = c.nome;
+          sel.appendChild(o);
+        });
+      } catch (e) {
+        sel.innerHTML = '<option value="">Erro ao carregar campanhas</option>';
+      }
+    }
+
+    $('form-cadastro').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('err').textContent = '';
+      const btn = $('btn-submit');
+      btn.disabled = true;
+      btn.textContent = 'Processando…';
+      try {
+        const r = await fetch(API + '/cadastro/solicitar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nome: $('nome').value.trim(),
+            email: $('email').value.trim(),
+            telefone: $('telefone').value.trim(),
+            campanha_nome: $('campanha').value
+          })
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(apiError(d));
+        const tr = await fetch(API + '/cadastro/token/' + encodeURIComponent(d.request_id));
+        const td = await tr.json();
+        if (!tr.ok) throw new Error(apiError(td));
+        $('token-val').textContent = td.token;
+        $('form-panel').classList.add('hidden');
+        $('success-panel').classList.remove('hidden');
+      } catch (err) {
+        $('err').textContent = err.message || 'Não foi possível concluir o cadastro.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Solicitar cadastro';
+      }
+    });
+
+    $('btn-copy').addEventListener('click', () => {
+      const t = $('token-val').textContent;
+      navigator.clipboard.writeText(t).then(() => {
+        $('btn-copy').textContent = 'Copiado!';
+        setTimeout(() => { $('btn-copy').textContent = 'Copiar token'; }, 2000);
+      });
+    });
+
+    loadCampanhas();
+  </script>
+</body>
+</html>
