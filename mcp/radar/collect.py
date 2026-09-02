@@ -1,4 +1,4 @@
-"""Coleta Radar: RSS + Apify Instagram → store + classify."""
+"""Coleta Radar: RSS + Apify Instagram → store + classify (PULSO)."""
 from __future__ import annotations
 
 import threading
@@ -41,6 +41,7 @@ def _ingest_raw(
     body: str,
     published_at: datetime | None,
     entity_name: str | None,
+    entity_kind: str | None,
     eixos: list[tuple[str, str]],
 ) -> bool:
     item_id = store.insert_item(
@@ -54,6 +55,7 @@ def _ingest_raw(
         body=body,
         published_at=published_at,
         entity_name=entity_name,
+        entity_kind=entity_kind,
     )
     if not item_id:
         return False
@@ -97,15 +99,16 @@ def collect_campanha(
     run_id = store.start_run(conn, campanha_id, mode)
     novos = 0
     errs: list[str] = []
+    stats = {"news": 0, "ig_oficial": 0, "ig_clima": 0}
 
     if not alvos:
-        store.finish_run(conn, run_id, ok=0, err="nenhum alvo ativo")
+        store.finish_run(conn, run_id, ok=0, err="nenhum alvo ativo — configure em Alvos")
         return {"run_id": run_id, "novos": 0, "err": "nenhum alvo ativo", "alvos": 0}
 
     for alvo in alvos:
         nome = alvo["nome"]
+        kind = alvo["kind"]
         is_own = bool(alvo["is_own"])
-        origem_default = "oficial" if is_own else "clima"
         since = _since_for_alvo(alvo.get("last_seen_at"))
         horas = max(
             4,
@@ -113,9 +116,11 @@ def collect_campanha(
         )
         horas = min(horas, max(24, janela_horas))
 
-        # News
-        q = (alvo.get("query_news") or nome or "").strip()
-        if q and alvo["kind"] in ("pessoa", "tema"):
+        # News: pessoa, adversario, tema (e perfil com query_news)
+        q = (alvo.get("query_news") or "").strip()
+        if not q and kind in ("pessoa", "adversario", "tema"):
+            q = nome
+        if q and kind in ("pessoa", "adversario", "tema"):
             try:
                 news = buscar_news_google(q, janela_horas=horas, limite=12)
                 for it in news:
@@ -133,16 +138,19 @@ def collect_campanha(
                         body=it.get("resumo") or "",
                         published_at=pub,
                         entity_name=nome,
+                        entity_kind=kind,
                         eixos=eixos,
                     )
                     if ok:
                         novos += 1
+                        stats["news"] += 1
             except Exception as e:
                 errs.append(f"news:{nome}:{type(e).__name__}")
 
-        # Instagram
+        # Instagram: perfil (obrigatório) ou pessoa/adversario com handle
         handle = (alvo.get("handle_ig") or "").strip().lstrip("@")
-        if handle:
+        if handle and (kind == "perfil" or kind in ("pessoa", "adversario")):
+            origem = "oficial" if (kind == "perfil" and is_own) else "clima"
             try:
                 ig = buscar_instagram_apify(handle, janela_horas=horas, limite=10)
                 for it in ig:
@@ -152,18 +160,23 @@ def collect_campanha(
                     ok = _ingest_raw(
                         conn,
                         campanha_id,
-                        origem=origem_default,
+                        origem=origem,
                         canal="instagram",
                         fonte="Instagram",
                         url=it.get("url") or it.get("url_raw"),
                         titulo=it.get("titulo") or f"Post @{handle}",
                         body=it.get("resumo") or "",
                         published_at=pub,
-                        entity_name=f"@{handle}" if not is_own else nome,
+                        entity_name=f"@{handle}" if origem == "clima" else nome,
+                        entity_kind="oficial" if origem == "oficial" else kind,
                         eixos=eixos,
                     )
                     if ok:
                         novos += 1
+                        if origem == "oficial":
+                            stats["ig_oficial"] += 1
+                        else:
+                            stats["ig_clima"] += 1
             except Exception as e:
                 errs.append(f"ig:@{handle}:{type(e).__name__}:{e}")
 
@@ -177,6 +190,7 @@ def collect_campanha(
         "err": err,
         "alvos": len(alvos),
         "mode": mode,
+        "stats": stats,
     }
 
 
@@ -191,7 +205,6 @@ def collect_all_campanhas(conn: psycopg.Connection, *, mode: str = "slot") -> li
 
 
 def maybe_run_slot(conn_factory) -> dict[str, Any] | None:
-    """Se horário BRT cair em slot 8/14/20 e ainda não rodou nesta hora, coleta."""
     global _LAST_SLOT_KEY
     now = datetime.now(BRT)
     if now.hour not in SLOTS or now.minute > 20:

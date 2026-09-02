@@ -456,19 +456,23 @@
 
       <div id="radar-view">
         <div class="radar-head">
-          <h3>Radar</h3>
-          <div class="sub" id="radar-campanha">Clima por campanha · nível indício</div>
+          <h3>Radar · PULSO</h3>
+          <div class="sub" id="radar-campanha">Clima + Termômetro · nível indício</div>
           <div class="radar-kpis">
             <div class="radar-kpi"><b id="kpi-score">—</b><span>Clima 24h</span></div>
             <div class="radar-kpi"><b id="kpi-itens">0</b><span>Itens 24h</span></div>
+            <div class="radar-kpi"><b id="kpi-alertas">0</b><span>Alertas</span></div>
             <div class="radar-kpi"><b id="kpi-alvos">0</b><span>Alvos</span></div>
           </div>
         </div>
         <div class="radar-tabs">
           <button type="button" class="on" data-radar-tab="vivo">Ao vivo</button>
+          <button type="button" data-radar-tab="alertas">Alertas</button>
           <button type="button" data-radar-tab="alvos">Alvos</button>
-          <button type="button" data-radar-tab="coleta">Coleta</button>
           <button type="button" data-radar-tab="mix">Mix</button>
+          <button type="button" data-radar-tab="sintese">Síntese</button>
+          <button type="button" data-radar-tab="config">Config</button>
+          <button type="button" data-radar-tab="coleta">Coleta</button>
         </div>
         <p class="radar-err" id="radar-err" style="padding:0 20px"></p>
 
@@ -497,11 +501,37 @@
           </div>
         </div>
 
+        <div class="radar-panel" id="panel-alertas">
+          <div class="radar-body" id="radar-alertas"></div>
+        </div>
+
         <div class="radar-panel" id="panel-alvos">
           <div class="radar-body">
+            <p style="font-size:0.85rem;color:var(--muted);margin-bottom:10px">
+              Pessoas, adversários e temas alimentam o clima (notícias). Instagram com “oficial” vai para o Mix (Termômetro).
+            </p>
+            <form id="form-alvo" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px">
+              <div><label>Tipo</label>
+                <select id="alvo-kind">
+                  <option value="pessoa">Pessoa</option>
+                  <option value="adversario">Adversário</option>
+                  <option value="tema">Tema</option>
+                  <option value="perfil">Instagram</option>
+                </select>
+              </div>
+              <div><label>Nome</label><input id="alvo-nome" required placeholder="Ex.: Clécio Luís" /></div>
+              <div><label>Busca notícia / @IG</label><input id="alvo-query" placeholder="query ou handle sem @" /></div>
+              <button type="submit">Salvar alvo</button>
+              <div style="grid-column:1/-1;display:flex;gap:16px;align-items:center;font-size:0.85rem">
+                <label style="display:flex;gap:6px;align-items:center;margin:0;font-weight:500">
+                  <input type="checkbox" id="alvo-own" style="width:auto;margin:0" /> Instagram oficial (Mix)
+                </label>
+                <span style="color:var(--muted)">Só faz sentido com tipo Instagram.</span>
+              </div>
+            </form>
             <div class="radar-actions">
-              <button type="button" id="btn-sync-tse">Sincronizar do TSE</button>
-              <button type="button" class="secondary" id="btn-alvo-add">+ Alvo</button>
+              <button type="button" id="btn-sync-tse">Tentar redes TSE</button>
+              <span id="sync-nota" style="font-size:0.8rem;color:var(--muted)"></span>
             </div>
             <div id="radar-alvos-list"></div>
           </div>
@@ -513,11 +543,28 @@
               <button type="button" id="btn-coletar">Coletar agora</button>
             </div>
             <p class="sub" id="radar-run-info" style="color:var(--muted);font-size:0.9rem">Nenhuma coleta ainda.</p>
+            <p style="font-size:0.8rem;color:var(--muted);margin-top:8px">Slots automáticos: 08h, 14h e 20h (BRT).</p>
           </div>
         </div>
 
         <div class="radar-panel" id="panel-mix">
           <div class="radar-body" id="radar-mix"></div>
+        </div>
+
+        <div class="radar-panel" id="panel-sintese">
+          <div class="radar-body" id="radar-sintese"></div>
+        </div>
+
+        <div class="radar-panel" id="panel-config">
+          <div class="radar-body">
+            <form id="form-config" style="max-width:480px;display:grid;gap:10px">
+              <div><label>Candidato monitorado</label><input id="cfg-nome" placeholder="Nome na urna / público" /></div>
+              <div><label>UF</label><input id="cfg-uf" maxlength="2" placeholder="AP" style="text-transform:uppercase" /></div>
+              <div><label>Cargo</label><input id="cfg-cargo" placeholder="governador, senador…" /></div>
+              <div><label>Notas</label><textarea id="cfg-notas" rows="3" placeholder="Contexto interno da campanha"></textarea></div>
+              <button type="submit">Salvar configuração</button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
@@ -1228,7 +1275,7 @@
     let radarPages = 1;
     let radarTab = 'vivo';
 
-    function setView( wh ) {
+    function setView(wh) {
       const chat = wh === 'chat';
       $('btn-view-chat').classList.toggle('on', chat);
       $('btn-view-radar').classList.toggle('on', !chat);
@@ -1246,23 +1293,58 @@
     function showRadarTab(tab) {
       radarTab = tab;
       document.querySelectorAll('[data-radar-tab]').forEach(b => b.classList.toggle('on', b.getAttribute('data-radar-tab') === tab));
-      ['vivo','alvos','coleta','mix'].forEach(id => {
+      ['vivo','alertas','alvos','coleta','mix','sintese','config'].forEach(id => {
         const el = $('panel-' + id);
         if (el) el.classList.toggle('on', id === tab);
       });
       if (tab === 'vivo') loadStream();
+      if (tab === 'alertas') loadAlertas();
       if (tab === 'alvos') loadAlvos();
       if (tab === 'coleta') loadColeta();
       if (tab === 'mix') loadMix();
+      if (tab === 'sintese') loadSintese();
+      if (tab === 'config') loadConfig();
+    }
+
+    function esc(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderItens(box, itens, emptyMsg) {
+      if (!itens.length) {
+        box.innerHTML = '<p style="color:var(--muted);padding:12px 0">' + esc(emptyMsg) + '</p>';
+        return;
+      }
+      box.innerHTML = itens.map(it => {
+        const title = it.url
+          ? '<a href="' + it.url + '" target="_blank" rel="noopener">' + esc(it.titulo) + '</a>'
+          : esc(it.titulo);
+        const badges = [it.entity_kind, it.polarity || it.tom, it.urgencia, it.tipo, it.eixo].filter(Boolean)
+          .map(b => '<span>' + esc(b) + '</span>').join('');
+        const score = it.score != null ? it.score : it.clima_score;
+        const meta = [it.canal, it.fonte, it.origem, it.alvo || it.entity_name, it.quando].filter(Boolean).join(' · ');
+        return '<article class="radar-item' + (it.origem === 'oficial' ? ' own' : '') + '">' +
+          '<h4>' + title + '</h4>' +
+          '<div class="radar-meta">' + esc(meta) + '</div>' +
+          (badges ? '<div class="radar-badges">' + badges + '</div>' : '') +
+          '<div class="radar-meta">clima ' + (score != null ? score : '—') +
+          (it.risco || it.risk ? ' · risco ' + esc(it.risco || it.risk) : '') + '</div>' +
+          '<p>' + esc(it.resumo || it.synthesis || '') + '</p>' +
+          (it.action_respond ? '<p class="radar-meta"><strong>Ação:</strong> ' + esc(it.action_respond) + '</p>' : '') +
+          '</article>';
+      }).join('');
     }
 
     async function loadRadarMeta() {
       try {
         const m = await api('/radar/meta');
-        $('radar-campanha').textContent = (m.campanha_nome || 'Campanha') + ' · clima e mix · nível indício';
+        const cfg = m.config || {};
+        const cand = cfg.candidato_nome || m.campanha_nome || 'Campanha';
+        $('radar-campanha').textContent = cand + (cfg.uf ? ' · ' + cfg.uf : '') + ' · Radar + Mix · indício';
         const k = m.kpi || {};
         $('kpi-score').textContent = (k.score_medio_clima != null ? k.score_medio_clima : '—');
         $('kpi-itens').textContent = k.itens_24h || 0;
+        $('kpi-alertas').textContent = k.alertas_24h || 0;
         $('kpi-alvos').textContent = k.alvos || 0;
         if (m.last_run) {
           $('radar-run-info').textContent =
@@ -1278,11 +1360,7 @@
 
     async function loadStream() {
       $('radar-err').textContent = '';
-      const qs = new URLSearchParams({
-        page: String(radarPage),
-        limite: '20',
-        janela_horas: '168',
-      });
+      const qs = new URLSearchParams({ page: String(radarPage), limite: '20', janela_horas: '168' });
       const q = $('rf-q').value.trim();
       if (q) qs.set('q', q);
       if ($('rf-canal').value) qs.set('canal', $('rf-canal').value);
@@ -1294,61 +1372,46 @@
         radarPages = d.pages || 1;
         radarPage = d.page || 1;
         $('rf-page').textContent = radarPage + ' / ' + radarPages;
-        const box = $('radar-stream');
-        const itens = d.itens || [];
-        if (!itens.length) {
-          box.innerHTML = '<p class="sub" style="color:var(--muted);padding:12px 0">Nenhum item nesta janela. Cadastre alvos e rode a coleta.</p>';
-          return;
-        }
-        box.innerHTML = itens.map(it => {
-          const title = it.url
-            ? '<a href="' + it.url + '" target="_blank" rel="noopener">' + esc(it.titulo) + '</a>'
-            : esc(it.titulo);
-          const badges = [it.polarity || it.tom, it.urgencia, it.tipo, it.eixo].filter(Boolean)
-            .map(b => '<span>' + esc(b) + '</span>').join('');
-          const score = it.score != null ? it.score : it.clima_score;
-          const meta = [it.canal, it.fonte, it.origem, it.alvo || it.entity_name, it.quando].filter(Boolean).join(' · ');
-          return '<article class="radar-item' + (it.origem === 'oficial' ? ' own' : '') + '">' +
-            '<h4>' + title + '</h4>' +
-            '<div class="radar-meta">' + esc(meta) + '</div>' +
-            (badges ? '<div class="radar-badges">' + badges + '</div>' : '') +
-            '<div class="radar-meta">clima ' + (score != null ? score : '—') +
-            (it.risco || it.risk ? ' · risco ' + esc(it.risco || it.risk) : '') + '</div>' +
-            '<p>' + esc(it.resumo || it.synthesis || '') + '</p>' +
-            (it.action_respond ? '<p class="radar-meta"><strong>Ação:</strong> ' + esc(it.action_respond) + '</p>' : '') +
-            '</article>';
-        }).join('');
+        renderItens($('radar-stream'), d.itens || [], 'Nenhum item. Configure Alvos e rode Coleta.');
       } catch (e) {
         $('radar-err').textContent = e.message;
       }
-    }
-
-    function esc(s) {
-      return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
     $('rf-filtrar').addEventListener('click', () => { radarPage = 1; loadStream(); });
     $('rf-prev').addEventListener('click', () => { if (radarPage > 1) { radarPage--; loadStream(); } });
     $('rf-next').addEventListener('click', () => { if (radarPage < radarPages) { radarPage++; loadStream(); } });
 
+    async function loadAlertas() {
+      try {
+        const d = await api('/radar/alertas?janela_horas=48');
+        renderItens($('radar-alertas'), d.itens || [], 'Sem alertas alta/crítica nesta janela.');
+      } catch (e) { $('radar-err').textContent = e.message; }
+    }
+
+    function sectionAlvos(title, rows) {
+      if (!rows || !rows.length) return '';
+      return '<h4 style="margin:16px 0 8px;color:var(--brand)">' + esc(title) + '</h4>' +
+        '<table class="radar-table"><thead><tr><th>Nome</th><th>News / @</th><th>Mix</th><th></th></tr></thead><tbody>' +
+        rows.map(a => '<tr>' +
+          '<td>' + esc(a.nome) + ' <span style="color:var(--muted);font-size:0.75rem">(' + esc(a.kind) + ')</span></td>' +
+          '<td>' + esc(a.handle_ig ? '@' + a.handle_ig : a.query_news) + '</td>' +
+          '<td>' + (a.is_own ? 'oficial' : '') + '</td>' +
+          '<td><button type="button" data-del-alvo="' + a.id + '" style="font-size:0.75rem;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:#fff;color:#b91c1c;cursor:pointer">Apagar</button></td>' +
+          '</tr>').join('') + '</tbody></table>';
+    }
+
     async function loadAlvos() {
       try {
-        const rows = await api('/radar/alvos');
+        const g = await api('/radar/alvos?agrupado=true');
         const box = $('radar-alvos-list');
-        if (!rows.length) {
-          box.innerHTML = '<p style="color:var(--muted)">Sem alvos.</p>';
-          return;
-        }
-        box.innerHTML = '<table class="radar-table"><thead><tr><th>Nome</th><th>Tipo</th><th>News</th><th>IG</th><th>Own</th><th></th></tr></thead><tbody>' +
-          rows.map(a => '<tr>' +
-            '<td>' + esc(a.nome) + '</td>' +
-            '<td>' + esc(a.kind) + '</td>' +
-            '<td>' + esc(a.query_news) + '</td>' +
-            '<td>' + esc(a.handle_ig || '') + '</td>' +
-            '<td>' + (a.is_own ? 'sim' : '') + '</td>' +
-            '<td><button type="button" data-del-alvo="' + a.id + '" style="font-size:0.75rem;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:#fff;color:#b91c1c;cursor:pointer">Apagar</button></td>' +
-            '</tr>').join('') +
-          '</tbody></table>';
+        box.innerHTML =
+          sectionAlvos('Pessoas', g.pessoas) +
+          sectionAlvos('Adversários', g.adversarios) +
+          sectionAlvos('Temas / cenário', g.temas) +
+          sectionAlvos('Instagram oficial (Mix)', g.instagram_oficial) +
+          sectionAlvos('Outros Instagram', g.instagram_outros) ||
+          '<p style="color:var(--muted)">Sem alvos — salve no formulário acima.</p>';
         box.querySelectorAll('[data-del-alvo]').forEach(btn => {
           btn.addEventListener('click', async () => {
             await api('/radar/alvos/' + btn.getAttribute('data-del-alvo'), { method: 'DELETE' });
@@ -1361,47 +1424,52 @@
       }
     }
 
+    $('form-alvo').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const kind = $('alvo-kind').value;
+      const nome = $('alvo-nome').value.trim();
+      const q = $('alvo-query').value.trim();
+      const own = $('alvo-own').checked;
+      if (!nome) return;
+      try {
+        const body = {
+          kind,
+          nome,
+          query_news: kind === 'perfil' ? '' : (q || nome),
+          handle_ig: kind === 'perfil' ? (q.replace(/^@/, '') || null) : (q.startsWith('@') ? q.slice(1) : null),
+          is_own: kind === 'perfil' ? own : false,
+          ativo: true,
+          prioridade: kind === 'adversario' ? 2 : (kind === 'perfil' && own ? 1 : 5),
+        };
+        await api('/radar/alvos', { method: 'POST', body: JSON.stringify(body) });
+        $('alvo-nome').value = '';
+        $('alvo-query').value = '';
+        $('alvo-own').checked = false;
+        loadAlvos();
+        loadRadarMeta();
+      } catch (e) { $('radar-err').textContent = e.message; }
+    });
+
     $('btn-sync-tse').addEventListener('click', async () => {
-      $('radar-err').textContent = '';
+      $('sync-nota').textContent = 'Consultando TSE…';
       try {
         const r = await api('/radar/alvos/sync-tse', { method: 'POST' });
-        $('radar-err').textContent = 'TSE: +' + (r.added || 0) + ' (matched ' + (r.matched || 0) + ')';
+        $('sync-nota').textContent = (r.nota || ('+' + (r.added || 0))) + '';
         loadAlvos();
         loadRadarMeta();
-      } catch (e) { $('radar-err').textContent = e.message; }
+      } catch (e) { $('sync-nota').textContent = e.message; }
     });
 
-    $('btn-alvo-add').addEventListener('click', async () => {
-      const nome = prompt('Nome do alvo (pessoa/tema)');
-      if (!nome) return;
-      const handle = prompt('Handle Instagram (opcional, sem @)') || '';
-      const isOwn = confirm('É perfil oficial da campanha (Mix)?');
-      try {
-        await api('/radar/alvos', {
-          method: 'POST',
-          body: JSON.stringify({
-            kind: handle ? 'perfil' : 'pessoa',
-            nome,
-            query_news: nome,
-            handle_ig: handle || null,
-            is_own: isOwn,
-            ativo: true,
-          }),
-        });
-        loadAlvos();
-        loadRadarMeta();
-      } catch (e) { $('radar-err').textContent = e.message; }
-    });
-
-    async function loadColeta() {
-      await loadRadarMeta();
-    }
+    async function loadColeta() { await loadRadarMeta(); }
 
     $('btn-coletar').addEventListener('click', async () => {
       $('radar-err').textContent = 'Coletando…';
       try {
         const r = await api('/radar/coletar', { method: 'POST' });
-        $('radar-err').textContent = 'Novos: ' + (r.novos || 0) + (r.err ? ' · ' + r.err : '');
+        const st = r.stats || {};
+        $('radar-err').textContent = 'Novos: ' + (r.novos || 0) +
+          ' (news ' + (st.news || 0) + ', IG oficial ' + (st.ig_oficial || 0) + ', IG clima ' + (st.ig_clima || 0) + ')' +
+          (r.err ? ' · ' + r.err : '');
         loadRadarMeta();
         if (radarTab === 'vivo') loadStream();
       } catch (e) { $('radar-err').textContent = e.message; }
@@ -1411,19 +1479,75 @@
       try {
         const d = await api('/radar/mix?janela_horas=168');
         const box = $('radar-mix');
+        const ig = (d.instagram_oficial || []).map(a => '@' + (a.handle_ig || '?')).join(', ') || 'nenhum @ oficial';
         const dist = d.distribuicao || [];
-        if (!dist.length || !(d.total_oficial > 0)) {
-          box.innerHTML = '<p style="color:var(--muted);padding:12px 0">Sem peças oficiais na janela. Marque alvos como own e colete Instagram oficial.</p>';
-          return;
+        let html = '<p style="color:var(--muted);margin-bottom:12px">Termômetro PULSO · só IG oficial · ' +
+          esc(ig) + ' · total ' + (d.total_oficial || 0) + '</p>';
+        if (!(d.total_oficial > 0)) {
+          html += '<p style="color:var(--muted)">Cadastre Instagram com “oficial (Mix)”, preencha o @ e rode Coleta.</p>';
+        } else {
+          html += dist.map(x => {
+            const tag = x.status === 'super' ? ' · super' : (x.status === 'sub' ? ' · sub' : '');
+            return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:0.9rem"><strong>' +
+              esc(x.eixo) + '</strong><span>' + x.n + ' · ' + x.pct + '%' + tag + '</span></div>' +
+              (x.hint ? '<div style="font-size:0.75rem;color:var(--muted)">' + esc(x.hint) + '</div>' : '') +
+              '<div class="mix-bar"><b style="width:' + Math.min(100, x.pct) + '%"></b></div></div>';
+          }).join('');
         }
-        box.innerHTML = '<p style="color:var(--muted);margin-bottom:12px">Total oficial: ' + d.total_oficial + ' · janela ' + d.janela_horas + 'h · nível indício</p>' +
-          dist.map(x => '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:0.9rem"><strong>' + esc(x.eixo) + '</strong><span>' + x.n + ' · ' + x.pct + '%</span></div>' +
-            (x.hint ? '<div style="font-size:0.75rem;color:var(--muted)">' + esc(x.hint) + '</div>' : '') +
-            '<div class="mix-bar"><b style="width:' + Math.min(100, x.pct) + '%"></b></div></div>').join('');
-      } catch (e) {
-        $('radar-err').textContent = e.message;
-      }
+        box.innerHTML = html;
+      } catch (e) { $('radar-err').textContent = e.message; }
     }
+
+    async function loadSintese() {
+      try {
+        const d = await api('/radar/sintese');
+        const b = d.blocos || {};
+        const box = $('radar-sintese');
+        const list = (arr, empty) => (arr && arr.length)
+          ? '<ul style="margin:6px 0 14px 18px">' + arr.map(x => '<li>' + esc(typeof x === 'string' ? x : (x.titulo || JSON.stringify(x))) + '</li>').join('') + '</ul>'
+          : '<p style="color:var(--muted)">' + empty + '</p>';
+        box.innerHTML =
+          '<p style="color:var(--muted);margin-bottom:12px">Rascunho semanal PULSO · ' + esc(d.candidato || '') +
+          ' · revisão humana obrigatória · nível indício</p>' +
+          '<h4 style="color:var(--brand)">Cenário</h4>' + list(b.cenario, 'Sem itens de clima') +
+          '<h4 style="color:var(--brand)">Adversários</h4>' + list(b.adversarios, 'Sem movimentos de adversários') +
+          '<h4 style="color:var(--brand)">Alertas</h4>' + list(b.alertas, 'Sem alertas') +
+          '<h4 style="color:var(--brand)">Comunicação (Mix)</h4>' +
+          ((b.comunicacao || []).length
+            ? '<ul style="margin:6px 0 14px 18px">' + b.comunicacao.map(x => '<li>' + esc(x.eixo) + ': ' + x.pct + '% (' + x.n + ')' +
+              (x.status && x.status !== 'ok' ? ' · ' + x.status : '') + '</li>').join('') + '</ul>'
+            : '<p style="color:var(--muted)">Sem peças oficiais</p>') +
+          '<h4 style="color:var(--brand)">Recomendações sugeridas</h4>' + list(b.recomendacoes, '—') +
+          '<p style="font-size:0.8rem;color:var(--muted)">' + esc(d.nota || '') + '</p>';
+      } catch (e) { $('radar-err').textContent = e.message; }
+    }
+
+    async function loadConfig() {
+      try {
+        const c = await api('/radar/config');
+        $('cfg-nome').value = c.candidato_nome || '';
+        $('cfg-uf').value = c.uf || '';
+        $('cfg-cargo').value = c.cargo || '';
+        $('cfg-notas').value = c.notas || '';
+      } catch (e) { $('radar-err').textContent = e.message; }
+    }
+
+    $('form-config').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      try {
+        await api('/radar/config', {
+          method: 'PUT',
+          body: JSON.stringify({
+            candidato_nome: $('cfg-nome').value.trim(),
+            uf: $('cfg-uf').value.trim().toUpperCase() || null,
+            cargo: $('cfg-cargo').value.trim() || null,
+            notas: $('cfg-notas').value.trim(),
+          }),
+        });
+        $('radar-err').textContent = 'Configuração salva.';
+        loadRadarMeta();
+      } catch (e) { $('radar-err').textContent = e.message; }
+    });
 
     if (jwt) {
       api('/auth/eu').then(u => {

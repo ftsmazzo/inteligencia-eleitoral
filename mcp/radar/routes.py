@@ -1,4 +1,4 @@
-"""API HTTP do Radar sob /apura/api/radar — JWT Apura + campanha_id."""
+"""API HTTP do Radar sob /apura/api/radar — JWT Apura + campanha_id (PULSO)."""
 from __future__ import annotations
 
 import os
@@ -18,7 +18,6 @@ from radar import store
 from radar.schema import ensure_schema
 
 router = APIRouter(prefix="/apura/api/radar", tags=["radar"])
-
 _SCHEDULER_STARTED = False
 
 
@@ -54,8 +53,7 @@ def _start_scheduler() -> None:
                 pass
             time.sleep(60)
 
-    t = threading.Thread(target=loop, name="radar-slots", daemon=True)
-    t.start()
+    threading.Thread(target=loop, name="radar-slots", daemon=True).start()
 
 
 def _ensure() -> None:
@@ -102,12 +100,15 @@ def _campanha(user: tuple[str, str, str]) -> tuple[str, str]:
 
 
 class AlvoIn(BaseModel):
-    kind: str = Field(default="pessoa")
+    kind: str = Field(default="pessoa", description="pessoa|adversario|tema|perfil")
     nome: str = Field(min_length=1, max_length=200)
     query_news: str = Field(default="", max_length=300)
     handle_ig: str | None = Field(default=None, max_length=80)
     is_own: bool = False
     ativo: bool = True
+    papel: str | None = None
+    notas: str = ""
+    prioridade: int = 5
 
 
 class AlvoPatch(BaseModel):
@@ -117,22 +118,59 @@ class AlvoPatch(BaseModel):
     handle_ig: str | None = None
     is_own: bool | None = None
     ativo: bool | None = None
+    papel: str | None = None
+    notas: str | None = None
+    prioridade: int | None = None
+
+
+class ConfigIn(BaseModel):
+    candidato_nome: str = Field(default="", max_length=120)
+    uf: str | None = Field(default=None, max_length=2)
+    cargo: str | None = Field(default=None, max_length=80)
+    notas: str = Field(default="", max_length=2000)
 
 
 @router.get("/meta")
 def meta(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     cid, cnome = _campanha(user)
     with _db() as conn:
-        seed_alvos.ensure_default_alvo(conn, cid, cnome)
+        seed = seed_alvos.ensure_default_alvo(conn, cid, cnome)
         kpi = store.kpi_24h(conn, cid)
         run = store.last_run(conn, cid)
+        cfg = store.get_config(conn, cid)
     return {
         "campanha_id": cid,
         "campanha_nome": cnome,
+        "config": cfg,
         "kpi": kpi,
         "last_run": run,
+        "seed": seed,
         "nivel": "indicio",
+        "modulos": ["radar", "termometro_mix", "alertas", "sintese_rascunho"],
     }
+
+
+@router.get("/config")
+def get_config(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, cnome = _campanha(user)
+    with _db() as conn:
+        seed_alvos.ensure_default_alvo(conn, cid, cnome)
+        return {"campanha_nome": cnome, **store.get_config(conn, cid)}
+
+
+@router.put("/config")
+def put_config(body: ConfigIn, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, cnome = _campanha(user)
+    with _db() as conn:
+        cfg = store.upsert_config(
+            conn,
+            cid,
+            candidato_nome=body.candidato_nome,
+            uf=body.uf,
+            cargo=body.cargo,
+            notas=body.notas,
+        )
+    return {"campanha_nome": cnome, **cfg}
 
 
 @router.get("/stream")
@@ -142,6 +180,7 @@ def stream(
     origem: str | None = None,
     tipo: str | None = None,
     urgencia: str | None = None,
+    entity_kind: str | None = None,
     janela_horas: int = 168,
     page: int = 1,
     limite: int = 20,
@@ -157,6 +196,7 @@ def stream(
             origem=origem,
             tipo=tipo,
             urgencia=urgencia,
+            entity_kind=entity_kind,
             janela_horas=janela_horas,
             page=page,
             limite=limite,
@@ -170,11 +210,34 @@ def kpi(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
         return {"nivel": "indicio", **store.kpi_24h(conn, cid)}
 
 
+@router.get("/alertas")
+def alertas(
+    janela_horas: int = 48,
+    limite: int = 30,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        return store.alertas(conn, cid, janela_horas=janela_horas, limite=limite)
+
+
+@router.get("/sintese")
+def sintese(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        return store.sintese_semanal(conn, cid)
+
+
 @router.get("/alvos")
-def alvos(user: tuple[str, str, str] = Depends(_usuario)) -> list[dict[str, Any]]:
+def alvos(
+    agrupado: bool = False,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> Any:
     cid, cnome = _campanha(user)
     with _db() as conn:
         seed_alvos.ensure_default_alvo(conn, cid, cnome)
+        if agrupado:
+            return store.alvos_agrupados(conn, cid)
         return store.list_alvos(conn, cid, ativo_only=False)
 
 
@@ -192,6 +255,9 @@ def criar_alvo(body: AlvoIn, user: tuple[str, str, str] = Depends(_usuario)) -> 
                 handle_ig=body.handle_ig,
                 is_own=body.is_own,
                 ativo=body.ativo,
+                papel=body.papel,
+                notas=body.notas,
+                prioridade=body.prioridade,
             )
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
@@ -221,6 +287,9 @@ def patch_alvo(
                 handle_ig=body.handle_ig if body.handle_ig is not None else cur["handle_ig"],
                 is_own=cur["is_own"] if body.is_own is None else body.is_own,
                 ativo=cur["ativo"] if body.ativo is None else body.ativo,
+                papel=body.papel if body.papel is not None else cur.get("papel"),
+                notas=body.notas if body.notas is not None else cur.get("notas") or "",
+                prioridade=body.prioridade if body.prioridade is not None else cur.get("prioridade") or 5,
                 alvo_id=alvo_id,
             )
         except ValueError as e:

@@ -4,12 +4,15 @@
 CREATE TABLE IF NOT EXISTS ctl.radar_alvo (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   campanha_id   uuid NOT NULL REFERENCES ctl.campanha(id) ON DELETE CASCADE,
-  kind          text NOT NULL CHECK (kind IN ('pessoa', 'tema', 'perfil')),
+  kind          text NOT NULL CHECK (kind IN ('pessoa', 'adversario', 'tema', 'perfil')),
   nome          text NOT NULL,
   query_news    text NOT NULL DEFAULT '',
   handle_ig     text,
   is_own        boolean NOT NULL DEFAULT false,
   ativo         boolean NOT NULL DEFAULT true,
+  papel         text,
+  notas         text NOT NULL DEFAULT '',
+  prioridade    smallint NOT NULL DEFAULT 5,
   last_seen_at  timestamptz,
   criado_em     timestamptz NOT NULL DEFAULT now()
 );
@@ -29,6 +32,7 @@ CREATE TABLE IF NOT EXISTS ctl.radar_item (
   published_at  timestamptz NOT NULL DEFAULT now(),
   fingerprint   text NOT NULL,
   entity_name   text,
+  entity_kind   text,
   criado_em     timestamptz NOT NULL DEFAULT now(),
   UNIQUE (campanha_id, fingerprint)
 );
@@ -49,6 +53,8 @@ CREATE TABLE IF NOT EXISTS ctl.radar_analise (
   eixo            text,
   model           text,
   action_respond  text,
+  action_ignore   text,
+  action_monitor  text,
   criado_em       timestamptz NOT NULL DEFAULT now()
 );
 
@@ -74,11 +80,22 @@ CREATE TABLE IF NOT EXISTS ctl.radar_run (
 CREATE INDEX IF NOT EXISTS idx_radar_run_started
   ON ctl.radar_run (started_at DESC);
 
+CREATE TABLE IF NOT EXISTS ctl.radar_config (
+  campanha_id     uuid PRIMARY KEY REFERENCES ctl.campanha(id) ON DELETE CASCADE,
+  candidato_nome  text NOT NULL DEFAULT '',
+  uf              char(2),
+  cargo           text,
+  notas           text NOT NULL DEFAULT '',
+  atualizado_em   timestamptz NOT NULL DEFAULT now()
+);
+
 COMMENT ON TABLE ctl.radar_item IS 'Stream clima/oficial do Radar; sempre nivel=indicio na API.';
-COMMENT ON TABLE ctl.radar_alvo IS 'Alvos de coleta por campanha (pessoa/tema/perfil).';
+COMMENT ON TABLE ctl.radar_alvo IS 'Alvos: pessoa|adversario|tema|perfil; is_own=IG oficial→Mix.';
+COMMENT ON TABLE ctl.radar_config IS 'Candidato monitorado / UF / cargo da campanha no Radar.';
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.radar_alvo TO agente;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.radar_item TO agente;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.radar_analise TO agente;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.radar_eixo TO agente;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.radar_run TO agente;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ctl.radar_config TO agente;

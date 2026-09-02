@@ -38,10 +38,13 @@ def ensure_schema() -> None:
         raise RuntimeError("Banco indisponível")
     patch_apura = _find_sql("patch_apura.sql")
     patch_radar = _find_sql("patch_radar.sql")
+    patch_v2 = _find_sql("patch_radar_v2.sql")
     if not patch_radar:
         raise RuntimeError("Schema Radar indisponível")
     with psycopg.connect(url, autocommit=True) as conn:
         if patch_apura:
             conn.execute(patch_apura.read_text(encoding="utf-8"))
         conn.execute(patch_radar.read_text(encoding="utf-8"))
+        if patch_v2:
+            conn.execute(patch_v2.read_text(encoding="utf-8"))
     _READY = True

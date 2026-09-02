@@ -1,4 +1,4 @@
-"""CRUD store do Radar (filtrado por campanha_id uuid)."""
+"""CRUD store do Radar (filtrado por campanha_id uuid) — alinhado PULSO + main.py."""
 from __future__ import annotations
 
 import hashlib
@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 BRT = ZoneInfo("America/Sao_Paulo")
+KINDS = ("pessoa", "adversario", "tema", "perfil")
 
 DEFAULT_EIXOS = [
     ("Gestao e entregas", "obras, servicos, saude, educacao, resultado de governo"),
@@ -18,6 +19,34 @@ DEFAULT_EIXOS = [
     ("Identidade", "trajetoria, valores, biografia, fe, familia"),
     ("Mobilizacao", "voto, urna, afiliacao, adesao, evento de campanha"),
 ]
+
+# Templates iniciais por slug de campanha (editáveis na UI)
+_SEED_TEMPLATES: dict[str, dict[str, Any]] = {
+    "governador-amapa": {
+        "candidato_nome": "Clécio Luís",
+        "uf": "AP",
+        "cargo": "governador",
+        "alvos": [
+            {"kind": "pessoa", "nome": "Clécio Luís", "query_news": "Clécio Luís Amapá", "papel": "proprio", "prioridade": 1},
+            {"kind": "perfil", "nome": "Instagram oficial (preencher @)", "handle_ig": None, "is_own": True, "papel": "proprio", "prioridade": 1},
+            {"kind": "adversario", "nome": "Adversário 1 (editar)", "query_news": "", "papel": "adversario", "prioridade": 2},
+            {"kind": "tema", "nome": "Segurança pública", "query_news": "segurança Amapá", "papel": "tema", "prioridade": 3},
+            {"kind": "tema", "nome": "Emprego e renda", "query_news": "emprego Amapá", "papel": "tema", "prioridade": 3},
+        ],
+    },
+    "alfredo-gaspar": {
+        "candidato_nome": "Alfredo Gaspar",
+        "uf": "AL",
+        "cargo": "deputado federal",
+        "alvos": [
+            {"kind": "pessoa", "nome": "Alfredo Gaspar", "query_news": "Alfredo Gaspar", "papel": "proprio", "prioridade": 1},
+            {"kind": "perfil", "nome": "Instagram oficial (preencher @)", "handle_ig": None, "is_own": True, "papel": "proprio", "prioridade": 1},
+            {"kind": "adversario", "nome": "Adversário 1 (editar)", "query_news": "", "papel": "adversario", "prioridade": 2},
+            {"kind": "tema", "nome": "Segurança pública", "query_news": "segurança pública", "papel": "tema", "prioridade": 3},
+            {"kind": "tema", "nome": "Cenário eleitoral 2026", "query_news": "eleições 2026", "papel": "cenario", "prioridade": 4},
+        ],
+    },
+}
 
 
 def fingerprint(campanha_id: str, url: str | None, titulo: str) -> str:
@@ -31,6 +60,11 @@ def fmt_brt(dt: datetime | None) -> str | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(BRT).strftime("%d/%m %H:%M")
+
+
+def humanize_campanha_nome(slug: str) -> str:
+    s = re.sub(r"[-_]+", " ", (slug or "").strip())
+    return s.title() if s else "Campanha"
 
 
 def ensure_eixos(conn: psycopg.Connection, campanha_id: str) -> None:
@@ -62,6 +96,57 @@ def list_eixos(conn: psycopg.Connection, campanha_id: str) -> list[dict[str, Any
     ]
 
 
+def get_config(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
+    row = conn.execute(
+        """
+        SELECT candidato_nome, uf, cargo, notas, atualizado_em
+        FROM ctl.radar_config WHERE campanha_id = %s::uuid
+        """,
+        (campanha_id,),
+    ).fetchone()
+    if not row:
+        return {
+            "candidato_nome": "",
+            "uf": None,
+            "cargo": None,
+            "notas": "",
+            "atualizado_em": None,
+        }
+    return {
+        "candidato_nome": row[0] or "",
+        "uf": row[1],
+        "cargo": row[2],
+        "notas": row[3] or "",
+        "atualizado_em": row[4].isoformat() if row[4] else None,
+    }
+
+
+def upsert_config(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    *,
+    candidato_nome: str = "",
+    uf: str | None = None,
+    cargo: str | None = None,
+    notas: str = "",
+) -> dict[str, Any]:
+    uf_n = (uf or "").strip().upper()[:2] or None
+    conn.execute(
+        """
+        INSERT INTO ctl.radar_config (campanha_id, candidato_nome, uf, cargo, notas, atualizado_em)
+        VALUES (%s::uuid, %s, %s, %s, %s, now())
+        ON CONFLICT (campanha_id) DO UPDATE SET
+          candidato_nome = EXCLUDED.candidato_nome,
+          uf = EXCLUDED.uf,
+          cargo = EXCLUDED.cargo,
+          notas = EXCLUDED.notas,
+          atualizado_em = now()
+        """,
+        (campanha_id, (candidato_nome or "").strip(), uf_n, (cargo or "").strip() or None, notas or ""),
+    )
+    return get_config(conn, campanha_id)
+
+
 def list_alvos(
     conn: psycopg.Connection,
     campanha_id: str,
@@ -70,13 +155,14 @@ def list_alvos(
 ) -> list[dict[str, Any]]:
     q = """
         SELECT id::text, kind, nome, query_news, handle_ig, is_own, ativo,
-               last_seen_at, criado_em
+               last_seen_at, criado_em,
+               COALESCE(papel, ''), COALESCE(notas, ''), COALESCE(prioridade, 5)
         FROM ctl.radar_alvo
         WHERE campanha_id = %s::uuid
     """
     if ativo_only:
         q += " AND ativo IS TRUE"
-    q += " ORDER BY is_own DESC, kind, nome"
+    q += " ORDER BY prioridade ASC, is_own DESC, kind, nome"
     rows = conn.execute(q, (campanha_id,)).fetchall()
     return [
         {
@@ -89,9 +175,37 @@ def list_alvos(
             "ativo": bool(r[6]),
             "last_seen_at": r[7].isoformat() if r[7] else None,
             "criado_em": r[8].isoformat() if r[8] else None,
+            "papel": r[9] or "",
+            "notas": r[10] or "",
+            "prioridade": int(r[11] or 5),
+            "mix": bool(r[5]) and r[1] == "perfil",
         }
         for r in rows
     ]
+
+
+def alvos_agrupados(conn: psycopg.Connection, campanha_id: str) -> dict[str, list[dict[str, Any]]]:
+    rows = list_alvos(conn, campanha_id, ativo_only=False)
+    out: dict[str, list[dict[str, Any]]] = {
+        "pessoas": [],
+        "adversarios": [],
+        "temas": [],
+        "instagram_oficial": [],
+        "instagram_outros": [],
+    }
+    for a in rows:
+        if a["kind"] == "adversario":
+            out["adversarios"].append(a)
+        elif a["kind"] == "tema":
+            out["temas"].append(a)
+        elif a["kind"] == "perfil":
+            if a["is_own"]:
+                out["instagram_oficial"].append(a)
+            else:
+                out["instagram_outros"].append(a)
+        else:
+            out["pessoas"].append(a)
+    return out
 
 
 def upsert_alvo(
@@ -104,36 +218,56 @@ def upsert_alvo(
     handle_ig: str | None = None,
     is_own: bool = False,
     ativo: bool = True,
+    papel: str | None = None,
+    notas: str = "",
+    prioridade: int = 5,
     alvo_id: str | None = None,
 ) -> dict[str, Any]:
     kind = (kind or "pessoa").strip().lower()
-    if kind not in ("pessoa", "tema", "perfil"):
-        raise ValueError("kind invalido")
+    if kind not in KINDS:
+        raise ValueError("kind invalido (pessoa|adversario|tema|perfil)")
     nome = (nome or "").strip()
     if not nome:
         raise ValueError("nome obrigatorio")
     handle = (handle_ig or "").strip().lstrip("@") or None
-    qn = (query_news or nome).strip()
+    if kind == "perfil" and not handle and not alvo_id:
+        # permite placeholder "preencher @"
+        pass
+    if kind != "perfil":
+        is_own = False
+        handle = handle  # IG opcional em pessoa/adversario também (atalho)
+    # papel default
+    if not papel:
+        papel = {
+            "pessoa": "proprio",
+            "adversario": "adversario",
+            "tema": "tema",
+            "perfil": "proprio" if is_own else "aliado",
+        }.get(kind, "")
+    qn = (query_news or (nome if kind != "perfil" else "")).strip()
+    pri = max(1, min(10, int(prioridade or 5)))
     if alvo_id:
         conn.execute(
             """
             UPDATE ctl.radar_alvo
-            SET kind=%s, nome=%s, query_news=%s, handle_ig=%s, is_own=%s, ativo=%s
+            SET kind=%s, nome=%s, query_news=%s, handle_ig=%s, is_own=%s, ativo=%s,
+                papel=%s, notas=%s, prioridade=%s
             WHERE id=%s::uuid AND campanha_id=%s::uuid
             """,
-            (kind, nome, qn, handle, is_own, ativo, alvo_id, campanha_id),
+            (kind, nome, qn, handle, is_own, ativo, papel, notas or "", pri, alvo_id, campanha_id),
         )
         aid = alvo_id
     else:
         row = conn.execute(
             """
             INSERT INTO ctl.radar_alvo (
-              campanha_id, kind, nome, query_news, handle_ig, is_own, ativo
+              campanha_id, kind, nome, query_news, handle_ig, is_own, ativo,
+              papel, notas, prioridade
             )
-            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s)
+            VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id::text
             """,
-            (campanha_id, kind, nome, qn, handle, is_own, ativo),
+            (campanha_id, kind, nome, qn, handle, is_own, ativo, papel, notas or "", pri),
         ).fetchone()
         aid = row[0]
     rows = list_alvos(conn, campanha_id, ativo_only=False)
@@ -166,8 +300,8 @@ def insert_item(
     body: str,
     published_at: datetime | None,
     entity_name: str | None,
+    entity_kind: str | None = None,
 ) -> str | None:
-    """Insere item se fingerprint novo. Retorna id ou None se duplicado."""
     pub = published_at or datetime.now(timezone.utc)
     if pub.tzinfo is None:
         pub = pub.replace(tzinfo=timezone.utc)
@@ -176,9 +310,9 @@ def insert_item(
         """
         INSERT INTO ctl.radar_item (
           campanha_id, origem, canal, fonte, url, titulo, body,
-          published_at, fingerprint, entity_name
+          published_at, fingerprint, entity_name, entity_kind
         )
-        VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (campanha_id, fingerprint) DO NOTHING
         RETURNING id::text
         """,
@@ -193,23 +327,20 @@ def insert_item(
             pub,
             fp,
             entity_name,
+            entity_kind,
         ),
     ).fetchone()
     return row[0] if row else None
 
 
-def save_analise(
-    conn: psycopg.Connection,
-    item_id: str,
-    data: dict[str, Any],
-) -> None:
+def save_analise(conn: psycopg.Connection, item_id: str, data: dict[str, Any]) -> None:
     conn.execute(
         """
         INSERT INTO ctl.radar_analise (
           item_id, tipo, urgencia, polarity, score, risk, synthesis,
-          eixo, model, action_respond
+          eixo, model, action_respond, action_ignore, action_monitor
         )
-        VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (item_id) DO UPDATE SET
           tipo=EXCLUDED.tipo,
           urgencia=EXCLUDED.urgencia,
@@ -219,7 +350,9 @@ def save_analise(
           synthesis=EXCLUDED.synthesis,
           eixo=EXCLUDED.eixo,
           model=EXCLUDED.model,
-          action_respond=EXCLUDED.action_respond
+          action_respond=EXCLUDED.action_respond,
+          action_ignore=EXCLUDED.action_ignore,
+          action_monitor=EXCLUDED.action_monitor
         """,
         (
             item_id,
@@ -232,15 +365,13 @@ def save_analise(
             data.get("eixo") or "",
             data.get("model") or data.get("_model"),
             data.get("action_respond"),
+            data.get("action_ignore"),
+            data.get("action_monitor"),
         ),
     )
 
 
-def start_run(
-    conn: psycopg.Connection,
-    campanha_id: str | None,
-    mode: str,
-) -> str:
+def start_run(conn: psycopg.Connection, campanha_id: str | None, mode: str) -> str:
     row = conn.execute(
         """
         INSERT INTO ctl.radar_run (campanha_id, mode, ok)
@@ -252,13 +383,7 @@ def start_run(
     return row[0]
 
 
-def finish_run(
-    conn: psycopg.Connection,
-    run_id: str,
-    *,
-    ok: int,
-    err: str | None = None,
-) -> None:
+def finish_run(conn: psycopg.Connection, run_id: str, *, ok: int, err: str | None = None) -> None:
     conn.execute(
         """
         UPDATE ctl.radar_run
@@ -301,7 +426,8 @@ def kpi_24h(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
           COUNT(*)::int,
           COALESCE(AVG(a.score) FILTER (WHERE i.origem = 'clima'), 0)::float,
           COUNT(*) FILTER (WHERE i.origem = 'clima')::int,
-          COUNT(*) FILTER (WHERE i.origem = 'oficial')::int
+          COUNT(*) FILTER (WHERE i.origem = 'oficial')::int,
+          COUNT(*) FILTER (WHERE lower(COALESCE(a.urgencia,'')) IN ('alta','critica'))::int
         FROM ctl.radar_item i
         LEFT JOIN ctl.radar_analise a ON a.item_id = i.id
         WHERE i.campanha_id = %s::uuid
@@ -312,7 +438,8 @@ def kpi_24h(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
     alvos = conn.execute(
         """
         SELECT COUNT(*)::int,
-               COUNT(*) FILTER (WHERE kind = 'perfil')::int
+               COUNT(*) FILTER (WHERE kind = 'perfil' AND is_own)::int,
+               COUNT(*) FILTER (WHERE kind = 'adversario')::int
         FROM ctl.radar_alvo
         WHERE campanha_id = %s::uuid AND ativo IS TRUE
         """,
@@ -323,8 +450,10 @@ def kpi_24h(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         "score_medio_clima": round(float(row[1] or 0), 1),
         "clima_24h": int(row[2] or 0),
         "oficial_24h": int(row[3] or 0),
+        "alertas_24h": int(row[4] or 0),
         "alvos": int(alvos[0] or 0),
-        "perfis": int(alvos[1] or 0),
+        "ig_oficial": int(alvos[1] or 0),
+        "adversarios": int(alvos[2] or 0),
     }
 
 
@@ -337,6 +466,7 @@ def stream(
     origem: str | None = None,
     tipo: str | None = None,
     urgencia: str | None = None,
+    entity_kind: str | None = None,
     janela_horas: int | None = 168,
     page: int = 1,
     limite: int = 20,
@@ -362,6 +492,9 @@ def stream(
     if urgencia:
         where.append("lower(COALESCE(a.urgencia, '')) = %s")
         params.append(urgencia.strip().lower())
+    if entity_kind:
+        where.append("lower(COALESCE(i.entity_kind, '')) = %s")
+        params.append(entity_kind.strip().lower())
     if q:
         where.append(
             "(i.titulo ILIKE %s OR i.body ILIKE %s OR COALESCE(i.entity_name,'') ILIKE %s)"
@@ -383,9 +516,9 @@ def stream(
     rows = conn.execute(
         f"""
         SELECT i.id::text, i.origem, i.canal, i.fonte, i.url, i.titulo, i.body,
-               i.published_at, i.entity_name,
+               i.published_at, i.entity_name, i.entity_kind,
                a.tipo, a.urgencia, a.polarity, a.score, a.risk, a.synthesis,
-               a.eixo, a.model, a.action_respond
+               a.eixo, a.model, a.action_respond, a.action_monitor
         FROM ctl.radar_item i
         LEFT JOIN ctl.radar_analise a ON a.item_id = i.id
         WHERE {wsql}
@@ -414,19 +547,21 @@ def stream(
                 "rotulo": " · ".join(p for p in (fonte, quando) if p) or None,
                 "alvo": r[8],
                 "entity_name": r[8],
-                "tipo": r[9],
-                "urgencia": r[10],
-                "tom": r[11],
-                "polarity": r[11],
-                "clima_score": r[12],
-                "score": r[12],
-                "risco": r[13],
-                "risk": r[13],
-                "resumo": r[14] or (r[6] or "")[:400],
-                "synthesis": r[14],
-                "eixo": r[15] or "",
-                "model": r[16],
-                "action_respond": r[17],
+                "entity_kind": r[9],
+                "tipo": r[10],
+                "urgencia": r[11],
+                "tom": r[12],
+                "polarity": r[12],
+                "clima_score": r[13],
+                "score": r[13],
+                "risco": r[14],
+                "risk": r[14],
+                "resumo": r[15] or (r[6] or "")[:400],
+                "synthesis": r[15],
+                "eixo": r[16] or "",
+                "model": r[17],
+                "action_respond": r[18],
+                "action_monitor": r[19],
                 "nivel": "indicio",
             }
         )
@@ -440,6 +575,41 @@ def stream(
         "pages": pages,
         "limite": lim,
         "itens": itens,
+    }
+
+
+def alertas(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    *,
+    janela_horas: int = 48,
+    limite: int = 30,
+) -> dict[str, Any]:
+    data = stream(
+        conn,
+        campanha_id,
+        origem="clima",
+        janela_horas=janela_horas,
+        page=1,
+        limite=100,
+    )
+    urg = {"critica": 0, "alta": 1, "media": 2, "baixa": 3}
+    itens = [
+        it
+        for it in data.get("itens") or []
+        if (it.get("urgencia") or "").lower() in ("alta", "critica")
+        or (isinstance(it.get("score"), int) and it["score"] <= -40)
+        or (it.get("tipo") or "").lower() in ("ataque", "escandalo", "escândalo")
+    ]
+    itens.sort(key=lambda x: (urg.get((x.get("urgencia") or "").lower(), 9), x.get("score") or 0))
+    itens = itens[: max(1, min(limite, 50))]
+    return {
+        "status": "ok" if itens else "vazio",
+        "nivel": "indicio",
+        "janela_horas": janela_horas,
+        "total": len(itens),
+        "itens": itens,
+        "nota": "Alertas = urgência alta/crítica, ataque/escândalo ou score ≤ -40. Revisão humana obrigatória.",
     }
 
 
@@ -490,27 +660,75 @@ def mix_por_eixo(
                 "pct": round(100.0 * outros / total, 1) if total else 0.0,
             }
         )
+    # desvios simples
+    ideal = 100.0 / max(1, len([d for d in dist if d["eixo"] != "outros"]))
+    for d in dist:
+        if d["eixo"] == "outros":
+            d["desvio"] = None
+            continue
+        d["desvio"] = round(d["pct"] - ideal, 1)
+        d["status"] = (
+            "super" if d["desvio"] >= 8 else ("sub" if d["desvio"] <= -8 else "ok")
+        )
+    ig = [
+        a
+        for a in list_alvos(conn, campanha_id, ativo_only=True)
+        if a["kind"] == "perfil" and a["is_own"]
+    ]
     return {
         "status": "ok",
         "nivel": "indicio",
         "janela_horas": janela_horas,
         "total_oficial": total,
         "distribuicao": dist,
+        "instagram_oficial": ig,
+        "nota": "Termômetro PULSO: só peças origem=oficial (IG marcado is_own).",
     }
 
 
-def campanha_id_por_token(conn: psycopg.Connection, token: str) -> str | None:
-    if not token:
-        return None
-    row = conn.execute(
-        """
-        SELECT campanha_id::text
-        FROM ctl.mcp_token
-        WHERE token = %s AND ativo IS TRUE
-        """,
-        (token,),
-    ).fetchone()
-    return row[0] if row and row[0] else None
+def sintese_semanal(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
+    """Rascunho RELATÓRIO PULSO a partir do store — revisão humana."""
+    cfg = get_config(conn, campanha_id)
+    alerta = alertas(conn, campanha_id, janela_horas=168, limite=10)
+    mix = mix_por_eixo(conn, campanha_id, janela_horas=168)
+    clima = stream(conn, campanha_id, origem="clima", janela_horas=168, page=1, limite=15)
+    adv = stream(
+        conn,
+        campanha_id,
+        origem="clima",
+        entity_kind="adversario",
+        janela_horas=168,
+        page=1,
+        limite=10,
+    )
+    return {
+        "status": "ok",
+        "nivel": "indicio",
+        "candidato": cfg.get("candidato_nome") or "",
+        "uf": cfg.get("uf"),
+        "blocos": {
+            "cenario": [it["titulo"] for it in (clima.get("itens") or [])[:5]],
+            "comunicacao": mix.get("distribuicao") or [],
+            "adversarios": [it["titulo"] for it in (adv.get("itens") or [])[:5]],
+            "alertas": [
+                {
+                    "titulo": it["titulo"],
+                    "urgencia": it.get("urgencia"),
+                    "tipo": it.get("tipo"),
+                    "score": it.get("score"),
+                }
+                for it in (alerta.get("itens") or [])[:5]
+            ],
+            "recomendacoes": [
+                "Revisar alertas de alta/crítica.",
+                "Checar eixos super/sub-representados no Mix.",
+                "Validar movimentos de adversários listados.",
+                "Completar handles Instagram oficial se vazios.",
+                "Cruzar clima com fato TSE no chat Apura (modo narrativa).",
+            ],
+        },
+        "nota": "Rascunho automático PULSO. Não é entrega final — revisão humana obrigatória.",
+    }
 
 
 def campanha_do_usuario(conn: psycopg.Connection, usuario_id: str) -> tuple[str, str] | None:
@@ -528,6 +746,62 @@ def campanha_do_usuario(conn: psycopg.Connection, usuario_id: str) -> tuple[str,
     return row[0], row[1]
 
 
-def humanize_campanha_nome(slug: str) -> str:
-    s = re.sub(r"[-_]+", " ", (slug or "").strip())
-    return s.title() if s else "Campanha"
+def seed_template(conn: psycopg.Connection, campanha_id: str, campanha_nome: str) -> dict[str, Any]:
+    """Garante config + alvos iniciais PULSO se a campanha estiver vazia."""
+    ensure_eixos(conn, campanha_id)
+    slug = (campanha_nome or "").strip().lower()
+    tpl = _SEED_TEMPLATES.get(slug)
+    cfg = get_config(conn, campanha_id)
+    if tpl and not (cfg.get("candidato_nome") or "").strip():
+        upsert_config(
+            conn,
+            campanha_id,
+            candidato_nome=tpl["candidato_nome"],
+            uf=tpl.get("uf"),
+            cargo=tpl.get("cargo"),
+        )
+        cfg = get_config(conn, campanha_id)
+    elif not (cfg.get("candidato_nome") or "").strip():
+        upsert_config(
+            conn,
+            campanha_id,
+            candidato_nome=humanize_campanha_nome(campanha_nome),
+        )
+        cfg = get_config(conn, campanha_id)
+
+    existing = list_alvos(conn, campanha_id, ativo_only=False)
+    if existing:
+        return {"created": False, "alvos": len(existing), "config": cfg}
+
+    created = 0
+    seeds = (tpl or {}).get("alvos") or [
+        {
+            "kind": "pessoa",
+            "nome": cfg.get("candidato_nome") or humanize_campanha_nome(campanha_nome),
+            "query_news": cfg.get("candidato_nome") or humanize_campanha_nome(campanha_nome),
+            "papel": "proprio",
+            "prioridade": 1,
+        },
+        {
+            "kind": "perfil",
+            "nome": "Instagram oficial (preencher @)",
+            "is_own": True,
+            "papel": "proprio",
+            "prioridade": 1,
+        },
+    ]
+    for s in seeds:
+        upsert_alvo(
+            conn,
+            campanha_id,
+            kind=s.get("kind") or "pessoa",
+            nome=s["nome"],
+            query_news=s.get("query_news") or "",
+            handle_ig=s.get("handle_ig"),
+            is_own=bool(s.get("is_own")),
+            papel=s.get("papel"),
+            prioridade=int(s.get("prioridade") or 5),
+            ativo=True,
+        )
+        created += 1
+    return {"created": True, "alvos": created, "config": cfg}

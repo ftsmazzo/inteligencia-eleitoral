@@ -14,7 +14,8 @@ PROMPT_CLIMA = (
     "Voce e analista de inteligencia eleitoral. Ponto de vista: o candidato monitorado. "
     "Score -100 a 100. tipo: ataque|defesa|escandalo|rotina|oportunidade|boato|cobertura. "
     "urgencia: baixa|media|alta|critica. "
-    "Responda so JSON: synthesis, score, polarity, risk, tipo, urgencia, action_respond."
+    "Responda so JSON: synthesis, score, polarity, risk, tipo, urgencia, "
+    "action_ignore, action_monitor, action_respond."
 )
 
 PROMPT_MIX = (
@@ -89,6 +90,8 @@ def classify_clima(titulo: str, body: str, alvo: str) -> dict[str, Any]:
         "tipo": "cobertura",
         "urgencia": "media",
         "eixo": "",
+        "action_ignore": "",
+        "action_monitor": "Manter no radar.",
         "action_respond": "Aguardar classificacao.",
         "_model": "",
     }

@@ -1,4 +1,4 @@
-"""Seed / sync de alvos a partir do nome da campanha e redes TSE."""
+"""Seed / sync de alvos — templates PULSO + tentativa TSE (pode estar vazio em 2026)."""
 from __future__ import annotations
 
 import re
@@ -9,7 +9,6 @@ import psycopg
 
 from radar import store
 
-# Mapeamento slug campanha → UF (para buscar redes TSE 2026)
 _CAMPANHA_UF: dict[str, str] = {
     "governador-amapa": "AP",
     "alfredo-gaspar": "AL",
@@ -17,7 +16,6 @@ _CAMPANHA_UF: dict[str, str] = {
 
 
 def _handle_from_url(url: str) -> tuple[str | None, str | None]:
-    """Retorna (plataforma, handle) se reconhecível."""
     u = (url or "").strip()
     if not u:
         return None, None
@@ -44,21 +42,7 @@ def ensure_default_alvo(
     campanha_id: str,
     campanha_nome: str,
 ) -> dict[str, Any]:
-    store.ensure_eixos(conn, campanha_id)
-    alvos = store.list_alvos(conn, campanha_id, ativo_only=False)
-    if alvos:
-        return {"created": False, "alvos": len(alvos)}
-    nome = store.humanize_campanha_nome(campanha_nome)
-    store.upsert_alvo(
-        conn,
-        campanha_id,
-        kind="pessoa",
-        nome=nome,
-        query_news=nome,
-        is_own=True,
-        ativo=True,
-    )
-    return {"created": True, "alvos": 1, "nome": nome}
+    return store.seed_template(conn, campanha_id, campanha_nome)
 
 
 def sync_tse_redes(
@@ -69,14 +53,22 @@ def sync_tse_redes(
     ano: int = 2026,
     limite: int = 30,
 ) -> dict[str, Any]:
-    """Busca URLs Instagram no TSE ligadas ao nome da campanha / UF."""
-    ensure_default_alvo(conn, campanha_id, campanha_nome)
-    uf = _CAMPANHA_UF.get(campanha_nome.strip().lower())
-    human = store.humanize_campanha_nome(campanha_nome)
-    # tokens para ILIKE (Alfredo Gaspar → %Alfredo%Gaspar% / primeiro sobrenome)
-    tokens = [t for t in re.split(r"\s+", human) if len(t) > 2]
+    """Tenta redes TSE; 2026 pode estar vazio. Também sincroniza por UF da config."""
+    seed = ensure_default_alvo(conn, campanha_id, campanha_nome)
+    cfg = store.get_config(conn, campanha_id)
+    uf = (cfg.get("uf") or _CAMPANHA_UF.get(campanha_nome.strip().lower()) or "").upper() or None
+    cand = (cfg.get("candidato_nome") or "").strip()
+    tokens = [t for t in re.split(r"\s+", cand) if len(t) > 2]
     if not tokens:
-        return {"added": 0, "matched": 0, "nota": "nome campanha curto"}
+        return {
+            "added": 0,
+            "matched": 0,
+            "seed": seed,
+            "nota": (
+                "Sem nome de candidato na config. Preencha Configuração e/ou cadastre "
+                "Instagram oficial (@) manualmente. Redes TSE 2026 podem estar vazias na base."
+            ),
+        }
 
     like_nome = "%" + "%".join(tokens) + "%"
     params: list[Any] = [ano, like_nome, like_nome]
@@ -86,7 +78,6 @@ def sync_tse_redes(
         params.append(uf)
     params.append(max(1, min(limite, 50)))
 
-    # eleicao.candidato + rede_social — tolerante se tabelas ausentes
     try:
         rows = conn.execute(
             f"""
@@ -97,66 +88,71 @@ def sync_tse_redes(
             WHERE r.ano = %s
               AND (c.nm_urna ILIKE %s OR c.nm_candidato ILIKE %s)
               {uf_sql}
-              AND (
-                lower(r.ds_url) LIKE '%%instagram.com%%'
-                OR lower(r.ds_url) LIKE '%%twitter.com%%'
-                OR lower(r.ds_url) LIKE '%%x.com%%'
-              )
+              AND lower(r.ds_url) LIKE '%%instagram.com%%'
             ORDER BY c.nm_urna
             LIMIT %s
             """,
             params,
         ).fetchall()
     except Exception as e:
-        return {"added": 0, "matched": 0, "erro": f"{type(e).__name__}: {e}"}
+        return {
+            "added": 0,
+            "matched": 0,
+            "seed": seed,
+            "erro": f"{type(e).__name__}: {e}",
+            "nota": "Falha ao consultar eleicao.rede_social. Use Alvos manuais.",
+        }
 
-    existing = {
-        ((a.get("handle_ig") or "").lower(), a["nome"].lower())
+    if not rows:
+        return {
+            "added": 0,
+            "matched": 0,
+            "seed": seed,
+            "uf": uf,
+            "ano": ano,
+            "query": like_nome,
+            "nota": (
+                f"Nenhuma rede Instagram no TSE para ano={ano} / {like_nome}. "
+                "Pacote br_cand_rede_social 2026 pode não estar carregado. "
+                "Cadastre o @ oficial em Alvos → Instagram oficial."
+            ),
+        }
+
+    existing_handles = {
+        (a.get("handle_ig") or "").lower()
         for a in store.list_alvos(conn, campanha_id, ativo_only=False)
+        if a.get("handle_ig")
     }
     added = 0
-    for nm_urna, nm_cand, url, sg_uf in rows:
+    for nm_urna, nm_cand, url, _sg in rows:
         plat, handle = _handle_from_url(url or "")
-        nome = (nm_urna or nm_cand or "").strip()
-        if not nome:
+        if plat != "instagram" or not handle:
             continue
-        if plat == "instagram" and handle:
-            key = (handle.lower(), nome.lower())
-            if key in existing or (handle.lower(),) in {(h,) for h, _ in existing}:
-                # atualiza handle no alvo próprio com mesmo nome
-                continue
-            is_own = all(t.lower() in nome.lower() for t in tokens[:2]) if tokens else False
-            store.upsert_alvo(
-                conn,
-                campanha_id,
-                kind="perfil",
-                nome=nome,
-                query_news=nome,
-                handle_ig=handle,
-                is_own=is_own,
-                ativo=True,
-            )
-            existing.add((handle.lower(), nome.lower()))
-            added += 1
-        elif plat in ("x", "facebook") and nome:
-            # tema/pessoa sem IG — garante query_news
-            if any(a["nome"].lower() == nome.lower() for a in store.list_alvos(conn, campanha_id, ativo_only=False)):
-                continue
-            store.upsert_alvo(
-                conn,
-                campanha_id,
-                kind="pessoa",
-                nome=nome,
-                query_news=nome,
-                is_own=False,
-                ativo=True,
-            )
-            added += 1
+        if handle.lower() in existing_handles:
+            continue
+        nome = (nm_urna or nm_cand or handle).strip()
+        is_own = all(t.lower() in nome.lower() for t in tokens[:2]) if len(tokens) >= 1 else False
+        store.upsert_alvo(
+            conn,
+            campanha_id,
+            kind="perfil",
+            nome=nome,
+            query_news=nome,
+            handle_ig=handle,
+            is_own=is_own,
+            papel="proprio" if is_own else "aliado",
+            prioridade=1 if is_own else 4,
+            ativo=True,
+        )
+        existing_handles.add(handle.lower())
+        added += 1
 
     return {
         "added": added,
         "matched": len(rows),
+        "seed": seed,
         "uf": uf,
         "ano": ano,
         "query": like_nome,
+        "nota": f"Importados {added} handles Instagram do TSE." if added else "Já estavam cadastrados.",
     }
