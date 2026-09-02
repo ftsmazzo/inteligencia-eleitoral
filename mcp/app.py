@@ -19,9 +19,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
 from apura.routes import pagina_apura, pagina_cadastro, router as apura_router
+from radar.routes import router as radar_router
 
 app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
 app.include_router(apura_router)
+app.include_router(radar_router)
 
 
 @app.exception_handler(Exception)
@@ -857,9 +859,36 @@ class ClimaIn(BaseModel):
     tipo: str | None = Field(default=None, description="ataque|defesa|oportunidade|rotina|…")
     urgencia: str | None = None
     janela_horas: int | None = Field(default=168, description="24=dia, 168=semana")
-    campaign_id: int | None = Field(default=None, description="Opcional: escopo de campanha do painel")
+    campaign_id: int | None = Field(default=None, description="Legado: id numérico do painel kxryyk")
+    campanha_id: str | None = Field(
+        default=None,
+        description="UUID ctl.campanha — prioriza store Radar em inteligencia-dados",
+    )
     page: int = 1
     limite: int = 20
+
+
+def _campanha_id_do_token(authorization: str | None, x_token: str | None) -> str | None:
+    got = _extract_token(authorization, x_token)
+    master = os.environ.get("MCP_TOKEN", "")
+    if not got or (master and got == master):
+        return None
+    url = _db_url()
+    if not url:
+        return None
+    try:
+        with psycopg.connect(url) as conn:
+            row = conn.execute(
+                """
+                SELECT campanha_id::text
+                FROM ctl.mcp_token
+                WHERE token = %s AND ativo IS TRUE
+                """,
+                (got,),
+            ).fetchone()
+        return row[0] if row and row[0] else None
+    except Exception:
+        return None
 
 
 def _one(conn: psycopg.Connection, sql: str, args: tuple) -> Any:
@@ -1448,6 +1477,7 @@ async def clima(body: ClimaIn, authorization: str | None = Header(default=None),
     _token_ok(authorization, x_token)
     from radar_client import consultar_clima
 
+    campanha_uuid = (body.campanha_id or "").strip() or _campanha_id_do_token(authorization, x_token)
     return await consultar_clima(
         q=body.q,
         canal=body.canal,
@@ -1456,6 +1486,7 @@ async def clima(body: ClimaIn, authorization: str | None = Header(default=None),
         urgencia=body.urgencia,
         janela_horas=body.janela_horas,
         campaign_id=body.campaign_id,
+        campanha_id=campanha_uuid,
         page=body.page,
         limite=body.limite,
     )

@@ -204,7 +204,12 @@ def login(body: LoginIn) -> dict[str, str]:
 def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
     with _db() as conn:
         row = conn.execute(
-            "SELECT ultima_sessao_id::text FROM ctl.apura_usuario WHERE id = %s::uuid",
+            """
+            SELECT u.ultima_sessao_id::text, u.campanha_id::text, c.nome
+            FROM ctl.apura_usuario u
+            LEFT JOIN ctl.campanha c ON c.id = u.campanha_id
+            WHERE u.id = %s::uuid
+            """,
             (user[0],),
         ).fetchone()
         q = quota_usuario(conn, user[0])
@@ -212,6 +217,8 @@ def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
         "id": user[0],
         "email": user[1],
         "ultima_sessao_id": row[0] if row else None,
+        "campanha_id": row[1] if row else None,
+        "campanha_nome": row[2] if row else None,
         "quota": q,
     }
 

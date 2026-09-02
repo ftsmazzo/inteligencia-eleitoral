@@ -18,6 +18,8 @@ COPY sql/patch_municipio_api.sql /app/sql/patch_municipio_api.sql
 COPY sql/api.sql /app/sql/api.sql
 COPY mcp/radar_client.py /app/radar_client.py
 COPY mcp/clima_motores.py /app/clima_motores.py
+COPY mcp/radar /app/radar
+COPY sql/patch_radar.sql /app/sql/patch_radar.sql
 COPY mcp/seed /app/seed
 ENV PORT=8000
 EXPOSE 8000

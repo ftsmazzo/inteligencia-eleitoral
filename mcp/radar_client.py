@@ -1,8 +1,4 @@
-"""Cliente do Radar Eleitoral — consulta livre (não travada em candidato).
-
-O painel atual responde HTML em GET /. Este módulo:
-1. Tenta JSON (se o Radar passar a expor)
-2. Faz parse dos <article class='item'> do HTML
+"""Cliente clima — store Radar (ctl.radar_*) primeiro; motores livres; painel legado opcional.
 
 Sempre retorna nivel=indicio. Cifra no texto é pista, não fato.
 """
@@ -24,8 +20,17 @@ def _base() -> str:
     return (os.environ.get("RADAR_API_URL") or _DEFAULT_URL).rstrip("/")
 
 
+def _use_legacy_painel() -> bool:
+    return (os.environ.get("RADAR_USE_LEGACY_PAINEL") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def _headers() -> dict[str, str]:
-    h = {"Accept": "application/json, text/html;q=0.9", "User-Agent": "inteligencia-eleitoral-mcp/0.1"}
+    h = {"Accept": "application/json, text/html;q=0.9", "User-Agent": "inteligencia-eleitoral-mcp/0.2"}
     tok = (os.environ.get("RADAR_API_TOKEN") or "").strip()
     if tok:
         h["Authorization"] = f"Bearer {tok}"
@@ -37,7 +42,6 @@ def _unescape(s: str) -> str:
 
 
 def _sanitizar_url(it: dict[str, Any]) -> dict[str, Any]:
-    """Evita URLs monstro (Google News RSS) estourarem o chat do Apura."""
     u = it.get("url")
     if not isinstance(u, str) or not u.strip():
         it["url"] = None
@@ -46,7 +50,7 @@ def _sanitizar_url(it: dict[str, Any]) -> dict[str, Any]:
     monstro = "news.google.com" in u or len(u) > 140
     if monstro:
         it["url_raw"] = u
-        it["url"] = None  # redator/UI: sem link longo
+        it["url"] = None
     else:
         it["url"] = u
     return it
@@ -63,14 +67,12 @@ def _parse_articles(html: str) -> list[dict[str, Any]]:
         m_clima = re.search(r"clima\s*(-?\d+).*?risco\s*([^<]+)", chunk, re.I | re.S)
         m_p = re.search(r"<p>(.*?)</p>", chunk, re.S)
         meta_txt = _unescape(re.sub(r"<[^>]+>", " ", m_meta.group(1))) if m_meta else ""
-        # meta: "news · UOL · clima · Lula · 27/08 07:56"
         partes = [p.strip() for p in re.split(r"[·|]", meta_txt) if p.strip()]
         canal = partes[0] if partes else None
         fonte = partes[1] if len(partes) > 1 else None
         origem = partes[2] if len(partes) > 2 else None
         alvo = partes[3] if len(partes) > 3 else None
         quando = partes[4] if len(partes) > 4 else None
-        # Se o parse por posição falhar, tenta achar dd/mm HH:MM no meta
         if not quando:
             m_q = re.search(r"\b(\d{1,2}/\d{1,2}\s+\d{1,2}:\d{2})\b", meta_txt)
             quando = m_q.group(1) if m_q else None
@@ -85,10 +87,26 @@ def _parse_articles(html: str) -> list[dict[str, Any]]:
             "quando": quando,
             "data_hora": quando,
             "rotulo": rotulo,
-            "tipo": next((b for b in badges if b in {
-                "ataque", "defesa", "escandalo", "escândalo", "rotina",
-                "oportunidade", "boato", "cobertura", "mobilizacao", "mobilização",
-            }), badges[2] if len(badges) > 2 else None),
+            "tipo": next(
+                (
+                    b
+                    for b in badges
+                    if b
+                    in {
+                        "ataque",
+                        "defesa",
+                        "escandalo",
+                        "escândalo",
+                        "rotina",
+                        "oportunidade",
+                        "boato",
+                        "cobertura",
+                        "mobilizacao",
+                        "mobilização",
+                    }
+                ),
+                badges[2] if len(badges) > 2 else None,
+            ),
             "tom": badges[0] if badges else None,
             "urgencia": badges[1] if len(badges) > 1 else None,
             "badges": badges,
@@ -101,7 +119,6 @@ def _parse_articles(html: str) -> list[dict[str, Any]]:
 
 
 def _normalizar_item_json(raw: dict[str, Any]) -> dict[str, Any]:
-    """Garante fonte + data/hora também quando o Radar devolver JSON."""
     it = dict(raw)
     fonte = it.get("fonte") or it.get("source") or it.get("veiculo")
     quando = (
@@ -118,6 +135,14 @@ def _normalizar_item_json(raw: dict[str, Any]) -> dict[str, Any]:
             quando = str(quando)
     elif quando is not None:
         quando = str(quando).strip() or None
+        if quando and "T" in quando:
+            try:
+                dt = datetime.fromisoformat(quando.replace("Z", "+00:00"))
+                from zoneinfo import ZoneInfo
+
+                quando = dt.astimezone(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m %H:%M")
+            except ValueError:
+                pass
     if fonte is not None:
         fonte = str(fonte).strip() or None
     it["fonte"] = fonte
@@ -125,11 +150,11 @@ def _normalizar_item_json(raw: dict[str, Any]) -> dict[str, Any]:
     it["data_hora"] = quando
     if not it.get("rotulo"):
         it["rotulo"] = " · ".join(p for p in (fonte, quando) if p) or None
+    it["nivel"] = "indicio"
     return _sanitizar_url(it)
 
 
 def _filter_janela(itens: list[dict[str, Any]], janela_horas: int | None) -> list[dict[str, Any]]:
-    """Filtro aproximado pelo campo 'quando' (dd/mm HH:MM) do painel — ano corrente UTC."""
     if not janela_horas or janela_horas <= 0:
         return itens
     agora = datetime.now(timezone.utc)
@@ -137,7 +162,7 @@ def _filter_janela(itens: list[dict[str, Any]], janela_horas: int | None) -> lis
     out: list[dict[str, Any]] = []
     for it in itens:
         q = it.get("quando") or ""
-        m = re.match(r"(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{2})", q)
+        m = re.match(r"(\d{1,2})/(\d{1,2})\s+(\d{1,2}):(\d{2})", str(q))
         if not m:
             out.append(it)
             continue
@@ -152,6 +177,49 @@ def _filter_janela(itens: list[dict[str, Any]], janela_horas: int | None) -> lis
     return out
 
 
+def _consultar_store(
+    campanha_id: str,
+    *,
+    q: str | None,
+    canal: str | None,
+    origem: str | None,
+    tipo: str | None,
+    urgencia: str | None,
+    janela_horas: int | None,
+    page: int,
+    limite: int,
+) -> dict[str, Any] | None:
+    import os
+
+    import psycopg
+
+    from radar import store
+from radar.schema import ensure_schema
+
+    url = os.environ.get("DATABASE_URL") or os.environ.get("AGENTE_DATABASE_URL")
+    if not url:
+        return None
+    try:
+        ensure_schema()
+        with psycopg.connect(url) as conn:
+            data = store.stream(
+                conn,
+                campanha_id,
+                q=q,
+                canal=canal,
+                origem=origem,
+                tipo=tipo,
+                urgencia=urgencia,
+                janela_horas=janela_horas,
+                page=page,
+                limite=limite,
+            )
+            conn.commit()
+        return data
+    except Exception:
+        return None
+
+
 async def consultar_clima(
     *,
     q: str | None = None,
@@ -161,10 +229,11 @@ async def consultar_clima(
     urgencia: str | None = None,
     janela_horas: int | None = 168,
     campaign_id: int | None = None,
+    campanha_id: str | None = None,
     page: int = 1,
     limite: int = 20,
 ) -> dict[str, Any]:
-    """Clima livre: motores Apify/Google News (sem trava de campanha) + painel Radar opcional."""
+    """Store Radar (uuid) → motores livres → painel legado (opt-in)."""
     from clima_motores import (
         buscar_instagram_apify,
         buscar_news_google,
@@ -199,9 +268,49 @@ async def consultar_clima(
     avisos: list[str] = []
     modo = "motores_livres"
 
+    # 0) Store interno (ctl.radar_*) — caminho feliz por campanha Apura
+    if campanha_id:
+        import asyncio
+
+        stored = await asyncio.to_thread(
+            _consultar_store,
+            campanha_id,
+            q=q,
+            canal=canal_l,
+            origem=origem.strip().lower() if origem else None,
+            tipo=tipo.strip().lower() if tipo else None,
+            urgencia=urgencia.strip().lower() if urgencia else None,
+            janela_horas=horas,
+            page=max(1, page),
+            limite=lim,
+        )
+        if stored and stored.get("itens"):
+            itens = [_normalizar_item_json(x) for x in stored["itens"] if isinstance(x, dict)]
+            motores.append("radar_store")
+            modo = "radar_store"
+            nota = (
+                "Camada C (store Radar / ctl.radar_*): clima da campanha Apura. "
+                "nivel=indicio. Cite fonte + data_hora/rotulo."
+            )
+            return {
+                "status": "ok",
+                "nivel": "indicio",
+                "nota_metodologica": nota,
+                "modo": modo,
+                "motores": motores,
+                "filtro": params,
+                "janela_horas": horas,
+                "campanha_id": campanha_id,
+                "total": stored.get("total"),
+                "page": stored.get("page"),
+                "pages": stored.get("pages"),
+                "itens": itens,
+            }
+        if stored is not None:
+            avisos.append("radar_store vazio nesta janela/filtro")
+
     import asyncio
 
-    # 1) Notícias livres (Google News RSS) — default quando canal vazio ou news
     quer_news = canal_l in (None, "", "news", "noticia", "notícia") and bool(q)
     if quer_news and canal_l != "instagram":
         try:
@@ -214,7 +323,6 @@ async def consultar_clima(
         except Exception as e:
             avisos.append(f"news: {type(e).__name__}")
 
-    # 2) Instagram livre (Apify) — só com canal=instagram (orquestrador manda em paralelo com news)
     if canal_l == "instagram":
         handle = resolver_handle_instagram(q) if q else None
         if handle:
@@ -236,11 +344,10 @@ async def consultar_clima(
             avisos.append(
                 "Informe um @handle (ex.: @lulaoficial) ou nome com alias conhecido (Lula → lulaoficial)."
             )
-    # 3) Painel Radar só se campaign_id pedido OU motores não cobriram e canal é rede “de campanha”
-    usar_painel = campaign_id is not None or (
-        not itens and canal_l in ("x", "facebook", "youtube", "tiktok", "site")
-    )
-    if usar_painel:
+
+    # Painel legado só com opt-in ou campaign_id numérico explícito
+    usar_painel = _use_legacy_painel() or campaign_id is not None
+    if usar_painel and not itens:
         url = f"{_base()}/?{urlencode(params)}"
         cookies: dict[str, str] = {}
         async with httpx.AsyncClient(timeout=45.0, follow_redirects=True) as client:
@@ -259,13 +366,12 @@ async def consultar_clima(
                     )
             else:
                 itens.extend(_parse_articles(r.text))
-            motores.append("painel_radar")
-            modo = "motores+painel"
+            motores.append("painel_radar_legado")
+            modo = "motores+painel_legado"
         else:
             avisos.append(f"painel HTTP {r.status_code}")
 
     itens = _filter_janela(itens, horas)
-    # dedupe por titulo+quando
     seen: set[str] = set()
     uniq: list[dict[str, Any]] = []
     for it in itens:
@@ -277,9 +383,8 @@ async def consultar_clima(
     itens = uniq[:lim]
 
     nota = (
-        "Camada C (clima livre): Google News RSS e/ou Apify Instagram sob demanda — "
-        "sem trava de campaign_id. nivel=indicio. "
-        "Cite fonte + data_hora/rotulo. Se url=null, não cole url_raw. "
+        "Camada C (clima): store Radar por campanha e/ou Google News RSS / Apify Instagram. "
+        "nivel=indicio. Cite fonte + data_hora/rotulo. Se url=null, não cole url_raw. "
         f"Motores: {', '.join(motores) or 'nenhum'}."
     )
     if avisos:
@@ -298,6 +403,7 @@ async def consultar_clima(
             "motores": motores,
             "filtro": params,
             "janela_horas": horas,
+            "campanha_id": campanha_id,
             "itens": [],
         }
 
@@ -309,5 +415,6 @@ async def consultar_clima(
         "motores": motores,
         "filtro": params,
         "janela_horas": horas,
+        "campanha_id": campanha_id,
         "itens": itens,
     }

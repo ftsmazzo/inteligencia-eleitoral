@@ -166,6 +166,71 @@
     }
     .modo-narrativa input { width: auto; margin: 0; accent-color: var(--brand); }
     .modo-narrativa label { margin: 0; font-weight: 500; cursor: pointer; }
+    .nav-views { display: flex; gap: 6px; padding: 0 16px 12px; }
+    .nav-views button {
+      flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--bg); font-weight: 600; font-size: 0.8rem; cursor: pointer; color: var(--muted);
+    }
+    .nav-views button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+    #radar-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+    #radar-view.on { display: flex; }
+    #chat-view { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+    #chat-view.off { display: none; }
+    .radar-head { padding: 14px 20px 8px; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .radar-head h3 { font-family: Fraunces, serif; font-size: 1.15rem; color: var(--brand); }
+    .radar-head .sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+    .radar-kpis { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .radar-kpi { background: var(--brand-light); border-radius: 10px; padding: 8px 12px; min-width: 88px; }
+    .radar-kpi b { display: block; font-size: 1.15rem; color: var(--brand); }
+    .radar-kpi span { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; }
+    .radar-tabs { display: flex; gap: 6px; padding: 10px 20px 0; flex-wrap: wrap; }
+    .radar-tabs button {
+      padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line);
+      background: #fff; font-size: 0.8rem; font-weight: 600; cursor: pointer; color: var(--muted);
+    }
+    .radar-tabs button.on { background: var(--brand-light); color: var(--brand); border-color: #9ec5c0; }
+    .radar-filters {
+      display: grid; grid-template-columns: repeat(5, 1fr) auto; gap: 8px;
+      padding: 10px 20px; align-items: end;
+    }
+    @media (max-width: 900px) { .radar-filters { grid-template-columns: 1fr 1fr; } }
+    .radar-filters label { font-size: 0.7rem; color: var(--muted); margin: 0; }
+    .radar-filters input, .radar-filters select {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+      font: inherit; margin: 0; background: #fff;
+    }
+    .radar-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 20px; }
+    .radar-item {
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+      margin-bottom: 10px; background: var(--surface);
+    }
+    .radar-item.own { border-color: #9ec5c0; }
+    .radar-item h4 { font-size: 0.95rem; margin-bottom: 4px; line-height: 1.35; }
+    .radar-item h4 a { color: var(--ink); text-decoration: none; }
+    .radar-item h4 a:hover { color: var(--brand); }
+    .radar-meta { font-size: 0.75rem; color: var(--muted); margin-bottom: 6px; }
+    .radar-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+    .radar-badges span {
+      font-size: 0.7rem; border: 1px solid var(--line); border-radius: 999px;
+      padding: 2px 8px; color: var(--muted);
+    }
+    .radar-item p { font-size: 0.85rem; color: var(--ink); line-height: 1.4; }
+    .radar-pager { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 0.85rem; color: var(--muted); }
+    .radar-panel { display: none; }
+    .radar-panel.on { display: block; }
+    .radar-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+    .radar-actions button, .radar-filters button {
+      padding: 8px 12px; border-radius: 10px; border: none; background: var(--brand);
+      color: #fff; font-weight: 600; cursor: pointer; font-size: 0.85rem;
+    }
+    .radar-actions button.secondary { background: var(--bg); color: var(--brand); border: 1px solid var(--line); }
+    table.radar-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    table.radar-table th, table.radar-table td {
+      text-align: left; padding: 8px; border-bottom: 1px solid var(--line); color: var(--muted);
+    }
+    .mix-bar { height: 8px; background: #e8edf4; border-radius: 99px; overflow: hidden; margin-top: 4px; }
+    .mix-bar b { display: block; height: 100%; background: var(--brand); }
+    .radar-err { color: #b91c1c; font-size: 0.85rem; min-height: 1.2em; }
     .app-err { text-align: center; color: #b91c1c; font-size: 0.85rem; min-height: 1.2em; margin-bottom: 8px; }
     .composer.loading { opacity: .55; pointer-events: none; }
     .relatorio-box { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fafbfc; }
@@ -342,6 +407,10 @@
         </div>
       </div>
       <button type="button" class="btn-new" id="btn-nova">+ Nova conversa</button>
+      <div class="nav-views">
+        <button type="button" class="on" id="btn-view-chat">Chat</button>
+        <button type="button" id="btn-view-radar">Radar</button>
+      </div>
       <div class="sess-list" id="sess-list"></div>
       <div class="sidebar-actions">
         <button type="button" id="btn-apagar-todas">Apagar todas as conversas</button>
@@ -362,6 +431,7 @@
       </div>
     </aside>
     <div class="main">
+      <div id="chat-view">
       <header class="topbar">
         <h3 id="chat-titulo">Nova conversa</h3>
         <a href="/" target="_blank" rel="noopener">Produto</a>
@@ -381,6 +451,74 @@
           </button>
         </div>
         <p class="hint">Inclua ano, cargo e lugar. Números vêm da base oficial — sem estimativa.</p>
+      </div>
+      </div>
+
+      <div id="radar-view">
+        <div class="radar-head">
+          <h3>Radar</h3>
+          <div class="sub" id="radar-campanha">Clima por campanha · nível indício</div>
+          <div class="radar-kpis">
+            <div class="radar-kpi"><b id="kpi-score">—</b><span>Clima 24h</span></div>
+            <div class="radar-kpi"><b id="kpi-itens">0</b><span>Itens 24h</span></div>
+            <div class="radar-kpi"><b id="kpi-alvos">0</b><span>Alvos</span></div>
+          </div>
+        </div>
+        <div class="radar-tabs">
+          <button type="button" class="on" data-radar-tab="vivo">Ao vivo</button>
+          <button type="button" data-radar-tab="alvos">Alvos</button>
+          <button type="button" data-radar-tab="coleta">Coleta</button>
+          <button type="button" data-radar-tab="mix">Mix</button>
+        </div>
+        <p class="radar-err" id="radar-err" style="padding:0 20px"></p>
+
+        <div class="radar-panel on" id="panel-vivo">
+          <div class="radar-filters">
+            <div><label>Busca</label><input id="rf-q" placeholder="tema, alvo…" /></div>
+            <div><label>Canal</label>
+              <select id="rf-canal"><option value="">todos</option><option>news</option><option>instagram</option></select>
+            </div>
+            <div><label>Origem</label>
+              <select id="rf-origem"><option value="">todas</option><option>clima</option><option>oficial</option></select>
+            </div>
+            <div><label>Tipo</label>
+              <select id="rf-tipo"><option value="">todos</option><option>ataque</option><option>defesa</option><option>escandalo</option><option>oportunidade</option><option>cobertura</option><option>rotina</option></select>
+            </div>
+            <div><label>Urgência</label>
+              <select id="rf-urg"><option value="">todas</option><option>baixa</option><option>media</option><option>alta</option><option>critica</option></select>
+            </div>
+            <button type="button" id="rf-filtrar">Filtrar</button>
+          </div>
+          <div class="radar-body" id="radar-stream"></div>
+          <div class="radar-pager" style="padding:0 20px 16px">
+            <button type="button" class="secondary" id="rf-prev" style="padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--brand);font-weight:600;cursor:pointer">Anterior</button>
+            <span id="rf-page">1 / 1</span>
+            <button type="button" class="secondary" id="rf-next" style="padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--brand);font-weight:600;cursor:pointer">Próxima</button>
+          </div>
+        </div>
+
+        <div class="radar-panel" id="panel-alvos">
+          <div class="radar-body">
+            <div class="radar-actions">
+              <button type="button" id="btn-sync-tse">Sincronizar do TSE</button>
+              <button type="button" class="secondary" id="btn-alvo-add">+ Alvo</button>
+            </div>
+            <div id="radar-alvos-list"></div>
+          </div>
+        </div>
+
+        <div class="radar-panel" id="panel-coleta">
+          <div class="radar-body">
+            <div class="radar-actions">
+              <button type="button" id="btn-coletar">Coletar agora</button>
+            </div>
+            <p class="sub" id="radar-run-info" style="color:var(--muted);font-size:0.9rem">Nenhuma coleta ainda.</p>
+          </div>
+        </div>
+
+        <div class="radar-panel" id="panel-mix">
+          <div class="radar-body" id="radar-mix"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1083,6 +1221,208 @@
       a.href = URL.createObjectURL(blob);
       a.download = tipo === 'xlsx' ? 'apura-dados.xlsx' : 'apura-relatorio.html';
       a.click();
+    }
+
+    // ——— Radar ———
+    let radarPage = 1;
+    let radarPages = 1;
+    let radarTab = 'vivo';
+
+    function setView( wh ) {
+      const chat = wh === 'chat';
+      $('btn-view-chat').classList.toggle('on', chat);
+      $('btn-view-radar').classList.toggle('on', !chat);
+      $('chat-view').classList.toggle('off', !chat);
+      $('radar-view').classList.toggle('on', !chat);
+      if (!chat) loadRadarMeta().then(() => showRadarTab(radarTab));
+    }
+    $('btn-view-chat').addEventListener('click', () => setView('chat'));
+    $('btn-view-radar').addEventListener('click', () => setView('radar'));
+
+    document.querySelectorAll('[data-radar-tab]').forEach(btn => {
+      btn.addEventListener('click', () => showRadarTab(btn.getAttribute('data-radar-tab')));
+    });
+
+    function showRadarTab(tab) {
+      radarTab = tab;
+      document.querySelectorAll('[data-radar-tab]').forEach(b => b.classList.toggle('on', b.getAttribute('data-radar-tab') === tab));
+      ['vivo','alvos','coleta','mix'].forEach(id => {
+        const el = $('panel-' + id);
+        if (el) el.classList.toggle('on', id === tab);
+      });
+      if (tab === 'vivo') loadStream();
+      if (tab === 'alvos') loadAlvos();
+      if (tab === 'coleta') loadColeta();
+      if (tab === 'mix') loadMix();
+    }
+
+    async function loadRadarMeta() {
+      try {
+        const m = await api('/radar/meta');
+        $('radar-campanha').textContent = (m.campanha_nome || 'Campanha') + ' · clima e mix · nível indício';
+        const k = m.kpi || {};
+        $('kpi-score').textContent = (k.score_medio_clima != null ? k.score_medio_clima : '—');
+        $('kpi-itens').textContent = k.itens_24h || 0;
+        $('kpi-alvos').textContent = k.alvos || 0;
+        if (m.last_run) {
+          $('radar-run-info').textContent =
+            'Última: ' + (m.last_run.started_brt || m.last_run.started_at || '—') +
+            ' · modo ' + (m.last_run.mode || '') +
+            ' · novos ' + (m.last_run.ok || 0) +
+            (m.last_run.err ? ' · ' + m.last_run.err : '');
+        }
+      } catch (e) {
+        $('radar-err').textContent = e.message;
+      }
+    }
+
+    async function loadStream() {
+      $('radar-err').textContent = '';
+      const qs = new URLSearchParams({
+        page: String(radarPage),
+        limite: '20',
+        janela_horas: '168',
+      });
+      const q = $('rf-q').value.trim();
+      if (q) qs.set('q', q);
+      if ($('rf-canal').value) qs.set('canal', $('rf-canal').value);
+      if ($('rf-origem').value) qs.set('origem', $('rf-origem').value);
+      if ($('rf-tipo').value) qs.set('tipo', $('rf-tipo').value);
+      if ($('rf-urg').value) qs.set('urgencia', $('rf-urg').value);
+      try {
+        const d = await api('/radar/stream?' + qs.toString());
+        radarPages = d.pages || 1;
+        radarPage = d.page || 1;
+        $('rf-page').textContent = radarPage + ' / ' + radarPages;
+        const box = $('radar-stream');
+        const itens = d.itens || [];
+        if (!itens.length) {
+          box.innerHTML = '<p class="sub" style="color:var(--muted);padding:12px 0">Nenhum item nesta janela. Cadastre alvos e rode a coleta.</p>';
+          return;
+        }
+        box.innerHTML = itens.map(it => {
+          const title = it.url
+            ? '<a href="' + it.url + '" target="_blank" rel="noopener">' + esc(it.titulo) + '</a>'
+            : esc(it.titulo);
+          const badges = [it.polarity || it.tom, it.urgencia, it.tipo, it.eixo].filter(Boolean)
+            .map(b => '<span>' + esc(b) + '</span>').join('');
+          const score = it.score != null ? it.score : it.clima_score;
+          const meta = [it.canal, it.fonte, it.origem, it.alvo || it.entity_name, it.quando].filter(Boolean).join(' · ');
+          return '<article class="radar-item' + (it.origem === 'oficial' ? ' own' : '') + '">' +
+            '<h4>' + title + '</h4>' +
+            '<div class="radar-meta">' + esc(meta) + '</div>' +
+            (badges ? '<div class="radar-badges">' + badges + '</div>' : '') +
+            '<div class="radar-meta">clima ' + (score != null ? score : '—') +
+            (it.risco || it.risk ? ' · risco ' + esc(it.risco || it.risk) : '') + '</div>' +
+            '<p>' + esc(it.resumo || it.synthesis || '') + '</p>' +
+            (it.action_respond ? '<p class="radar-meta"><strong>Ação:</strong> ' + esc(it.action_respond) + '</p>' : '') +
+            '</article>';
+        }).join('');
+      } catch (e) {
+        $('radar-err').textContent = e.message;
+      }
+    }
+
+    function esc(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    $('rf-filtrar').addEventListener('click', () => { radarPage = 1; loadStream(); });
+    $('rf-prev').addEventListener('click', () => { if (radarPage > 1) { radarPage--; loadStream(); } });
+    $('rf-next').addEventListener('click', () => { if (radarPage < radarPages) { radarPage++; loadStream(); } });
+
+    async function loadAlvos() {
+      try {
+        const rows = await api('/radar/alvos');
+        const box = $('radar-alvos-list');
+        if (!rows.length) {
+          box.innerHTML = '<p style="color:var(--muted)">Sem alvos.</p>';
+          return;
+        }
+        box.innerHTML = '<table class="radar-table"><thead><tr><th>Nome</th><th>Tipo</th><th>News</th><th>IG</th><th>Own</th><th></th></tr></thead><tbody>' +
+          rows.map(a => '<tr>' +
+            '<td>' + esc(a.nome) + '</td>' +
+            '<td>' + esc(a.kind) + '</td>' +
+            '<td>' + esc(a.query_news) + '</td>' +
+            '<td>' + esc(a.handle_ig || '') + '</td>' +
+            '<td>' + (a.is_own ? 'sim' : '') + '</td>' +
+            '<td><button type="button" data-del-alvo="' + a.id + '" style="font-size:0.75rem;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:#fff;color:#b91c1c;cursor:pointer">Apagar</button></td>' +
+            '</tr>').join('') +
+          '</tbody></table>';
+        box.querySelectorAll('[data-del-alvo]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            await api('/radar/alvos/' + btn.getAttribute('data-del-alvo'), { method: 'DELETE' });
+            loadAlvos();
+            loadRadarMeta();
+          });
+        });
+      } catch (e) {
+        $('radar-err').textContent = e.message;
+      }
+    }
+
+    $('btn-sync-tse').addEventListener('click', async () => {
+      $('radar-err').textContent = '';
+      try {
+        const r = await api('/radar/alvos/sync-tse', { method: 'POST' });
+        $('radar-err').textContent = 'TSE: +' + (r.added || 0) + ' (matched ' + (r.matched || 0) + ')';
+        loadAlvos();
+        loadRadarMeta();
+      } catch (e) { $('radar-err').textContent = e.message; }
+    });
+
+    $('btn-alvo-add').addEventListener('click', async () => {
+      const nome = prompt('Nome do alvo (pessoa/tema)');
+      if (!nome) return;
+      const handle = prompt('Handle Instagram (opcional, sem @)') || '';
+      const isOwn = confirm('É perfil oficial da campanha (Mix)?');
+      try {
+        await api('/radar/alvos', {
+          method: 'POST',
+          body: JSON.stringify({
+            kind: handle ? 'perfil' : 'pessoa',
+            nome,
+            query_news: nome,
+            handle_ig: handle || null,
+            is_own: isOwn,
+            ativo: true,
+          }),
+        });
+        loadAlvos();
+        loadRadarMeta();
+      } catch (e) { $('radar-err').textContent = e.message; }
+    });
+
+    async function loadColeta() {
+      await loadRadarMeta();
+    }
+
+    $('btn-coletar').addEventListener('click', async () => {
+      $('radar-err').textContent = 'Coletando…';
+      try {
+        const r = await api('/radar/coletar', { method: 'POST' });
+        $('radar-err').textContent = 'Novos: ' + (r.novos || 0) + (r.err ? ' · ' + r.err : '');
+        loadRadarMeta();
+        if (radarTab === 'vivo') loadStream();
+      } catch (e) { $('radar-err').textContent = e.message; }
+    });
+
+    async function loadMix() {
+      try {
+        const d = await api('/radar/mix?janela_horas=168');
+        const box = $('radar-mix');
+        const dist = d.distribuicao || [];
+        if (!dist.length || !(d.total_oficial > 0)) {
+          box.innerHTML = '<p style="color:var(--muted);padding:12px 0">Sem peças oficiais na janela. Marque alvos como own e colete Instagram oficial.</p>';
+          return;
+        }
+        box.innerHTML = '<p style="color:var(--muted);margin-bottom:12px">Total oficial: ' + d.total_oficial + ' · janela ' + d.janela_horas + 'h · nível indício</p>' +
+          dist.map(x => '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:0.9rem"><strong>' + esc(x.eixo) + '</strong><span>' + x.n + ' · ' + x.pct + '%</span></div>' +
+            (x.hint ? '<div style="font-size:0.75rem;color:var(--muted)">' + esc(x.hint) + '</div>' : '') +
+            '<div class="mix-bar"><b style="width:' + Math.min(100, x.pct) + '%"></b></div></div>').join('');
+      } catch (e) {
+        $('radar-err').textContent = e.message;
+      }
     }
 
     if (jwt) {
