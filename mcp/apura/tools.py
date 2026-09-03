@@ -495,8 +495,12 @@ MCP_TOOLS: list[dict] = [
         "function": {
             "name": "consultar_clima",
             "description": (
-                "Clima livre: Google News RSS + Apify Instagram. "
-                "canal=instagram|news. Sempre indício — não use como cifra."
+                "Clima livre: primeiro tenta o que o Radar já coletou desta campanha, senão cai pra "
+                "Google News RSS (canal=news) ou Apify Instagram (canal=instagram). Sempre indício — "
+                "não use como cifra. Se a pergunta citar @handle ou 'instagram de X', chame com "
+                "canal=instagram e q=handle (sem @) NA HORA, sem perguntar período/tipo antes — use "
+                "janela_horas=168 como padrão se não for dito outro. Vazio é uma resposta válida "
+                "(SEM cobertura ainda), não um erro."
             ),
             "parameters": {
                 "type": "object",
@@ -505,7 +509,7 @@ MCP_TOOLS: list[dict] = [
                     "canal": {"type": "string"},
                     "origem": {"type": "string"},
                     "tipo": {"type": "string"},
-                    "janela_horas": {"type": "integer", "description": "24 ou 168"},
+                    "janela_horas": {"type": "integer", "description": "24 ou 168 (padrão 168 se omitido)"},
                     "campaign_id": {"type": "integer"},
                     "limite": {"type": "integer", "default": 20},
                 },

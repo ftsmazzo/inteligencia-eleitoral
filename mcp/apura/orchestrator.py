@@ -119,7 +119,15 @@ def _compactar_consultas(tool_log: list[dict[str, Any]]) -> str:
             partes.append(f"status: fora_do_recorte | {res.get('mensagem', '')}")
             continue
         if status == "vazio":
-            partes.append("status: vazio | zero eleitos neste recorte (filtro aplicado)")
+            # Preserva a mensagem/nota real da tool (ex.: consultar_clima explica exatamente
+            # por quê — Apify sem token, zero posts na janela, handle não resolvido). Nunca
+            # trocar isso por um texto genérico: é essa informação que evita o redator
+            # inventar "problema técnico" quando na real é "zero eleitos" ou "sem posts ainda".
+            msg = res.get("mensagem") or "sem itens neste recorte/filtro"
+            partes.append(f"status: vazio | {msg}")
+            nota_v = res.get("nota_metodologica") or ""
+            if nota_v:
+                partes.append(f"nota: {nota_v}")
             continue
         nota = res.get("nota_metodologica") or res.get("mensagem") or ""
         if nota:
@@ -146,6 +154,8 @@ def _notas_orquestrador(content: str | None) -> str:
         return text
     if text == "SEM_DADOS":
         return "SEM_DADOS"
+    if text == "ESCOPO_DIRETO" or text.startswith("ESCOPO_DIRETO"):
+        return "ESCOPO_DIRETO"
     return ""
 
 
@@ -200,7 +210,7 @@ def _msg_assistant(choice: dict[str, Any]) -> dict[str, Any]:
 
 def _historico_orquestrador(historico: list[dict[str, str]]) -> list[dict[str, str]]:
     msgs: list[dict[str, str]] = []
-    for h in historico[-6:]:
+    for h in historico[-10:]:
         papel = h.get("papel")
         if papel not in ("user", "assistant"):
             continue
@@ -267,8 +277,8 @@ async def executar_chat(
     if campanha_ctx.strip():
         orch_system = (
             f"{orch_system}\n\n"
-            "Há conhecimento de campanha (perfil/dossiê/base). Use-o para orientar "
-            "estratégia e narrativa; números oficiais continuam só via tools.\n"
+            "Contexto desta campanha (escopo configurado + memória/dossiê). Use pra saber quem é o "
+            "candidato monitorado e pra orientar estratégia/narrativa; números oficiais continuam só via tools.\n"
             f"{campanha_ctx.strip()[:6000]}"
         )
     orch_messages: list[dict[str, Any]] = [{"role": "system", "content": orch_system}]

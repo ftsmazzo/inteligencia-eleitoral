@@ -427,11 +427,27 @@ async def chat(
         campanha_ctx = ""
         try:
             from gestao import memoria as gestao_memoria
-            from gestao.store import campanha_do_usuario
+            from gestao.store import campanha_do_usuario, get_status
+            from radar import store as radar_store
 
             camp = campanha_do_usuario(conn, uid)
             if camp:
-                campanha_ctx = gestao_memoria.texto_para_apura(conn, camp[0])
+                partes_ctx: list[str] = []
+                try:
+                    status = get_status(conn, camp[0])
+                except Exception:
+                    status = {}
+                try:
+                    radar_cfg = radar_store.get_config(conn, camp[0])
+                except Exception:
+                    radar_cfg = {}
+                escopo_txt = gestao_memoria.texto_escopo_para_apura(status, radar_cfg)
+                if escopo_txt:
+                    partes_ctx.append(escopo_txt)
+                memoria_txt = gestao_memoria.texto_para_apura(conn, camp[0])
+                if memoria_txt:
+                    partes_ctx.append(memoria_txt)
+                campanha_ctx = "\n\n".join(partes_ctx)
         except Exception:
             campanha_ctx = ""
 

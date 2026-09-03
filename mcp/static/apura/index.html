@@ -1644,7 +1644,10 @@
 
     function syncAmbienteBanner() {
       const st = gestaoStatus && gestaoStatus.ambiente_status;
-      const show = st === 'rascunho' || st === 'configurando';
+      const temEscopo = !!(gestaoStatus && (gestaoStatus.sq_candidato || gestaoStatus.nm_candidato || gestaoStatus.nm_urna));
+      // Com escopo salvo o Apura já sabe o candidato/UF/cargo — não é mais "ambiente cego".
+      // Só alarma quando falta o escopo mesmo (rascunho sem candidato).
+      const show = (st === 'rascunho' || st === 'configurando') && !temEscopo;
       $('banner-chat').classList.toggle('on', !!show);
       $('banner-radar').classList.toggle('on', !!show);
     }

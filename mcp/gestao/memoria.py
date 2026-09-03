@@ -111,6 +111,48 @@ def listar(
     return out
 
 
+def texto_escopo_para_apura(
+    status: dict[str, Any] | None,
+    radar_cfg: dict[str, Any] | None = None,
+) -> str:
+    """Bloco fixo de identidade da campanha — sempre no topo do contexto do Apura.
+
+    Existe pra resolver um bug concreto: o chat perguntava "ano/cargo/UF/candidato"
+    de novo mesmo com o escopo já salvo na Gestão, porque só a memória indexada
+    (campanha_memoria) chegava ao prompt — não o escopo (ctl.campanha) nem o
+    Radar (ctl.radar_config). Isso injeta os dois, com prioridade pro escopo.
+    """
+    status = status or {}
+    radar_cfg = radar_cfg or {}
+    nome = status.get("nm_urna") or status.get("nm_candidato") or radar_cfg.get("candidato_nome")
+    uf = status.get("sg_uf") or radar_cfg.get("uf")
+    cargo = status.get("cargo_label") or radar_cfg.get("cargo")
+    ano = status.get("ano_ref")
+    partido = status.get("sg_partido")
+    sq = status.get("sq_candidato")
+    if not (nome or uf or cargo):
+        return ""
+    linhas = [
+        "ESCOPO DA CAMPANHA (já configurado nesta conta — NUNCA pergunte de novo "
+        "ano/cargo/UF/candidato; use direto pra responder e pra filtrar tools):"
+    ]
+    if nome:
+        linhas.append(f"- Candidato monitorado (o \"nosso\" desta campanha): {nome}" + (f" ({partido})" if partido else ""))
+    if cargo:
+        linhas.append(f"- Cargo: {cargo}")
+    if uf:
+        linhas.append(f"- UF: {uf}")
+    if ano:
+        linhas.append(f"- Ano de referência: {ano}")
+    if sq:
+        linhas.append(f"- sq_candidato (TSE): {sq}")
+    linhas.append(
+        "Perguntas do tipo \"quem é nosso candidato\", \"qual nosso cargo/UF/ano\" — "
+        "responda direto com os dados acima, sem chamar tool e sem PENDENTE."
+    )
+    return "\n".join(linhas)
+
+
 def texto_para_apura(conn: psycopg.Connection, campanha_id: str, *, max_chars: int = 12000) -> str:
     """Concatena blocos prioritários para o system prompt do Apura."""
     blocos = listar(conn, campanha_id, limite=40)
