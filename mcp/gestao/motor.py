@@ -1,4 +1,4 @@
-"""Motor Base de Verdade — snapshot oficial → blocos + Perfil de Eleitor."""
+"""Motor Base de Verdade — cruzamentos oficiais inteligentes → blocos + Perfil."""
 from __future__ import annotations
 
 import re
@@ -15,17 +15,26 @@ _MOTOR_TIPOS = [
     "base_trajetoria",
     "base_concorrentes",
     "base_votos",
+    "base_mapa_cargo",
     "base_prefeitos",
+    "base_ficha_uf",
     "base_redes",
     "base_eleitorado",
 ]
 
-_CARGO_ANO_URNA = {
-    1: [2022, 2018],
-    3: [2022, 2018],
-    5: [2022, 2018],
-    6: [2022, 2018],
-    7: [2022, 2018],
+# Anos com urna oficial no recorte (nunca 2026 para resultado).
+_ANOS_URNA = (2024, 2022, 2020, 2018, 2016, 2014)
+
+# Última urna do cargo (para mapa do pleito, não do candidato).
+_URNA_DO_CARGO = {
+    1: 2022,  # presidente
+    3: 2022,  # governador
+    5: 2022,  # senador
+    6: 2022,  # dep. federal
+    7: 2022,  # dep. estadual
+    11: 2024,  # prefeito
+    12: 2024,  # vice-prefeito (chapa)
+    13: 2024,  # vereador
 }
 
 
@@ -52,11 +61,19 @@ def _tokens_nome(nome: str) -> list[str]:
     return [t for t in re.split(r"\s+", (nome or "").upper()) if len(t) > 2 and t.lower() not in stop]
 
 
+def _safe(label: str, conn: psycopg.Connection, fn, fallback, avisos: list[str]):
+    try:
+        with conn.transaction():
+            return fn()
+    except Exception as exc:
+        avisos.append(f"{label}: {exc}")
+        return fallback
+
+
 def _trajetoria(conn: psycopg.Connection, nm: str, uf: str | None) -> list[dict[str, Any]]:
     tokens = _tokens_nome(nm)
     if len(tokens) < 1:
         return []
-    # exige pelo menos 2 tokens se houver; senão 1
     like = "%" + "%".join(tokens[:3]) + "%"
     params: list[Any] = [like, like]
     uf_sql = ""
@@ -66,7 +83,7 @@ def _trajetoria(conn: psycopg.Connection, nm: str, uf: str | None) -> list[dict[
     rows = conn.execute(
         f"""
         SELECT c.ano, c.cd_cargo, r.nome AS cargo, c.sg_uf, c.nm_urna, c.nm_candidato,
-               c.sg_partido, c.ds_situacao, c.sq_candidato, c.nr_candidato
+               c.sg_partido, c.ds_situacao, c.sq_candidato, c.nr_candidato, c.cd_municipio_tse
         FROM eleicao.candidatura c
         JOIN ref.cargo r ON r.cd_cargo = c.cd_cargo
         WHERE (c.nm_candidato ILIKE %s OR c.nm_urna ILIKE %s)
@@ -89,6 +106,7 @@ def _trajetoria(conn: psycopg.Connection, nm: str, uf: str | None) -> list[dict[
             "ds_situacao": r[7],
             "sq_candidato": r[8],
             "nr_candidato": r[9],
+            "cd_municipio_tse": r[10],
         }
         for r in rows
     ]
@@ -106,7 +124,7 @@ def _concorrentes(
     if excluir_sq:
         excl = " AND c.sq_candidato <> %s"
         params.append(excluir_sq)
-    params.append(40)
+    params.append(80)
     rows = conn.execute(
         f"""
         SELECT c.nm_urna, c.nm_candidato, c.sg_partido, c.nr_candidato, c.ds_situacao, c.sq_candidato
@@ -135,7 +153,6 @@ def _concorrentes(
 def _votos_mun(
     conn: psycopg.Connection, ano: int, cd_cargo: int, uf: str, sq: int
 ) -> list[dict[str, Any]]:
-    # Agrega por município antes do ORDER — evita scan ordenado pesado em votacao.
     rows = conn.execute(
         """
         SELECT COALESCE(m.nome, x.cd_municipio_tse::text) AS mun,
@@ -157,32 +174,239 @@ def _votos_mun(
     return [{"municipio": r[0], "votos": int(r[1] or 0)} for r in rows]
 
 
-def _melhor_sq_historico(
-    traj: list[dict[str, Any]], cd_cargo: int, uf: str | None
-) -> tuple[int, int] | None:
-    anos = _CARGO_ANO_URNA.get(cd_cargo) or [2022]
-    for ano in anos:
-        for t in traj:
-            if t["ano"] == ano and t["cd_cargo"] == cd_cargo:
-                if uf and t.get("sg_uf") and t["sg_uf"] != uf and cd_cargo != 1:
-                    continue
-                return ano, int(t["sq_candidato"])
-    for ano in anos:
-        for t in traj:
-            if t["ano"] == ano:
-                return ano, int(t["sq_candidato"])
+def _sq_prefeito_chapa(
+    conn: psycopg.Connection, ano: int, uf: str, cd_municipio_tse: int | None, partido: str | None
+) -> tuple[int, str] | None:
+    """Vice não tem linha própria de votos nominais — usa a chapa (prefeito) do município."""
+    if not cd_municipio_tse:
+        return None
+    params: list[Any] = [ano, uf, cd_municipio_tse]
+    part_sql = ""
+    if partido:
+        part_sql = " AND upper(c.sg_partido) = upper(%s)"
+        params.append(partido)
+    row = conn.execute(
+        f"""
+        SELECT c.sq_candidato, c.nm_urna
+        FROM eleicao.candidatura c
+        WHERE c.ano = %s AND c.sg_uf = %s AND c.cd_municipio_tse = %s
+          AND c.cd_cargo = 11
+          {part_sql}
+        ORDER BY c.sq_candidato
+        LIMIT 1
+        """,
+        params,
+    ).fetchone()
+    if row:
+        return int(row[0]), row[1] or ""
+    # fallback: qualquer prefeito do município naquele ano (lista curta)
+    row2 = conn.execute(
+        """
+        SELECT c.sq_candidato, c.nm_urna
+        FROM eleicao.candidatura c
+        WHERE c.ano = %s AND c.sg_uf = %s AND c.cd_municipio_tse = %s AND c.cd_cargo = 11
+        ORDER BY c.sq_candidato
+        LIMIT 1
+        """,
+        (ano, uf, cd_municipio_tse),
+    ).fetchone()
+    if row2:
+        return int(row2[0]), row2[1] or ""
     return None
 
 
+def _urna_do_candidato(
+    conn: psycopg.Connection,
+    traj: list[dict[str, Any]],
+    cd_cargo_alvo: int,
+    uf: str | None,
+) -> dict[str, Any]:
+    """
+    Busca votos oficiais do candidato em anos anteriores.
+    Prioridade: mesmo cargo → cargos majoritários → qualquer urna do recorte.
+    Vice-prefeito (12) → votos da chapa de prefeito no município.
+    """
+    if not uf:
+        return {"votos": [], "meta": {}}
+
+    urna = [t for t in traj if int(t["ano"]) in _ANOS_URNA and t.get("sq_candidato")]
+
+    def score(t: dict[str, Any]) -> tuple[int, int]:
+        same = 0 if int(t["cd_cargo"]) == cd_cargo_alvo else 1
+        # majoritário federal/municipal perto do alvo
+        maj = 0 if int(t["cd_cargo"]) in (1, 3, 11, 12) else 2
+        return (same, maj, -int(t["ano"]))
+
+    urna.sort(key=score)
+
+    for t in urna:
+        ano = int(t["ano"])
+        cargo = int(t["cd_cargo"])
+        sq = int(t["sq_candidato"])
+        label = t.get("cargo") or _cargo_label(cargo)
+        nota = f"urna {ano} · {label} · {t.get('nm_urna')}"
+
+        if cargo == 12:
+            chapa = _sq_prefeito_chapa(
+                conn, ano, uf, t.get("cd_municipio_tse"), t.get("sg_partido")
+            )
+            if not chapa:
+                continue
+            sq_p, nm_p = chapa
+            votos = _votos_mun(conn, ano, 11, uf, sq_p)
+            if votos:
+                return {
+                    "votos": votos,
+                    "meta": {
+                        "ano": ano,
+                        "cd_cargo": 11,
+                        "sq": sq_p,
+                        "nota": (
+                            f"{nota} — votos nominais da chapa (prefeito {nm_p}); "
+                            "vice não figura como linha própria na votação TSE"
+                        ),
+                        "origem": "chapa_vice",
+                    },
+                }
+            continue
+
+        votos = _votos_mun(conn, ano, cargo, uf, sq)
+        if votos:
+            return {
+                "votos": votos,
+                "meta": {
+                    "ano": ano,
+                    "cd_cargo": cargo,
+                    "sq": sq,
+                    "nota": nota,
+                    "origem": "candidato",
+                },
+            }
+    return {"votos": [], "meta": {}}
+
+
+def _mapa_cargo_uf(
+    conn: psycopg.Connection, cd_cargo: int, uf: str
+) -> dict[str, Any]:
+    """Mapa da última urna do cargo na UF — votos do(s) eleito(s) por município."""
+    ano = _URNA_DO_CARGO.get(cd_cargo)
+    cargo_mapa = cd_cargo
+    if cd_cargo == 12:
+        ano, cargo_mapa = 2024, 11
+    if not ano:
+        return {"ano": None, "cd_cargo": cd_cargo, "linhas": []}
+
+    if cargo_mapa in (1, 3):
+        # Majoritário estadual/federal: um eleito na UF — força por município
+        rows = conn.execute(
+            """
+            SELECT COALESCE(m.nome, v.cd_municipio_tse::text),
+                   SUM(v.qt_votos)::bigint,
+                   MAX(v.nm_urna),
+                   MAX(v.sg_partido)
+            FROM eleicao.votacao v
+            LEFT JOIN ref.municipio m ON m.cd_municipio_tse = v.cd_municipio_tse
+            WHERE v.ano = %s AND v.cd_cargo = %s AND v.sg_uf = %s
+              AND v.nr_turno = 1
+              AND api._eh_eleito(v.ds_sit_tot_turno)
+              AND v.cd_municipio_tse IS NOT NULL
+            GROUP BY v.cd_municipio_tse, m.nome
+            ORDER BY SUM(v.qt_votos) DESC NULLS LAST
+            LIMIT 40
+            """,
+            (ano, cargo_mapa, uf),
+        ).fetchall()
+    elif cargo_mapa == 11:
+        # Prefeitos: um eleito por município
+        rows = conn.execute(
+            """
+            SELECT COALESCE(m.nome, e.cd_municipio_tse::text),
+                   e.qt_votos, e.nm_urna, e.sg_partido
+            FROM (
+              SELECT a.sq_candidato, a.nm_urna, a.sg_partido, a.qt_votos, c.cd_municipio_tse
+              FROM (
+                SELECT v.sq_candidato,
+                       MAX(v.nm_urna) AS nm_urna,
+                       MAX(v.sg_partido) AS sg_partido,
+                       SUM(v.qt_votos)::bigint AS qt_votos
+                FROM eleicao.votacao v
+                WHERE v.ano = %s AND v.cd_cargo = 11 AND v.sg_uf = %s
+                  AND api._eh_eleito(v.ds_sit_tot_turno)
+                GROUP BY v.sq_candidato
+              ) a
+              LEFT JOIN eleicao.candidatura c
+                ON c.ano = %s AND c.sq_candidato = a.sq_candidato
+            ) e
+            LEFT JOIN ref.municipio m ON m.cd_municipio_tse = e.cd_municipio_tse
+            ORDER BY e.qt_votos DESC NULLS LAST
+            LIMIT 40
+            """,
+            (ano, uf, ano),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT COALESCE(m.nome, x.cd_municipio_tse::text), x.votos, x.nm_urna, x.sg_partido
+            FROM (
+              SELECT v.cd_municipio_tse,
+                     SUM(v.qt_votos)::bigint AS votos,
+                     MAX(v.nm_urna) AS nm_urna,
+                     MAX(v.sg_partido) AS sg_partido
+              FROM eleicao.votacao v
+              WHERE v.ano = %s AND v.cd_cargo = %s AND v.sg_uf = %s AND v.nr_turno = 1
+                AND api._eh_eleito(v.ds_sit_tot_turno)
+                AND v.cd_municipio_tse IS NOT NULL
+              GROUP BY v.cd_municipio_tse
+              ORDER BY SUM(v.qt_votos) DESC NULLS LAST
+              LIMIT 20
+            ) x
+            LEFT JOIN ref.municipio m ON m.cd_municipio_tse = x.cd_municipio_tse
+            """,
+            (ano, cargo_mapa, uf),
+        ).fetchall()
+
+    return {
+        "ano": ano,
+        "cd_cargo": cargo_mapa,
+        "linhas": [
+            {
+                "municipio": r[0],
+                "votos": int(r[1] or 0),
+                "eleito": r[2],
+                "partido": r[3],
+            }
+            for r in rows
+            if r[0]
+        ],
+    }
+
+
 def _prefeitos(conn: psycopg.Connection, uf: str, partido: str | None) -> dict[str, Any]:
+    """Prefeitos eleitos 2024 = urna (ds_sit_tot_turno), nunca ds_situacao de candidatura."""
     rows = conn.execute(
         """
-        SELECT COALESCE(m.nome, c.cd_municipio_tse::text),
-               c.nm_urna, c.sg_partido, c.ds_situacao
-        FROM eleicao.candidatura c
-        LEFT JOIN ref.municipio m ON m.cd_municipio_tse = c.cd_municipio_tse
-        WHERE c.ano = 2024 AND c.cd_cargo = 11 AND c.sg_uf = %s
-          AND c.ds_situacao ILIKE '%%ELEITO%%'
+        SELECT COALESCE(m.nome, e.cd_municipio_tse::text),
+               e.nm_urna, e.sg_partido, e.ds_sit_tot_turno, e.qt_votos
+        FROM (
+          SELECT DISTINCT ON (a.sq_candidato)
+            a.sq_candidato, a.nm_urna, a.sg_partido, a.ds_sit_tot_turno, a.qt_votos,
+            c.cd_municipio_tse
+          FROM (
+            SELECT v.sq_candidato,
+                   MAX(v.nm_urna) AS nm_urna,
+                   MAX(v.sg_partido) AS sg_partido,
+                   MAX(v.ds_sit_tot_turno) AS ds_sit_tot_turno,
+                   SUM(v.qt_votos)::bigint AS qt_votos
+            FROM eleicao.votacao v
+            WHERE v.ano = 2024 AND v.cd_cargo = 11 AND v.sg_uf = %s
+              AND api._eh_eleito(v.ds_sit_tot_turno)
+            GROUP BY v.sq_candidato
+          ) a
+          LEFT JOIN eleicao.candidatura c
+            ON c.ano = 2024 AND c.sq_candidato = a.sq_candidato
+          ORDER BY a.sq_candidato
+        ) e
+        LEFT JOIN ref.municipio m ON m.cd_municipio_tse = e.cd_municipio_tse
         ORDER BY m.nome NULLS LAST
         LIMIT 80
         """,
@@ -192,12 +416,47 @@ def _prefeitos(conn: psycopg.Connection, uf: str, partido: str | None) -> dict[s
     outros = []
     part = (partido or "").upper()
     for r in rows:
-        item = {"municipio": r[0], "prefeito": r[1], "partido": r[2], "situacao": r[3]}
+        item = {
+            "municipio": r[0],
+            "prefeito": r[1],
+            "partido": r[2],
+            "situacao": r[3],
+            "votos": int(r[4] or 0),
+        }
         if part and (r[2] or "").upper() == part:
             aliados.append(item)
         else:
             outros.append(item)
-    return {"aliados_partido": aliados, "outros": outros[:40], "total_eleitos": len(rows)}
+    return {
+        "aliados_partido": aliados,
+        "outros": outros,
+        "total_eleitos": len(rows),
+        "fonte": "eleicao.votacao 2024 cargo 11 + api._eh_eleito",
+    }
+
+
+def _fichas_uf(conn: psycopg.Connection, uf: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT d.ano_eleicao, d.titulo,
+               string_agg(c.texto, E'\n' ORDER BY c.ord)
+        FROM acervo.documento d
+        JOIN acervo.chunk c ON c.documento_id = d.id
+        WHERE d.ativo IS TRUE
+          AND d.tipo = 'ficha_territorial'
+          AND d.sg_uf = %s
+          AND d.ano_eleicao IN (2024, 2022, 2020, 2018)
+        GROUP BY d.id, d.ano_eleicao, d.titulo
+        ORDER BY d.ano_eleicao DESC
+        LIMIT 4
+        """,
+        (uf,),
+    ).fetchall()
+    return [
+        {"ano": int(r[0]), "titulo": r[1] or "", "corpo": (r[2] or "").strip()}
+        for r in rows
+        if r[2]
+    ]
 
 
 def _redes(conn: psycopg.Connection, ano: int, sq: int) -> list[dict[str, Any]]:
@@ -218,93 +477,130 @@ def _redes(conn: psycopg.Connection, ano: int, sq: int) -> list[dict[str, Any]]:
     return out
 
 
+def _redes_traj(conn: psycopg.Connection, traj: list[dict[str, Any]], ano_ref: int, sq_ref: int) -> list[dict[str, Any]]:
+    seen: list[dict[str, Any]] = []
+    keys: set[str] = set()
+    for ano, sq in [(ano_ref, sq_ref)] + [
+        (int(t["ano"]), int(t["sq_candidato"]))
+        for t in traj
+        if t.get("sq_candidato") and int(t["ano"]) <= ano_ref
+    ]:
+        for r in _redes(conn, ano, sq):
+            k = (r.get("url") or "").lower()
+            if not k or k in keys:
+                continue
+            keys.add(k)
+            seen.append(r)
+    return seen[:30]
+
+
 def _eleitorado(conn: psycopg.Connection, uf: str) -> dict[str, Any]:
-    row = conn.execute(
-        """
-        SELECT COALESCE(SUM(qt_eleitores)::bigint, 0)
-        FROM eleicao.eleitorado
-        WHERE ano = 2026 AND sg_uf = %s
-        """,
-        (uf,),
-    ).fetchone()
+    out: dict[str, Any] = {"municipios": 0}
     mun = conn.execute(
         "SELECT COUNT(*)::int FROM ref.municipio WHERE sg_uf = %s",
         (uf,),
     ).fetchone()
-    return {
-        "eleitores_2026": int(row[0] or 0) if row else 0,
-        "municipios": int(mun[0] or 0) if mun else 0,
-    }
+    out["municipios"] = int(mun[0] or 0) if mun else 0
+    for ano in (2026, 2024, 2022):
+        row = conn.execute(
+            """
+            SELECT COALESCE(SUM(qt_eleitores)::bigint, 0)
+            FROM eleicao.eleitorado
+            WHERE ano = %s AND sg_uf = %s
+            """,
+            (ano, uf),
+        ).fetchone()
+        out[f"eleitores_{ano}"] = int(row[0] or 0) if row else 0
+    return out
 
 
 def _bloco_perfil(
     st: dict[str, Any],
     traj: list[dict[str, Any]],
-    votos: list[dict[str, Any]],
+    urna_cand: dict[str, Any],
+    mapa: dict[str, Any],
     pref: dict[str, Any],
     elei: dict[str, Any],
     conc: list[dict[str, Any]],
+    fichas: list[dict[str, Any]],
 ) -> str:
     nome = st.get("nm_urna") or st.get("nm_candidato") or "Candidato"
     uf = st.get("sg_uf") or "—"
     cargo = st.get("cargo_label") or _cargo_label(st.get("cd_cargo"))
+    votos = urna_cand.get("votos") or []
+    meta_u = urna_cand.get("meta") or {}
+
     linhas = [
-        f"Perfil de eleitor — recorte {cargo} · {uf} · campanha de {nome} ({st.get('sg_partido') or 's/partido'}).",
+        f"Perfil de eleitor — {cargo} · {uf} · campanha de {nome} ({st.get('sg_partido') or 's/partido'}).",
+        "Método: urna oficial de anos anteriores + mapa do cargo na UF + prefeitos 2024 + fichas territoriais. "
+        "2026 entra só como candidatura até existir urna.",
         "",
-        "Dimensão territorial:",
-        f"- Eleitorado 2026 (UF): {elei.get('eleitores_2026') or 'inexistente na base'}.",
+        "1) Território (UF):",
+        f"- Eleitorado 2026: {elei.get('eleitores_2026') or 'inexistente'}; "
+        f"2024: {elei.get('eleitores_2024') or 'inexistente'}; "
+        f"2022: {elei.get('eleitores_2022') or 'inexistente'}.",
         f"- Municípios na malha: {elei.get('municipios') or '—'}.",
     ]
+    if pref.get("total_eleitos"):
+        n_al = len(pref.get("aliados_partido") or [])
+        linhas.append(
+            f"- Prefeitos eleitos 2024 (urna): {pref['total_eleitos']}; "
+            f"mesmo partido do candidato ({st.get('sg_partido') or '—'}): {n_al}."
+        )
+        amostra = (pref.get("aliados_partido") or [])[:8] or (pref.get("outros") or [])[:8]
+        if amostra:
+            linhas.append(
+                "  Amostra: "
+                + "; ".join(f"{a['municipio']} — {a['prefeito']} ({a['partido']})" for a in amostra)
+            )
+    else:
+        linhas.append("- Prefeitos eleitos 2024: inexistente neste filtro (checar carga da urna municipal).")
+
+    linhas += ["", "2) Geografia do voto do candidato (anos anteriores):"]
     if votos:
-        top = votos[:5]
-        bot = list(reversed(votos[-3:])) if len(votos) >= 3 else []
-        linhas.append("- Geografia do voto (última urna encontrada do candidato):")
+        linhas.append(f"- Fonte: {meta_u.get('nota') or 'urna anterior'}.")
+        top = votos[:8]
         linhas.append(
             "  Mais votos: "
             + "; ".join(f"{v['municipio']} ({v['votos']:,})".replace(",", ".") for v in top)
         )
-        if bot:
-            linhas.append(
-                "  Menor presença entre o top listado: "
-                + "; ".join(f"{v['municipio']} ({v['votos']:,})".replace(",", ".") for v in bot)
-            )
     else:
         linhas.append(
-            "- Geografia do voto: inexistente para cruzamento automático "
-            "(sem urna anterior compatível na base)."
+            "- Sem votos nominais do próprio candidato na base "
+            "(comum em primeira disputa majoritária estadual; usar mapa do cargo + território)."
         )
-    if pref.get("total_eleitos"):
-        n_al = len(pref.get("aliados_partido") or [])
-        linhas.append(
-            f"- Prefeitos eleitos 2024 na UF: {pref['total_eleitos']}; "
-            f"do mesmo partido do candidato ({st.get('sg_partido') or '—'}): {n_al}."
-        )
-        if pref.get("aliados_partido"):
-            amostra = pref["aliados_partido"][:8]
+
+    linhas += ["", f"3) Mapa do cargo na UF (última urna {_cargo_label(mapa.get('cd_cargo') or st.get('cd_cargo'))}):"]
+    if mapa.get("linhas"):
+        linhas.append(f"- Ano de referência: {mapa.get('ano')}.")
+        for ln in (mapa.get("linhas") or [])[:10]:
             linhas.append(
-                "  Amostra aliados partidários: "
-                + "; ".join(f"{a['municipio']} ({a['prefeito']})" for a in amostra)
+                f"  - {ln['municipio']}: {ln['eleito']} ({ln['partido']}) — "
+                f"{ln['votos']:,} votos".replace(",", ".")
             )
+    else:
+        linhas.append("- Inexistente para este cargo/UF na última urna do recorte.")
+
+    if fichas:
+        linhas += ["", "4) Fichas territoriais do estado (Acervo):"]
+        for f in fichas[:2]:
+            trecho = (f.get("corpo") or "").replace("\n", " ")
+            if len(trecho) > 500:
+                trecho = trecho[:500] + "…"
+            linhas.append(f"- {f.get('titulo')}: {trecho}")
+
     linhas += [
         "",
-        "Densidade política:",
-        f"- Concorrentes registrados 2026 no mesmo cargo/UF (exc. o próprio): {len(conc)}.",
-        f"- Trajetória candidaturas encontradas na base: {len(traj)} registros.",
+        "5) Densidade da disputa atual:",
+        f"- Concorrentes {st.get('ano_ref') or ''} no cargo/UF (cadastro): {len(conc)}.",
+        f"- Trajetória do candidato na base: {len(traj)} registro(s).",
         "",
-        "Leitura operacional (hipótese ancorada — validar com dossiê/campanha):",
-        "- Use este perfil para priorizar território, contrastar com clima (Radar) e amarrar pautas do plano.",
-        "- Cifras citadas acima são Trilha A; interpretações são indício até a coordenação validar.",
+        "Leitura operacional (indício — validar com dossiê/coordenação):",
+        "- Priorize municípios da urna própria (se houver) e contraste com quem controla prefeitura 2024.",
+        "- Em primeira candidatura ao cargo, o mapa da última urna do cargo é o chão do pleito — não invente voto 2026.",
+        "- Cifras = Trilha A; fichas = referência derivada.",
     ]
     return "\n".join(linhas)
-
-
-def _safe(label: str, conn: psycopg.Connection, fn, fallback, avisos: list[str]):
-    try:
-        with conn.transaction():
-            return fn()
-    except Exception as exc:
-        avisos.append(f"{label}: {exc}")
-        return fallback
 
 
 def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
@@ -312,9 +608,8 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
     if not st.get("sq_candidato") or not st.get("cd_cargo") or not st.get("ano_ref"):
         raise ValueError("Escopo incompleto — salve ano, cargo, UF e candidato antes do motor")
 
-    # Evita derrubar o proxy EasyPanel (HTML "Service is not reachable") em query longa.
     try:
-        conn.execute("SET LOCAL statement_timeout = '20000'")
+        conn.execute("SET LOCAL statement_timeout = '45000'")
     except Exception:
         pass
 
@@ -327,28 +622,22 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
 
     traj = _safe("trajetoria", conn, lambda: _trajetoria(conn, nm, uf if cd != 1 else None), [], avisos)
     conc = _safe("concorrentes", conn, lambda: _concorrentes(conn, ano, cd, uf, sq), [], avisos)
-    hist = _melhor_sq_historico(traj, cd, uf)
-    votos: list[dict[str, Any]] = []
-    ano_votos = None
-    if hist and uf:
-        ano_votos, sq_h = hist
 
-        def _v1():
-            return _votos_mun(conn, ano_votos, cd, uf, sq_h)
+    urna_cand = _safe(
+        "votos_candidato",
+        conn,
+        lambda: _urna_do_candidato(conn, traj, cd, uf),
+        {"votos": [], "meta": {}},
+        avisos,
+    )
+    votos = urna_cand.get("votos") or []
+    meta_votos = urna_cand.get("meta") or {}
 
-        votos = _safe("votos", conn, _v1, [], avisos)
-        if not votos:
-            for t in traj:
-                if t["ano"] == ano_votos and t.get("sg_uf") == uf and t.get("sq_candidato"):
-                    cargo_h = int(t["cd_cargo"])
-                    sq_t = int(t["sq_candidato"])
-
-                    def _v2(c=cargo_h, s=sq_t):
-                        return _votos_mun(conn, ano_votos, c, uf, s)
-
-                    votos = _safe("votos_hist", conn, _v2, [], avisos)
-                    if votos:
-                        break
+    mapa = (
+        _safe("mapa_cargo", conn, lambda: _mapa_cargo_uf(conn, cd, uf), {"ano": None, "linhas": []}, avisos)
+        if uf
+        else {"ano": None, "linhas": []}
+    )
     pref = (
         _safe(
             "prefeitos",
@@ -360,22 +649,22 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         if uf
         else {"aliados_partido": [], "outros": [], "total_eleitos": 0}
     )
-    redes = _safe("redes", conn, lambda: _redes(conn, ano, sq), [], avisos)
+    fichas = _safe("fichas", conn, lambda: _fichas_uf(conn, uf), [], avisos) if uf else []
+    redes = _safe("redes", conn, lambda: _redes_traj(conn, traj, ano, sq), [], avisos)
     elei = (
         _safe(
             "eleitorado",
             conn,
             lambda: _eleitorado(conn, uf),
-            {"eleitores_2026": 0, "municipios": 0},
+            {"eleitores_2026": 0, "eleitores_2024": 0, "eleitores_2022": 0, "municipios": 0},
             avisos,
         )
         if uf
-        else {"eleitores_2026": 0, "municipios": 0}
+        else {"eleitores_2026": 0, "eleitores_2024": 0, "eleitores_2022": 0, "municipios": 0}
     )
 
     memoria.limpar_tipos(conn, campanha_id, _MOTOR_TIPOS)
 
-    # trajetória
     corp_tr = "Trajetória eleitoral (candidaturas na base oficial):\n"
     if traj:
         for t in traj:
@@ -396,7 +685,7 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
     )
 
     corp_c = f"Concorrentes {ano} · {_cargo_label(cd)} · {uf or 'BR'}:\n"
-    for c in conc[:35]:
+    for c in conc[:50]:
         corp_c += f"- {c['nm_urna']} · {c['sg_partido']} · nº {c['nr_candidato']} · {c['ds_situacao']}\n"
     if not conc:
         corp_c += "Lista vazia neste filtro.\n"
@@ -410,30 +699,56 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         meta={"n": len(conc)},
     )
 
-    corp_v = "Geografia do voto (última urna compatível):\n"
-    if ano_votos and votos:
-        corp_v += f"Ano {ano_votos}, turno 1, top municípios:\n"
+    corp_v = "Geografia do voto do candidato (urna anterior):\n"
+    if meta_votos.get("nota"):
+        corp_v += f"Fonte: {meta_votos['nota']}\n"
+    if votos:
         for v in votos:
             corp_v += f"- {v['municipio']}: {v['votos']:,} votos\n".replace(",", ".")
     else:
-        corp_v += "Inexistente para este candidato/cargo na base (ou sem UF).\n"
+        corp_v += (
+            "Inexistente votos nominais do próprio candidato em anos anteriores "
+            "(use mapa do cargo + prefeitos + fichas).\n"
+        )
     memoria.upsert_bloco(
         conn, campanha_id,
         tipo="base_votos",
-        titulo="Geografia do voto",
+        titulo="Geografia do voto (candidato)",
         corpo=corp_v,
         fonte="eleicao.votacao",
         nivel="fato",
-        meta={"ano": ano_votos, "n": len(votos)},
+        meta=meta_votos,
     )
 
-    corp_p = "Prefeitos eleitos 2024 na UF vs partido do candidato:\n"
+    corp_m = (
+        f"Mapa do cargo na UF — última urna "
+        f"({_cargo_label(mapa.get('cd_cargo') or cd)} · {mapa.get('ano') or '—'}):\n"
+    )
+    if mapa.get("linhas"):
+        for ln in mapa["linhas"][:30]:
+            corp_m += (
+                f"- {ln['municipio']}: {ln['eleito']} ({ln['partido']}) — "
+                f"{ln['votos']:,} votos\n".replace(",", ".")
+            )
+    else:
+        corp_m += "Inexistente neste filtro.\n"
+    memoria.upsert_bloco(
+        conn, campanha_id,
+        tipo="base_mapa_cargo",
+        titulo="Mapa do cargo (última urna da UF)",
+        corpo=corp_m,
+        fonte="eleicao.votacao + api._eh_eleito",
+        nivel="fato",
+        meta={"ano": mapa.get("ano"), "n": len(mapa.get("linhas") or [])},
+    )
+
+    corp_p = "Prefeitos eleitos 2024 na UF (situação de urna, não cadastro):\n"
     if pref.get("total_eleitos"):
-        corp_p += f"Total eleitos listados: {pref['total_eleitos']}. Mesmo partido: {len(pref.get('aliados_partido') or [])}.\n"
-        for a in (pref.get("aliados_partido") or [])[:25]:
+        corp_p += f"Total: {pref['total_eleitos']}. Mesmo partido do candidato: {len(pref.get('aliados_partido') or [])}.\n"
+        for a in (pref.get("aliados_partido") or []):
             corp_p += f"- ALIADO partidário: {a['municipio']} — {a['prefeito']} ({a['partido']})\n"
-        for a in (pref.get("outros") or [])[:15]:
-            corp_p += f"- Outro: {a['municipio']} — {a['prefeito']} ({a['partido']})\n"
+        for a in (pref.get("outros") or []):
+            corp_p += f"- {a['municipio']} — {a['prefeito']} ({a['partido']})\n"
     else:
         corp_p += "Inexistente ou UF ausente.\n"
     memoria.upsert_bloco(
@@ -441,12 +756,34 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         tipo="base_prefeitos",
         titulo="Mapa de prefeitos 2024",
         corpo=corp_p,
-        fonte="eleicao.candidatura 2024 cargo 11",
+        fonte="eleicao.votacao 2024 + api._eh_eleito",
         nivel="fato",
         meta={"total_eleitos": pref.get("total_eleitos"), "aliados": len(pref.get("aliados_partido") or [])},
     )
 
-    corp_r = "Redes TSE do candidato (ano do escopo):\n"
+    if fichas:
+        for i, f in enumerate(fichas):
+            memoria.upsert_bloco(
+                conn, campanha_id,
+                tipo="base_ficha_uf",
+                titulo=f.get("titulo") or f"Ficha territorial {uf} · {f.get('ano')}",
+                corpo=f.get("corpo") or "",
+                fonte="acervo.ficha_territorial (derivado Trilha A)",
+                nivel="indicio",
+                meta={"ano": f.get("ano"), "i": i},
+            )
+    else:
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="base_ficha_uf",
+            titulo=f"Ficha territorial {uf or '—'}",
+            corpo="Inexistente ficha territorial no Acervo para esta UF nos anos 2018–2024.",
+            fonte="acervo",
+            nivel="indicio",
+            meta={},
+        )
+
+    corp_r = "Redes TSE do candidato (ano do escopo + trajetória):\n"
     if redes:
         for r in redes:
             corp_r += f"- {r['url']}" + (f" (IG @{r['handle_ig']})" if r.get("handle_ig") else "") + "\n"
@@ -464,7 +801,9 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
 
     corp_e = (
         f"Eleitorado {uf or '—'}:\n"
-        f"- Eleitores 2026 (soma UF): {elei.get('eleitores_2026') or 'inexistente'}\n"
+        f"- 2026: {elei.get('eleitores_2026') or 'inexistente'}\n"
+        f"- 2024: {elei.get('eleitores_2024') or 'inexistente'}\n"
+        f"- 2022: {elei.get('eleitores_2022') or 'inexistente'}\n"
         f"- Municípios: {elei.get('municipios') or '—'}\n"
     )
     memoria.upsert_bloco(
@@ -477,18 +816,17 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         meta=elei,
     )
 
-    perfil = _bloco_perfil(st, traj, votos, pref, elei, conc)
+    perfil = _bloco_perfil(st, traj, urna_cand, mapa, pref, elei, conc, fichas)
     memoria.upsert_bloco(
         conn, campanha_id,
         tipo="perfil_eleitor",
         titulo=f"Perfil de eleitor — {st.get('nm_urna') or nm}",
         corpo=perfil,
-        fonte="motor Gestão (TSE/IBGE malha) + síntese",
+        fonte="motor Gestão (urna anterior + território + fichas)",
         nivel="indicio",
-        meta={"motor": "s2"},
+        meta={"motor": "s2v2"},
     )
 
-    # espelha no radar_config
     try:
         conn.execute(
             """
@@ -511,6 +849,9 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         "trajetoria": len(traj),
         "concorrentes": len(conc),
         "votos_mun": len(votos),
+        "prefeitos": pref.get("total_eleitos") or 0,
+        "mapa_cargo": len(mapa.get("linhas") or []),
+        "fichas": len(fichas),
         "redes": len(redes),
         "tem_perfil": True,
         "avisos": avisos,

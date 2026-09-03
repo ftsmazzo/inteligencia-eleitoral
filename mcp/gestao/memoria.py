@@ -81,8 +81,11 @@ def listar(
                 WHEN 'base_trajetoria' THEN 2
                 WHEN 'base_concorrentes' THEN 3
                 WHEN 'base_votos' THEN 4
-                WHEN 'base_prefeitos' THEN 5
-                WHEN 'base_redes' THEN 6
+                WHEN 'base_mapa_cargo' THEN 5
+                WHEN 'base_prefeitos' THEN 6
+                WHEN 'base_ficha_uf' THEN 7
+                WHEN 'base_redes' THEN 8
+                WHEN 'base_eleitorado' THEN 9
                 ELSE 10
               END,
               criado_em DESC
