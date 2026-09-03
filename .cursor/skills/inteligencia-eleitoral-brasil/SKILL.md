@@ -14,8 +14,13 @@ description: >-
 
 ## MCP
 
-URL: `https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp`  
-Config copiÃ¡vel: `docs/config/mcp-cursor.json` (substituir `SEU_TOKEN_AQUI`)
+| Servidor | URL |
+|---|---|
+| Fato | `…/mcp` |
+| RAG Amapá | `…/mcp/rag` |
+| Contexto Amapá | `…/mcp/contexto` |
+
+Config: `docs/config/mcp-cursor.json` (substituir `SEU_TOKEN_AQUI`). Cifra só no Fato.
 
 ## Recorte
 

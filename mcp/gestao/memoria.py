@@ -55,10 +55,37 @@ def listar(
     campanha_id: str,
     *,
     tipo: str | None = None,
+    query: str | None = None,
     limite: int = 50,
 ) -> list[dict[str, Any]]:
     lim = max(1, min(int(limite or 50), 200))
-    if tipo:
+    q = (query or "").strip()
+    like = f"%{q}%" if q else None
+    if tipo and like:
+        rows = conn.execute(
+            """
+            SELECT id::text, tipo, titulo, corpo, fonte, nivel, meta_json, criado_em
+            FROM ctl.campanha_memoria
+            WHERE campanha_id = %s::uuid AND tipo = %s
+              AND (titulo ILIKE %s OR corpo ILIKE %s)
+            ORDER BY criado_em DESC
+            LIMIT %s
+            """,
+            (campanha_id, tipo, like, like, lim),
+        ).fetchall()
+    elif like:
+        rows = conn.execute(
+            """
+            SELECT id::text, tipo, titulo, corpo, fonte, nivel, meta_json, criado_em
+            FROM ctl.campanha_memoria
+            WHERE campanha_id = %s::uuid
+              AND (titulo ILIKE %s OR corpo ILIKE %s)
+            ORDER BY criado_em DESC
+            LIMIT %s
+            """,
+            (campanha_id, like, like, lim),
+        ).fetchall()
+    elif tipo:
         rows = conn.execute(
             """
             SELECT id::text, tipo, titulo, corpo, fonte, nivel, meta_json, criado_em

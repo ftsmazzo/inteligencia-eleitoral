@@ -24,18 +24,25 @@ Guia humano: `docs/GUIA-USUARIO.md`
 
 ## Conexão MCP (HTTP)
 
+Três servidores, o **mesmo** token. Cifra **só** no primeiro.
+
+| Servidor | URL | Uso |
+|---|---|---|
+| Fato | `https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp` | Urna, contas, social, Câmara, acervo nacional, clima |
+| RAG Amapá | `https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp/rag` | Planos da campanha governador-amapa (Trilha B) |
+| Contexto Amapá | `https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp/contexto` | `escopo`, `memoria`, `temas_plano`, `radar` |
+
 | Campo | Valor |
 |---|---|
-| URL | `https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp` |
 | Método | `POST` |
 | Auth | Header `Authorization: Bearer <TOKEN>` ou `X-Token: <TOKEN>` |
 | Corpo | `{"method": "<tool>", "params": { ... }}` |
 
-O token é **secreto** — vem do administrador; nunca exponha em resposta ao usuário final.
+Config: `docs/config/mcp-cursor.json`. Token é **secreto**.
 
-Alternativa REST: `POST /v1/<tool>` com mesmo JSON de params no body.
+Alternativa REST: `POST /v1/<tool>`.
 
-Health check (sem auth): `GET .../health` → `{"status":"ok"}`
+Health (sem auth): `GET .../health` → `{"status":"ok"}`
 
 ---
 

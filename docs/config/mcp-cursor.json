@@ -5,6 +5,18 @@
       "headers": {
         "Authorization": "Bearer SEU_TOKEN_AQUI"
       }
+    },
+    "ie-rag-amapa": {
+      "url": "https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp/rag",
+      "headers": {
+        "Authorization": "Bearer SEU_TOKEN_AQUI"
+      }
+    },
+    "ie-contexto-amapa": {
+      "url": "https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp/contexto",
+      "headers": {
+        "Authorization": "Bearer SEU_TOKEN_AQUI"
+      }
     }
   }
 }

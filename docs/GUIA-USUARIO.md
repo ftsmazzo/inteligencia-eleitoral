@@ -153,26 +153,40 @@ Cadastro pÃºblico estÃ¡ **desativado**.
 
 ### MCP (desenvolvedores e IAs)
 
-Quem administra passa um **token secreto** ou vocÃª gera em `/guia` â†’ â€œGerar tokenâ€.
+Quem administra passa um **token secreto** ou você gera em `/guia` → “Gerar token”.
 
-Guarde em local seguro. **NÃ£o** publique nem commite no git.
+Guarde em local seguro. **Não** publique nem commite no git.
+
+Há **três servidores** (mesmo token):
+
+| Servidor | URL | O que é |
+|---|---|---|
+| Fato | `…/mcp` | Urna, contas, social, Câmara — **única cifra** |
+| RAG Amapá | `…/mcp/rag` | Planos da campanha governador-amapa |
+| Contexto Amapá | `…/mcp/contexto` | Escopo, memória, temas, radar config |
 
 ---
 
-## Passo 2 Â· Conectar na sua IA
+## Passo 2 · Conectar na sua IA
 
-### OpÃ§Ã£o A Â· Cursor (recomendado)
+### Opção A · Cursor (recomendado)
 
-Settings â†’ MCP â†’ cole:
+Settings → MCP → cole:
 
 ```json
 {
   "mcpServers": {
     "inteligencia-eleitoral-brasil": {
       "url": "https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp",
-      "headers": {
-        "Authorization": "Bearer SEU_TOKEN_AQUI"
-      }
+      "headers": { "Authorization": "Bearer SEU_TOKEN_AQUI" }
+    },
+    "ie-rag-amapa": {
+      "url": "https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp/rag",
+      "headers": { "Authorization": "Bearer SEU_TOKEN_AQUI" }
+    },
+    "ie-contexto-amapa": {
+      "url": "https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/mcp/contexto",
+      "headers": { "Authorization": "Bearer SEU_TOKEN_AQUI" }
     }
   }
 }

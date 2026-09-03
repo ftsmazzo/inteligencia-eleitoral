@@ -113,6 +113,8 @@ Não copiar o banco do Radar para `data/`.
 | `consultar_acervo` | B | `query`, `ano_eleicao?`, `tipo?`, `uf?`, `vigente_em?`, `limite` |
 | `consultar_clima` | C | `q?`, `canal?`, `origem?`, `tipo?`, `janela_horas?`, `campaign_id?` (opcional) |
 
+Pacotes HTTP dedicados (mesmo token): `POST /mcp/rag` (acervo travado em `governador-amapa`) e `POST /mcp/contexto` (escopo/memória). Cifra continua só em `POST /mcp`.
+
 Resposta sempre com:
 
 ```json

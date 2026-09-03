@@ -1,7 +1,27 @@
 {
   "produto": "Inteligência Eleitoral Brasil",
-  "versao": "0.2",
-  "gerado_em": "2026-08-26",
+  "versao": "0.3",
+  "gerado_em": "2026-09-03",
+  "servidores_mcp": [
+    {
+      "id": "fato",
+      "url": "/mcp",
+      "cifra": true,
+      "campanha": null
+    },
+    {
+      "id": "rag",
+      "url": "/mcp/rag",
+      "cifra": false,
+      "campanha": "governador-amapa"
+    },
+    {
+      "id": "contexto",
+      "url": "/mcp/contexto",
+      "cifra": false,
+      "campanha": "governador-amapa"
+    }
+  ],
   "spec": "docs/SPEC-BRASIL.md",
   "fontes": "docs/FONTES-NUCLEO.md",
   "recorte": {

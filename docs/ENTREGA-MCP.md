@@ -15,8 +15,14 @@ A pessoa designada **nÃ£o recebe login do Postgres**. Acesso sÃ³ via HTTP(S)
 | Uso | URL |
 |---|---|
 | Health | `https://inteligencia-eleitoral-brasil-mcp-api.se860g.easypanel.host/health` |
-| MCP (JSON) | `POST â€¦/mcp` |
-| REST fino | `POST â€¦/v1/<tool>` (mesmo contrato) |
+| MCP Fato (JSON) | `POST …/mcp` |
+| MCP RAG campanha Amapá | `POST …/mcp/rag` |
+| MCP Contexto campanha Amapá | `POST …/mcp/contexto` |
+| REST fino | `POST …/v1/<tool>` (mesmo contrato) |
+
+Três servidores, o mesmo token Bearer. RAG e Contexto estão travados em `governador-amapa` (AP, governador, 2026). Cifra **só** no MCP Fato.
+
+Config Cursor/Claude: `docs/config/mcp-cursor.json`.
 
 ## AutenticaÃ§Ã£o
 
@@ -41,8 +47,10 @@ Fora do recorte: resposta seca (`docs/SPEC-BRASIL.md`). Sem estimativa.
 
 `catalogo`, `nominata`, `votacao`, `comparecimento`, `eleitorado`, `coligacao`, `vagas`, `bem`, `receita`, `despesa`, `eleitos`, `populacao`, `cadunico`, `bolsa_familia`, `deputados_casa`, `senadores`, `proposicoes`, `votos_camara`, `depara_parlamentar`, `acervo`, `clima`.
 
-- **acervo** â€” Trilha B (planos/programas/notas com vigÃªncia). Cifra no texto = pista.
-- **clima** â€” Radar sob demanda (`q`, `canal`, `janela_horas`). Sempre `nivel=indicio`. NÃ£o exige candidato prÃ©-configurado.
+- **acervo** no `/mcp` — Trilha B nacional. Cifra no texto = pista.
+- **clima** — Radar sob demanda. Sempre `nivel=indicio`.
+- **`/mcp/rag`** — `catalogo`, `acervo`, `acervo_comparar` com UF/ano da campanha Amapá.
+- **`/mcp/contexto`** — `escopo`, `memoria`, `temas_plano`, `radar` da mesma campanha. Sem cifra.
 
 ## Exemplos MCP (`POST /mcp`)
 

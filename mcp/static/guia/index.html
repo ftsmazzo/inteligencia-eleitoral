@@ -284,6 +284,7 @@
           <svg class="nav-apura-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
         </a>
         <a href="#o-que-e">Capacidades</a>
+        <a href="#mcp">MCP</a>
         <a href="#apura">Apura</a>
         <a href="#cadastro">Cadastro</a>
         <a href="#trilhas">Trilhas</a>
@@ -313,7 +314,7 @@
           <div class="stat-row">
             <div class="stat"><strong>5.571</strong><span>municípios</span></div>
             <div class="stat"><strong>6</strong><span>eleições na urna</span></div>
-            <div class="stat"><strong>25</strong><span>consultas MCP</span></div>
+            <div class="stat"><strong>3</strong><span>servidores MCP</span></div>
             <div class="stat"><strong>100%</strong><span>Brasil</span></div>
           </div>
         </div>
@@ -371,6 +372,71 @@
       </div>
     </section>
 
+    <section id="mcp">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Três MCPs, um token</h2>
+          <p>Fato (Brasil) · RAG (planos da campanha Amapá) · Contexto (escopo e memória). Número só no primeiro. Substitua <code>SEU_TOKEN_AQUI</code> ou gere um token demo abaixo.</p>
+        </div>
+        <div class="grid-3" style="margin-bottom:32px">
+          <div class="card">
+            <h3>MCP Fato</h3>
+            <p><code>POST /mcp</code> — urna TSE, contas, IBGE, CadÚnico, Câmara, acervo nacional e clima. Única fonte de cifra.</p>
+          </div>
+          <div class="card">
+            <h3>MCP RAG · Amapá</h3>
+            <p><code>POST /mcp/rag</code> — planos e fichas da campanha governador Amapá 2026. Cifra no texto = pista.</p>
+          </div>
+          <div class="card">
+            <h3>MCP Contexto · Amapá</h3>
+            <p><code>POST /mcp/contexto</code> — quem é o candidato, memória indexada, temas do plano, config do Radar.</p>
+          </div>
+        </div>
+        <div class="connect-box">
+          <div class="token-row">
+            <div style="flex:1">
+              <label for="token-rotulo">Gerar token demo</label>
+              <input id="token-rotulo" type="text" placeholder="Seu nome ou e-mail" maxlength="80" />
+            </div>
+            <button class="btn btn-primary" type="button" id="btn-token">Gerar token</button>
+          </div>
+          <div id="token-demo-box" class="token-result" hidden style="margin:0 24px 16px">
+            <strong>Copie agora — não aparece de novo</strong>
+            <code id="token-demo"></code>
+            <p id="token-aviso" style="margin-top:8px;font-size:0.85rem;color:var(--muted)"></p>
+          </div>
+          <div class="tabs">
+            <button type="button" class="tab active" data-panel="panel-cursor">Cursor</button>
+            <button type="button" class="tab" data-panel="panel-claude">Claude</button>
+            <button type="button" class="tab" data-panel="panel-rest">REST</button>
+          </div>
+          <div class="tab-panel active" id="panel-cursor">
+            <p style="color:var(--muted);font-size:0.9rem">Settings → MCP → cole o JSON (três servidores).</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn" data-copy="cfg-cursor">Copiar</button>
+              <pre id="cfg-cursor"></pre>
+            </div>
+            <p style="margin-top:12px;font-size:0.85rem"><a href="/guia/recursos/mcp-cursor.json" download>mcp-cursor.json</a></p>
+          </div>
+          <div class="tab-panel" id="panel-claude">
+            <p style="color:var(--muted);font-size:0.9rem">Mesmo JSON em claude_desktop_config.</p>
+            <div class="code-block">
+              <button type="button" class="copy-btn" data-copy="cfg-claude">Copiar</button>
+              <pre id="cfg-claude"></pre>
+            </div>
+            <p style="margin-top:12px;font-size:0.85rem"><a href="/guia/recursos/mcp-claude.json" download>mcp-claude.json</a> · <a href="/guia/recursos/skill-ia.md" download>skill-ia.md</a></p>
+          </div>
+          <div class="tab-panel" id="panel-rest">
+            <p style="color:var(--muted);font-size:0.9rem">Corpo: <code>{"method":"catalogo","params":{}}</code></p>
+            <div class="code-block">
+              <button type="button" class="copy-btn" data-copy="cfg-rest">Copiar</button>
+              <pre id="cfg-rest"></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="cadastro">
       <div class="wrap">
         <div class="section-head">
@@ -423,7 +489,7 @@
         <details><summary>Posso pedir resultado de 2026?</summary><p>Só candidaturas (quem se inscreveu). Votos só depois da apuração oficial.</p></details>
         <details><summary>A IA pode estimar se faltar dado?</summary><p>Não. Esta ferramenta proíbe inventar. Fora do recorte, a resposta é seca: dado inexistente.</p></details>
         <details><summary>É a ferramenta da campanha NE9?</summary><p>Não. É o Brasil inteiro, produto separado, fontes TSE/IBGE/MDS/Câmara.</p></details>
-        <details><summary>Onde baixo a Skill para IA?</summary><p><a href="/guia/recursos/skill-ia.md" download>skill-ia.md</a> — para quem integra via MCP com token comercial.</p></details>
+        <details><summary>Quais são os três MCPs?</summary><p><strong>Fato</strong> (<code>/mcp</code>) é a urna e o restante do Brasil — só nele há cifra. <strong>RAG</strong> (<code>/mcp/rag</code>) busca planos da campanha do Amapá. <strong>Contexto</strong> (<code>/mcp/contexto</code>) devolve o escopo (Clécio, governador, AP, 2026) e a memória da campanha. O mesmo token serve nos três.</p></details>
       </div>
     </section>
   </main>
@@ -442,6 +508,88 @@
       const BASE = window.location.origin;
       const APURA_API = BASE + '/apura/api';
       const $ = (id) => document.getElementById(id);
+      let mcpToken = 'SEU_TOKEN_AQUI';
+
+      function mcpJson() {
+        return {
+          mcpServers: {
+            'inteligencia-eleitoral-brasil': {
+              url: BASE + '/mcp',
+              headers: { Authorization: 'Bearer ' + mcpToken }
+            },
+            'ie-rag-amapa': {
+              url: BASE + '/mcp/rag',
+              headers: { Authorization: 'Bearer ' + mcpToken }
+            },
+            'ie-contexto-amapa': {
+              url: BASE + '/mcp/contexto',
+              headers: { Authorization: 'Bearer ' + mcpToken }
+            }
+          }
+        };
+      }
+
+      function paintMcp() {
+        const pretty = JSON.stringify(mcpJson(), null, 2);
+        if ($('cfg-cursor')) $('cfg-cursor').textContent = pretty;
+        if ($('cfg-claude')) $('cfg-claude').textContent = pretty;
+        if ($('cfg-rest')) {
+          $('cfg-rest').textContent = [
+            'POST ' + BASE + '/mcp',
+            'POST ' + BASE + '/mcp/rag',
+            'POST ' + BASE + '/mcp/contexto',
+            'Authorization: Bearer ' + mcpToken,
+            'Content-Type: application/json',
+            '',
+            '{"method": "catalogo", "params": {}}'
+          ].join('\n');
+        }
+      }
+
+      document.querySelectorAll('.tab').forEach(t => {
+        t.addEventListener('click', () => {
+          const box = t.closest('.connect-box');
+          if (!box) return;
+          box.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+          box.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+          t.classList.add('active');
+          const panel = document.getElementById(t.getAttribute('data-panel'));
+          if (panel) panel.classList.add('active');
+        });
+      });
+
+      document.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const el = document.getElementById(btn.getAttribute('data-copy'));
+          if (!el) return;
+          navigator.clipboard.writeText(el.textContent).then(showToast);
+        });
+      });
+
+      $('btn-token')?.addEventListener('click', async () => {
+        const rotulo = ($('token-rotulo').value || '').trim() || 'demo';
+        $('btn-token').disabled = true;
+        try {
+          const r = await fetch(BASE + '/guia/api/gerar-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rotulo })
+          });
+          const d = await r.json();
+          if (!r.ok) throw new Error(apiError(d));
+          mcpToken = d.token;
+          $('token-demo').textContent = d.token;
+          $('token-aviso').textContent = d.aviso || '';
+          $('token-demo-box').hidden = false;
+          paintMcp();
+        } catch (err) {
+          alert(err.message || 'Não foi possível gerar o token.');
+        } finally {
+          $('btn-token').disabled = false;
+        }
+      });
+
+      paintMcp();
 
       function apiError(d) {
         if (typeof d.detail === 'string') return d.detail;

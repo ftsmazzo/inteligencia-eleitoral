@@ -20,6 +20,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from apura.routes import pagina_apura, pagina_cadastro, router as apura_router
 from gestao.routes import router as gestao_router
+import mcp_packs
 from radar.routes import router as radar_router
 
 app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
@@ -914,6 +915,12 @@ def health() -> dict[str, Any]:
         "acervo": "ready" if _ACERVO_READY else "pending",
         "analitico": "ready" if _ANALITICO_READY else "pending",
         "seed_planos": _SEED_PLANOS.exists(),
+        "mcp": {
+            "fato": "/mcp",
+            "rag": "/mcp/rag",
+            "contexto": "/mcp/contexto",
+            "campanha": mcp_packs.SLUG_AMAPA,
+        },
     }
     url = _ddl_url()
     if url and _ACERVO_READY:
@@ -1499,13 +1506,67 @@ class McpCall(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
-@app.post("/mcp")
-async def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+class MemoriaMcpIn(BaseModel):
+    query: str | None = Field(default=None, max_length=300)
+    tipo: str | None = None
+    limite: int = 20
+
+
+@app.get("/mcp")
+def mcp_meta_fato() -> dict[str, Any]:
+    return mcp_packs.meta_publica("fato")
+
+
+@app.get("/mcp/rag")
+def mcp_meta_rag() -> dict[str, Any]:
+    return mcp_packs.meta_publica("rag")
+
+
+@app.get("/mcp/contexto")
+def mcp_meta_contexto() -> dict[str, Any]:
+    return mcp_packs.meta_publica("contexto")
+
+
+async def _mcp_exec(
+    pack: str,
+    body: McpCall,
+    authorization: str | None,
+    x_token: str | None,
+) -> Any:
     _token_ok(authorization, x_token)
-    name = body.method
-    p = body.params
+    name = (body.method or "").strip()
+    p = body.params or {}
+    allowed = mcp_packs.PACKS.get(pack)
+    if not allowed or name not in allowed:
+        raise HTTPException(400, f"tool inexistente neste catálogo ({pack})")
     if name == "catalogo":
-        return catalogo(authorization, x_token)
+        if pack == "fato":
+            return catalogo(authorization, x_token)
+        return mcp_packs.catalogo_pack(pack)
+    if name == "escopo":
+        with db() as conn:
+            return mcp_packs.montar_escopo(conn)
+    if name == "memoria":
+        body_m = MemoriaMcpIn(**p)
+        with db() as conn:
+            return mcp_packs.montar_memoria(
+                conn, query=body_m.query, tipo=body_m.tipo, limite=body_m.limite
+            )
+    if name == "temas_plano":
+        with db() as conn:
+            return mcp_packs.montar_temas(conn)
+    if name == "radar":
+        with db() as conn:
+            return mcp_packs.montar_radar(conn)
+    if name in ("acervo", "acervo_comparar") and pack == "rag":
+        with db() as conn:
+            status = mcp_packs.resolver_campanha_amapa(conn)
+        if not status:
+            return mcp_packs.campanha_ausente()
+        p = mcp_packs.filtrar_rag(p, status)
+        if name == "acervo_comparar" and not p.get("ano_a"):
+            p.setdefault("ano_a", 2022)
+            p.setdefault("ano_b", int(status.get("ano_ref") or 2026))
     if name == "municipio":
         return municipio(MunicipioIn(**p), authorization, x_token)
     if name == "nominata":
@@ -1563,3 +1624,39 @@ async def mcp(body: McpCall, authorization: str | None = Header(default=None), x
     if name == "clima":
         return await clima(ClimaIn(**p), authorization, x_token)
     raise HTTPException(400, "tool inexistente neste catálogo")
+
+
+@app.post("/mcp")
+async def mcp(body: McpCall, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    return await _mcp_exec("fato", body, authorization, x_token)
+
+
+@app.post("/mcp/rag")
+async def mcp_rag(body: McpCall, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    return await _mcp_exec("rag", body, authorization, x_token)
+
+
+@app.post("/mcp/contexto")
+async def mcp_contexto(body: McpCall, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    return await _mcp_exec("contexto", body, authorization, x_token)
+
+
+@app.post("/v1/escopo")
+def v1_escopo(authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return mcp_packs.montar_escopo(conn)
+
+
+@app.post("/v1/memoria")
+def v1_memoria(body: MemoriaMcpIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return mcp_packs.montar_memoria(conn, query=body.query, tipo=body.tipo, limite=body.limite)
+
+
+@app.post("/v1/temas_plano")
+def v1_temas_plano(authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token)
+    with db() as conn:
+        return mcp_packs.montar_temas(conn)
