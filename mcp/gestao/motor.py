@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import psycopg
 
 from gestao import memoria
+from gestao.movimento import montar_eleitorado, montar_ficha_movimento, montar_redes
 from gestao.perfil_eleitor import montar_perfil_eleitor
 from gestao.trajetoria import montar_trajetoria
 from gestao.store import CARGOS, get_status
@@ -437,30 +438,6 @@ def _prefeitos(conn: psycopg.Connection, uf: str, partido: str | None) -> dict[s
     }
 
 
-def _fichas_uf(conn: psycopg.Connection, uf: str) -> list[dict[str, Any]]:
-    rows = conn.execute(
-        """
-        SELECT d.ano_eleicao, d.titulo,
-               string_agg(c.texto, E'\n' ORDER BY c.ord)
-        FROM acervo.documento d
-        JOIN acervo.chunk c ON c.documento_id = d.id
-        WHERE d.ativo IS TRUE
-          AND d.tipo = 'ficha_territorial'
-          AND d.sg_uf = %s
-          AND d.ano_eleicao IN (2024, 2022, 2020, 2018)
-        GROUP BY d.id, d.ano_eleicao, d.titulo
-        ORDER BY d.ano_eleicao DESC
-        LIMIT 4
-        """,
-        (uf,),
-    ).fetchall()
-    return [
-        {"ano": int(r[0]), "titulo": r[1] or "", "corpo": (r[2] or "").strip()}
-        for r in rows
-        if r[2]
-    ]
-
-
 def _redes(conn: psycopg.Connection, ano: int, sq: int) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
@@ -494,26 +471,6 @@ def _redes_traj(conn: psycopg.Connection, traj: list[dict[str, Any]], ano_ref: i
             keys.add(k)
             seen.append(r)
     return seen[:30]
-
-
-def _eleitorado(conn: psycopg.Connection, uf: str) -> dict[str, Any]:
-    out: dict[str, Any] = {"municipios": 0}
-    mun = conn.execute(
-        "SELECT COUNT(*)::int FROM ref.municipio WHERE sg_uf = %s",
-        (uf,),
-    ).fetchone()
-    out["municipios"] = int(mun[0] or 0) if mun else 0
-    for ano in (2026, 2024, 2022):
-        row = conn.execute(
-            """
-            SELECT COALESCE(SUM(qt_eleitores)::bigint, 0)
-            FROM eleicao.eleitorado
-            WHERE ano = %s AND sg_uf = %s
-            """,
-            (ano, uf),
-        ).fetchone()
-        out[f"eleitores_{ano}"] = int(row[0] or 0) if row else 0
-    return out
 
 
 def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
@@ -572,18 +529,30 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         if uf
         else {"aliados_partido": [], "outros": [], "total_eleitos": 0}
     )
-    fichas = _safe("fichas", conn, lambda: _fichas_uf(conn, uf), [], avisos) if uf else []
-    redes = _safe("redes", conn, lambda: _redes_traj(conn, traj, ano, sq), [], avisos)
-    elei = (
-        _safe(
-            "eleitorado",
-            conn,
-            lambda: _eleitorado(conn, uf),
-            {"eleitores_2026": 0, "eleitores_2024": 0, "eleitores_2022": 0, "municipios": 0},
-            avisos,
-        )
+    ficha_doc = (
+        _safe("fichas", conn, lambda: montar_ficha_movimento(conn, uf=uf), None, avisos)
         if uf
-        else {"eleitores_2026": 0, "eleitores_2024": 0, "eleitores_2022": 0, "municipios": 0}
+        else None
+    )
+    redes_doc = _safe(
+        "redes",
+        conn,
+        lambda: montar_redes(
+            conn,
+            ano=ano,
+            sq=sq,
+            nm_urna=st.get("nm_urna") or nm,
+            sg_partido=st.get("sg_partido"),
+            traj=traj,
+            concorrentes=conc,
+        ),
+        None,
+        avisos,
+    )
+    elei_doc = (
+        _safe("eleitorado", conn, lambda: montar_eleitorado(conn, uf=uf), None, avisos)
+        if uf
+        else None
     )
 
     memoria.limpar_tipos(conn, campanha_id, _MOTOR_TIPOS)
@@ -695,60 +664,68 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         meta={"total_eleitos": pref.get("total_eleitos"), "aliados": len(pref.get("aliados_partido") or [])},
     )
 
-    if fichas:
-        for i, f in enumerate(fichas):
-            memoria.upsert_bloco(
-                conn, campanha_id,
-                tipo="base_ficha_uf",
-                titulo=f.get("titulo") or f"Ficha territorial {uf} · {f.get('ano')}",
-                corpo=f.get("corpo") or "",
-                fonte="acervo.ficha_territorial (derivado Trilha A)",
-                nivel="indicio",
-                meta={"ano": f.get("ano"), "i": i},
-            )
+    if ficha_doc:
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="base_ficha_uf",
+            titulo=ficha_doc["titulo"],
+            corpo=ficha_doc["corpo"],
+            fonte=ficha_doc["fonte"],
+            nivel=ficha_doc.get("nivel") or "fato",
+            meta=ficha_doc.get("meta") or {},
+        )
     else:
         memoria.upsert_bloco(
             conn, campanha_id,
             tipo="base_ficha_uf",
-            titulo=f"Ficha territorial {uf or '—'}",
-            corpo="Inexistente ficha territorial no Acervo para esta UF nos anos 2018–2024.",
-            fonte="acervo",
-            nivel="indicio",
+            titulo=f"Movimento territorial {uf or '—'}",
+            corpo="Inexistente movimento territorial (UF ausente ou falha no cruzamento).",
+            fonte="eleicao.votacao",
+            nivel="fato",
             meta={},
         )
 
-    corp_r = "Redes TSE do candidato (ano do escopo + trajetória):\n"
-    if redes:
-        for r in redes:
-            corp_r += f"- {r['url']}" + (f" (IG @{r['handle_ig']})" if r.get("handle_ig") else "") + "\n"
+    if redes_doc:
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="base_redes",
+            titulo=redes_doc["titulo"],
+            corpo=redes_doc["corpo"],
+            fonte=redes_doc["fonte"],
+            nivel=redes_doc.get("nivel") or "fato",
+            meta=redes_doc.get("meta") or {},
+        )
     else:
-        corp_r += "Inexistente na base (pacote rede_social pode estar vazio em 2026).\n"
-    memoria.upsert_bloco(
-        conn, campanha_id,
-        tipo="base_redes",
-        titulo="Redes sociais TSE",
-        corpo=corp_r,
-        fonte="eleicao.rede_social",
-        nivel="fato",
-        meta={"n": len(redes), "ig": [r["handle_ig"] for r in redes if r.get("handle_ig")]},
-    )
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="base_redes",
+            titulo="Redes TSE — próprio e adversários",
+            corpo="Inexistente redes TSE neste escopo.",
+            fonte="eleicao.rede_social",
+            nivel="fato",
+            meta={},
+        )
 
-    corp_e = (
-        f"Eleitorado {uf or '—'}:\n"
-        f"- 2026: {elei.get('eleitores_2026') or 'inexistente'}\n"
-        f"- 2024: {elei.get('eleitores_2024') or 'inexistente'}\n"
-        f"- 2022: {elei.get('eleitores_2022') or 'inexistente'}\n"
-        f"- Municípios: {elei.get('municipios') or '—'}\n"
-    )
-    memoria.upsert_bloco(
-        conn, campanha_id,
-        tipo="base_eleitorado",
-        titulo="Eleitorado da UF",
-        corpo=corp_e,
-        fonte="eleicao.eleitorado",
-        nivel="fato",
-        meta=elei,
-    )
+    if elei_doc:
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="base_eleitorado",
+            titulo=elei_doc["titulo"],
+            corpo=elei_doc["corpo"],
+            fonte=elei_doc["fonte"],
+            nivel=elei_doc.get("nivel") or "fato",
+            meta=elei_doc.get("meta") or {},
+        )
+    else:
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="base_eleitorado",
+            titulo=f"Eleitorado {uf or '—'}",
+            corpo="Inexistente série de eleitorado para esta UF.",
+            fonte="eleicao.eleitorado",
+            nivel="fato",
+            meta={},
+        )
 
     perfil_doc = _safe(
         "perfil_eleitor",
@@ -807,8 +784,8 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         "votos_mun": len(votos),
         "prefeitos": pref.get("total_eleitos") or 0,
         "mapa_cargo": len(mapa.get("linhas") or []),
-        "fichas": len(fichas),
-        "redes": len(redes),
+        "fichas": 1 if ficha_doc else 0,
+        "redes": len((redes_doc or {}).get("meta", {}).get("pessoas") or []),
         "tem_perfil": bool(perfil_doc),
         "perfil_meta": (perfil_doc or {}).get("meta"),
         "avisos": avisos,
