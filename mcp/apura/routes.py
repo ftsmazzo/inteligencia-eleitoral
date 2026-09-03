@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 
 from apura.auth import (
+    alterar_senha,
     consumir_pergunta_demo,
     decodificar_jwt,
     login_usuario,
@@ -129,6 +130,11 @@ class LoginIn(BaseModel):
     senha: str
 
 
+class SenhaIn(BaseModel):
+    senha_atual: str = Field(min_length=1, max_length=128)
+    senha_nova: str = Field(min_length=8, max_length=128)
+
+
 class SessaoIn(BaseModel):
     titulo: str = Field(default="Nova conversa", max_length=120)
 
@@ -227,6 +233,12 @@ def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
         "campanha_nome": row[2] if row else None,
         "quota": q,
     }
+
+
+@router.post("/auth/senha")
+def trocar_senha(body: SenhaIn, user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, str]:
+    with _db() as conn:
+        return alterar_senha(conn, user[0], body.senha_atual, body.senha_nova)
 
 
 @router.get("/sessoes")

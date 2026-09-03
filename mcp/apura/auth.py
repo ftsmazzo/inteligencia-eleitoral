@@ -52,6 +52,46 @@ def gerar_mcp_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def senha_amigavel() -> str:
+    """Senha legível para equipe: Apura + 4 dígitos + letra (ex.: Apura4821k)."""
+    n = secrets.randbelow(9000) + 1000
+    letra = secrets.choice("abcdefghkmnpqrstuvwxyz")
+    return f"Apura{n}{letra}"
+
+
+def alterar_senha(
+    conn: psycopg.Connection,
+    usuario_id: str,
+    senha_atual: str,
+    senha_nova: str,
+) -> dict[str, str]:
+    from fastapi import HTTPException
+
+    senha_nova = (senha_nova or "").strip()
+    if len(senha_nova) < 8:
+        raise HTTPException(400, "Nova senha com no mínimo 8 caracteres")
+    if len(senha_nova) > 128:
+        raise HTTPException(400, "Nova senha muito longa")
+    if senha_nova == (senha_atual or "").strip():
+        raise HTTPException(400, "A nova senha deve ser diferente da atual")
+    row = conn.execute(
+        """
+        SELECT senha_hash FROM ctl.apura_usuario
+        WHERE id = %s::uuid AND ativo IS TRUE
+        """,
+        (usuario_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(401, "Usuário não encontrado")
+    if not verificar_senha(senha_atual or "", row[0]):
+        raise HTTPException(401, "Senha atual incorreta")
+    conn.execute(
+        "UPDATE ctl.apura_usuario SET senha_hash = %s WHERE id = %s::uuid",
+        (hash_senha(senha_nova), usuario_id),
+    )
+    return {"status": "ok", "aviso": "Senha alterada. Use a nova senha no próximo login."}
+
+
 def _demo_quota() -> int:
     raw = os.environ.get("DEMO_QUOTA", "5").strip()
     try:

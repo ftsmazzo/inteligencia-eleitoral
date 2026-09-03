@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import re
-import secrets
 import uuid
 from typing import Any
 
 import psycopg
 
-from apura.auth import gerar_mcp_token, hash_senha
+from apura.auth import gerar_mcp_token, hash_senha, senha_amigavel
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 BOOTSTRAP_EMAIL = "leonardotamburus@gmail.com"
@@ -74,7 +73,7 @@ def criar(
     ).fetchone()
     if existe:
         raise ValueError("E-mail já cadastrado")
-    senha_plain = (senha or "").strip() or secrets.token_urlsafe(10)
+    senha_plain = (senha or "").strip() or senha_amigavel()
     if len(senha_plain) < 8:
         raise ValueError("Senha com no mínimo 8 caracteres")
     uid = str(uuid.uuid4())
@@ -118,12 +117,17 @@ def redefinir_senha(conn: psycopg.Connection, campanha_id: str, usuario_id: str)
     ).fetchone()
     if not row:
         raise ValueError("Usuário não encontrado nesta campanha")
-    senha = secrets.token_urlsafe(10)
+    senha = senha_amigavel()
     conn.execute(
         "UPDATE ctl.apura_usuario SET senha_hash = %s WHERE id = %s::uuid",
         (hash_senha(senha), usuario_id),
     )
-    return {"id": row[0], "email": row[1], "senha_temporaria": senha}
+    return {
+        "id": row[0],
+        "email": row[1],
+        "senha_temporaria": senha,
+        "aviso": "Senha temporária legível (ex.: Apura4821k). Peça ao usuário para trocar em Conta → Alterar senha.",
+    }
 
 
 def set_ativo(
