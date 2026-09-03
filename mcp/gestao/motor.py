@@ -138,7 +138,7 @@ def _votos_mun(
     # Agrega por município antes do ORDER — evita scan ordenado pesado em votacao.
     rows = conn.execute(
         """
-        SELECT COALESCE(m.nm_municipio, x.cd_municipio_tse::text) AS mun,
+        SELECT COALESCE(m.nome, x.cd_municipio_tse::text) AS mun,
                x.votos
         FROM (
           SELECT v.cd_municipio_tse, SUM(v.qt_votos)::bigint AS votos
@@ -177,13 +177,13 @@ def _melhor_sq_historico(
 def _prefeitos(conn: psycopg.Connection, uf: str, partido: str | None) -> dict[str, Any]:
     rows = conn.execute(
         """
-        SELECT COALESCE(m.nm_municipio, c.cd_municipio_tse::text),
+        SELECT COALESCE(m.nome, c.cd_municipio_tse::text),
                c.nm_urna, c.sg_partido, c.ds_situacao
         FROM eleicao.candidatura c
         LEFT JOIN ref.municipio m ON m.cd_municipio_tse = c.cd_municipio_tse
         WHERE c.ano = 2024 AND c.cd_cargo = 11 AND c.sg_uf = %s
           AND c.ds_situacao ILIKE '%%ELEITO%%'
-        ORDER BY m.nm_municipio NULLS LAST
+        ORDER BY m.nome NULLS LAST
         LIMIT 80
         """,
         (uf,),
@@ -221,7 +221,7 @@ def _redes(conn: psycopg.Connection, ano: int, sq: int) -> list[dict[str, Any]]:
 def _eleitorado(conn: psycopg.Connection, uf: str) -> dict[str, Any]:
     row = conn.execute(
         """
-        SELECT COALESCE(SUM(qt_eleitor)::bigint, 0)
+        SELECT COALESCE(SUM(qt_eleitores)::bigint, 0)
         FROM eleicao.eleitorado
         WHERE ano = 2026 AND sg_uf = %s
         """,
