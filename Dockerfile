@@ -3,6 +3,7 @@ WORKDIR /app
 COPY mcp/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY mcp/app.py /app/app.py
+COPY mcp/mcp_packs.py /app/mcp_packs.py
 COPY mcp/apura /app/apura
 COPY mcp/gestao /app/gestao
 COPY mcp/static /app/static
