@@ -9,8 +9,55 @@ from gestao import memoria
 from gestao.store import get_status
 from radar import store as radar_store
 
+_IG_LIXO = {
+    "channel",
+    "share",
+    "instagram",
+    "www",
+    "p",
+    "reel",
+    "reels",
+    "tv",
+    "stories",
+    "explore",
+    "accounts",
+    "direct",
+    "about",
+}
 
-def _existe(existentes: list[dict[str, Any]], *, nome: str | None = None, handle: str | None = None) -> bool:
+
+def _ig_ok(h: str | None) -> str | None:
+    if not h:
+        return None
+    clean = h.strip().lstrip("@").split("?")[0].strip()
+    if not clean or clean.lower() in _IG_LIXO:
+        return None
+    if len(clean) < 2 or "/" in clean or " " in clean:
+        return None
+    return clean
+
+
+def _igs_limpos(raw: list[Any] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for h in raw or []:
+        ok = _ig_ok(str(h) if h else None)
+        if not ok:
+            continue
+        key = ok.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(ok)
+    return out
+
+
+def _existe(
+    existentes: list[dict[str, Any]],
+    *,
+    nome: str | None = None,
+    handle: str | None = None,
+) -> bool:
     if handle:
         h = handle.lower().lstrip("@")
         if any((a.get("handle_ig") or "").lower() == h for a in existentes):
@@ -77,7 +124,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
         for p in pessoas:
             papel = p.get("papel") or "adversario"
             nm = (p.get("nm_urna") or "").strip()
-            igs = [h for h in (p.get("ig") or []) if h]
+            igs = _igs_limpos(p.get("ig"))
             existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
             if papel == "adversario" and nm and nm != nome and not _existe(existentes, nome=nm):
                 radar_store.upsert_alvo(
@@ -86,7 +133,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                     kind="adversario",
                     nome=nm,
                     query_news=f"{nm} {uf or ''}".strip(),
-                    handle_ig=igs[0] if igs else None,
+                    handle_ig=None,  # IG fica só como kind=perfil
                     is_own=False,
                     papel="adversario",
                     prioridade=2,
@@ -96,8 +143,6 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
             for h in igs:
                 existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
                 if _existe(existentes, handle=h):
-                    continue
-                if (h or "").lower() in {"channel", "share", "instagram", "www"}:
                     continue
                 proprio = papel == "proprio"
                 radar_store.upsert_alvo(
@@ -113,13 +158,10 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 )
                 added += 1
     else:
-        # fallback: IGs soltos + concorrentes no texto
-        handles = []
-        for b in blocos:
-            handles.extend((b.get("meta") or {}).get("ig") or [])
+        handles = _igs_limpos(
+            [h for b in blocos for h in ((b.get("meta") or {}).get("ig") or [])]
+        )
         for h in handles:
-            if not h:
-                continue
             existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
             if _existe(existentes, handle=h):
                 continue
