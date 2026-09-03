@@ -9,6 +9,7 @@ import psycopg
 
 from gestao import memoria
 from gestao.perfil_eleitor import montar_perfil_eleitor
+from gestao.trajetoria import montar_trajetoria
 from gestao.store import CARGOS, get_status
 
 _MOTOR_TIPOS = [
@@ -533,6 +534,16 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
     avisos: list[str] = []
 
     traj = _safe("trajetoria", conn, lambda: _trajetoria(conn, nm, uf if cd != 1 else None), [], avisos)
+    traj_doc = _safe(
+        "trajetoria_narrativa",
+        conn,
+        lambda: montar_trajetoria(conn, st=st),
+        None,
+        avisos,
+    )
+    # registros da narrativa (se houver) alimentam outros blocos; senão fallback lista crua
+    if traj_doc and traj_doc.get("registros"):
+        traj = traj_doc["registros"]
     conc = _safe("concorrentes", conn, lambda: _concorrentes(conn, ano, cd, uf, sq), [], avisos)
 
     urna_cand = _safe(
@@ -577,24 +588,35 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
 
     memoria.limpar_tipos(conn, campanha_id, _MOTOR_TIPOS)
 
-    corp_tr = "Trajetória eleitoral (candidaturas na base oficial):\n"
-    if traj:
-        for t in traj:
-            corp_tr += (
-                f"- {t['ano']} · {t['cargo']} · {t['sg_uf']} · {t['nm_urna']} · "
-                f"{t['sg_partido']} · {t['ds_situacao']}\n"
-            )
+    if traj_doc:
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="base_trajetoria",
+            titulo=traj_doc["titulo"],
+            corpo=traj_doc["corpo"],
+            fonte=traj_doc["fonte"],
+            nivel=traj_doc.get("nivel") or "fato",
+            meta=traj_doc.get("meta") or {},
+        )
     else:
-        corp_tr += "Inexistente cruzamento por nome na base deste recorte.\n"
-    memoria.upsert_bloco(
-        conn, campanha_id,
-        tipo="base_trajetoria",
-        titulo=f"Trajetória — {st.get('nm_urna') or nm}",
-        corpo=corp_tr,
-        fonte="eleicao.candidatura",
-        nivel="fato",
-        meta={"n": len(traj)},
-    )
+        corp_tr = "Trajetória eleitoral (candidaturas na base oficial):\n"
+        if traj:
+            for t in traj:
+                corp_tr += (
+                    f"- {t['ano']} · {t.get('cargo')} · {t.get('sg_uf')} · {t.get('nm_urna')} · "
+                    f"{t.get('sg_partido')} · {t.get('ds_situacao')}\n"
+                )
+        else:
+            corp_tr += "Inexistente cruzamento por nome na base deste recorte.\n"
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="base_trajetoria",
+            titulo=f"Trajetória — {st.get('nm_urna') or nm}",
+            corpo=corp_tr,
+            fonte="eleicao.candidatura",
+            nivel="fato",
+            meta={"n": len(traj), "contrato": "trajetoria_fallback"},
+        )
 
     corp_c = f"Concorrentes {ano} · {_cargo_label(cd)} · {uf or 'BR'}:\n"
     for c in conc[:50]:
