@@ -175,16 +175,16 @@ def rodar_motor(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any
     with _db() as conn:
         try:
             result = motor.rodar_motor(conn, cid)
-            try:
-                seed = seed_radar.seed_radar_da_gestao(conn, cid)
-                result["radar_seed"] = seed
-            except Exception as exc:
-                result["radar_seed"] = {"ok": False, "erro": str(exc)}
-            return result
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         except Exception as exc:
-            raise HTTPException(502, f"Motor falhou ({exc})") from exc
+            raise HTTPException(502, f"Motor falhou ({type(exc).__name__}: {exc})") from exc
+        try:
+            seed = seed_radar.seed_radar_da_gestao(conn, cid)
+            result["radar_seed"] = seed
+        except Exception as exc:
+            result["radar_seed"] = {"ok": False, "erro": str(exc)}
+        return result
 
 
 @router.get("/memoria")

@@ -135,17 +135,22 @@ def _concorrentes(
 def _votos_mun(
     conn: psycopg.Connection, ano: int, cd_cargo: int, uf: str, sq: int
 ) -> list[dict[str, Any]]:
+    # Agrega por município antes do ORDER — evita scan ordenado pesado em votacao.
     rows = conn.execute(
         """
-        SELECT COALESCE(m.nm_municipio, v.cd_municipio_tse::text) AS mun,
-               v.qt_votos::bigint
-        FROM eleicao.votacao v
-        LEFT JOIN ref.municipio m ON m.cd_municipio_tse = v.cd_municipio_tse
-        WHERE v.ano = %s AND v.cd_cargo = %s AND v.sg_uf = %s
-          AND v.sq_candidato = %s AND v.nr_turno = 1
-          AND v.cd_municipio_tse IS NOT NULL
-        ORDER BY v.qt_votos DESC NULLS LAST
-        LIMIT 15
+        SELECT COALESCE(m.nm_municipio, x.cd_municipio_tse::text) AS mun,
+               x.votos
+        FROM (
+          SELECT v.cd_municipio_tse, SUM(v.qt_votos)::bigint AS votos
+          FROM eleicao.votacao v
+          WHERE v.ano = %s AND v.cd_cargo = %s AND v.sg_uf = %s
+            AND v.sq_candidato = %s AND v.nr_turno = 1
+            AND v.cd_municipio_tse IS NOT NULL
+          GROUP BY v.cd_municipio_tse
+          ORDER BY SUM(v.qt_votos) DESC NULLS LAST
+          LIMIT 15
+        ) x
+        LEFT JOIN ref.municipio m ON m.cd_municipio_tse = x.cd_municipio_tse
         """,
         (ano, cd_cargo, uf, sq),
     ).fetchall()
@@ -293,35 +298,80 @@ def _bloco_perfil(
     return "\n".join(linhas)
 
 
+def _safe(label: str, conn: psycopg.Connection, fn, fallback, avisos: list[str]):
+    try:
+        with conn.transaction():
+            return fn()
+    except Exception as exc:
+        avisos.append(f"{label}: {exc}")
+        return fallback
+
+
 def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
     st = get_status(conn, campanha_id)
     if not st.get("sq_candidato") or not st.get("cd_cargo") or not st.get("ano_ref"):
         raise ValueError("Escopo incompleto — salve ano, cargo, UF e candidato antes do motor")
+
+    # Evita derrubar o proxy EasyPanel (HTML "Service is not reachable") em query longa.
+    try:
+        conn.execute("SET LOCAL statement_timeout = '20000'")
+    except Exception:
+        pass
 
     ano = int(st["ano_ref"])
     cd = int(st["cd_cargo"])
     uf = st.get("sg_uf")
     sq = int(st["sq_candidato"])
     nm = st.get("nm_candidato") or st.get("nm_urna") or ""
+    avisos: list[str] = []
 
-    traj = _trajetoria(conn, nm, uf if cd != 1 else None)
-    conc = _concorrentes(conn, ano, cd, uf, sq)
+    traj = _safe("trajetoria", conn, lambda: _trajetoria(conn, nm, uf if cd != 1 else None), [], avisos)
+    conc = _safe("concorrentes", conn, lambda: _concorrentes(conn, ano, cd, uf, sq), [], avisos)
     hist = _melhor_sq_historico(traj, cd, uf)
     votos: list[dict[str, Any]] = []
     ano_votos = None
     if hist and uf:
         ano_votos, sq_h = hist
-        votos = _votos_mun(conn, ano_votos, cd, uf, sq_h)
-        if not votos and hist[0] != cd:
-            # tenta com cargo do histórico
+
+        def _v1():
+            return _votos_mun(conn, ano_votos, cd, uf, sq_h)
+
+        votos = _safe("votos", conn, _v1, [], avisos)
+        if not votos:
             for t in traj:
-                if t["ano"] == ano_votos and uf and t.get("sg_uf") == uf:
-                    votos = _votos_mun(conn, ano_votos, int(t["cd_cargo"]), uf, int(t["sq_candidato"]))
+                if t["ano"] == ano_votos and t.get("sg_uf") == uf and t.get("sq_candidato"):
+                    cargo_h = int(t["cd_cargo"])
+                    sq_t = int(t["sq_candidato"])
+
+                    def _v2(c=cargo_h, s=sq_t):
+                        return _votos_mun(conn, ano_votos, c, uf, s)
+
+                    votos = _safe("votos_hist", conn, _v2, [], avisos)
                     if votos:
                         break
-    pref = _prefeitos(conn, uf, st.get("sg_partido")) if uf else {"aliados_partido": [], "outros": [], "total_eleitos": 0}
-    redes = _redes(conn, ano, sq)
-    elei = _eleitorado(conn, uf) if uf else {"eleitores_2026": 0, "municipios": 0}
+    pref = (
+        _safe(
+            "prefeitos",
+            conn,
+            lambda: _prefeitos(conn, uf, st.get("sg_partido")),
+            {"aliados_partido": [], "outros": [], "total_eleitos": 0},
+            avisos,
+        )
+        if uf
+        else {"aliados_partido": [], "outros": [], "total_eleitos": 0}
+    )
+    redes = _safe("redes", conn, lambda: _redes(conn, ano, sq), [], avisos)
+    elei = (
+        _safe(
+            "eleitorado",
+            conn,
+            lambda: _eleitorado(conn, uf),
+            {"eleitores_2026": 0, "municipios": 0},
+            avisos,
+        )
+        if uf
+        else {"eleitores_2026": 0, "municipios": 0}
+    )
 
     memoria.limpar_tipos(conn, campanha_id, _MOTOR_TIPOS)
 
@@ -393,7 +443,7 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         corpo=corp_p,
         fonte="eleicao.candidatura 2024 cargo 11",
         nivel="fato",
-        meta=pref,
+        meta={"total_eleitos": pref.get("total_eleitos"), "aliados": len(pref.get("aliados_partido") or [])},
     )
 
     corp_r = "Redes TSE do candidato (ano do escopo):\n"
@@ -463,5 +513,6 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         "votos_mun": len(votos),
         "redes": len(redes),
         "tem_perfil": True,
+        "avisos": avisos,
         "status": get_status(conn, campanha_id),
     }

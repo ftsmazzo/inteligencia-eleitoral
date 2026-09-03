@@ -702,8 +702,11 @@
     async function api(path, opts = {}) {
       const r = await fetch(API + path, { ...opts, headers: { ...authHeaders(), ...opts.headers } });
       const text = await r.text();
+      if (/<!DOCTYPE html>|Service is not reachable/i.test(text)) {
+        throw new Error('Serviço indisponível ou timeout no proxy — tente de novo em 20s (motor pode demorar na 1ª vez)');
+      }
       let data = {};
-      try { data = text ? JSON.parse(text) : {}; } catch { data = { detail: text }; }
+      try { data = text ? JSON.parse(text) : {}; } catch { data = { detail: text.slice(0, 240) }; }
       if (!r.ok) throw new Error(typeof data.detail === 'string' ? data.detail : (data.detail?.[0]?.msg || 'Erro'));
       return data;
     }
@@ -1604,7 +1607,9 @@
         } catch (e) { $('gestao-err').textContent = e.message; return false; }
       };
       $('g-motor').onclick = async () => {
-        $('gestao-err').textContent = 'Rodando motor…';
+        $('gestao-err').textContent = 'Gerando Base + Perfil… (até ~30s na 1ª vez)';
+        const btn = $('g-motor');
+        if (btn) btn.disabled = true;
         try {
           if (draft.candidato && draft.candidato.sq_candidato && !gestaoStatus.sq_candidato) {
             await $('g-save').onclick();
@@ -1613,10 +1618,12 @@
           gestaoStatus = r.status || await api('/gestao/status');
           $('gestao-status-pill').textContent = gestaoStatus.ambiente_status;
           syncAmbienteBanner();
+          const av = (r.avisos && r.avisos.length) ? (' | avisos: ' + r.avisos.join('; ')) : '';
           $('gestao-err').textContent = 'Motor ok: ' + (r.blocos || 0) + ' blocos, concorrentes ' + (r.concorrentes || 0) +
-            ', radar +' + ((r.radar_seed && r.radar_seed.added) || 0);
+            ', radar +' + ((r.radar_seed && r.radar_seed.added) || 0) + av;
           renderGestaoStep();
         } catch (e) { $('gestao-err').textContent = e.message; }
+        finally { if (btn) btn.disabled = false; }
       };
       $('g-upload').onclick = async () => {
         const f = $('g-dossie').files && $('g-dossie').files[0];
