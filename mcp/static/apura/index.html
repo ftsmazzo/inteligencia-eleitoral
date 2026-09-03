@@ -301,26 +301,35 @@
     .alvo-row {
       display: grid; grid-template-columns: 140px 1fr 1.2fr auto; gap: 8px; align-items: end;
     }
-    .alvo-row.ig { grid-template-columns: 1fr 1.4fr auto auto; }
+    .alvo-row.ig { grid-template-columns: minmax(140px,1fr) minmax(160px,1.2fr) auto auto; }
     .alvo-row.eixo { grid-template-columns: 1fr 1.2fr 1.2fr auto; }
     @media (max-width: 800px) {
       .alvo-row, .alvo-row.ig, .alvo-row.eixo { grid-template-columns: 1fr; }
     }
-    .alvo-card label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
+    .alvo-card label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; display: block; }
     .alvo-card input, .alvo-card select {
-      width: 100%; margin-bottom: 0; padding: 10px 12px; border-radius: 10px;
-      border: 1px solid var(--line); font: inherit; background: #fff;
+      width: 100%; margin-bottom: 0 !important; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid var(--line); font: inherit; background: #fff; color: var(--ink);
     }
-    .alvo-card button.primary {
-      padding: 10px 16px; border: none; border-radius: 10px; background: var(--brand);
-      color: #fff; font-weight: 600; cursor: pointer; white-space: nowrap;
+    .alvo-card .btn-add,
+    .alvo-toolbar .btn-add,
+    .alvo-toolbar .btn-wipe {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 10px 16px; border-radius: 10px; font-weight: 600; font-size: 0.85rem;
+      cursor: pointer; white-space: nowrap; border: none; font-family: inherit;
     }
-    .alvo-card button.primary:hover { background: #0a3d39; }
+    .alvo-card .btn-add, .alvo-toolbar .btn-add {
+      background: var(--brand); color: #fff;
+    }
+    .alvo-card .btn-add:hover, .alvo-toolbar .btn-add:hover { background: #0a3d39; }
+    .alvo-toolbar .btn-wipe {
+      background: #fff; color: #b91c1c; border: 1px solid #f0c4c4;
+    }
     .alvo-check {
       display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 500;
-      padding-bottom: 2px; color: var(--ink);
+      padding: 0 4px 8px 0; color: var(--ink); margin: 0;
     }
-    .alvo-check input { width: auto; margin: 0; }
+    .alvo-check input { width: auto !important; margin: 0 !important; }
     .alvo-list { margin-top: 12px; }
     .alvo-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     .alvo-chip {
@@ -332,22 +341,17 @@
     .alvo-chip span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
     .alvo-chip button {
       border: none; background: transparent; color: #b91c1c; cursor: pointer;
-      font-size: 0.75rem; font-weight: 600; padding: 0 2px;
+      font-size: 1rem; font-weight: 700; padding: 0 4px; line-height: 1;
     }
-    .alvo-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 4px; }
-    .alvo-toolbar button {
-      padding: 9px 14px; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 0.85rem;
-    }
-    .alvo-toolbar .fill { background: var(--brand); color: #fff; border: none; }
-    .alvo-toolbar .wipe { background: #fff; color: #b91c1c; border: 1px solid #f0c4c4; }
+    .alvo-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
     .alvo-empty { color: var(--muted); font-size: 0.85rem; padding: 6px 0; }
     table.eixo-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 10px; }
     table.eixo-table th, table.eixo-table td {
-      text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: top;
+      text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--ink);
     }
     table.eixo-table th { color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; }
     table.eixo-table button {
-      border: none; background: none; color: #2563eb; cursor: pointer; font-size: 0.8rem; font-weight: 600;
+      border: none; background: none; color: #b91c1c; cursor: pointer; font-size: 0.8rem; font-weight: 600;
     }
     .app-err { text-align: center; color: #b91c1c; font-size: 0.85rem; min-height: 1.2em; margin-bottom: 8px; }
     .composer.loading { opacity: .55; pointer-events: none; }
@@ -630,18 +634,18 @@
           <div class="radar-body">
             <div class="alvo-stack">
               <div class="alvo-toolbar">
-                <button type="button" class="fill" id="btn-seed-radar">Preencher da Gestão</button>
-                <button type="button" class="wipe" id="btn-reset-radar">Limpar Radar</button>
+                <button type="button" class="btn-add" id="btn-seed-radar">Restaurar seed da Gestão</button>
+                <button type="button" class="btn-wipe" id="btn-reset-radar">Limpar Radar</button>
                 <span id="sync-nota" style="font-size:0.8rem;color:var(--muted)"></span>
               </div>
               <p class="hint" style="margin:0 0 4px;font-size:0.82rem;color:var(--muted)">
-                Pessoas, adversários e temas alimentam o clima (notícias). Instagram marcado como oficial vai ao Mix.
-                Apagar é permanente — o refresh não reidrata. Use <b>Preencher da Gestão</b> para seed (memória, redes, planos e dossiê).
+                <b>Restaurar seed</b> limpa alvos/stream e preenche de novo com a Gestão (Clécio, adversários, IGs, temas).
+                Pessoas/temas alimentam notícias; Instagram oficial vai ao Mix.
               </p>
 
               <section class="alvo-card">
                 <h4>Pessoas, temas e adversários</h4>
-                <p class="hint">Um cadastro: tipo + nome + dicas (aliases, cidade, palavras para busca de notícia).</p>
+                <p class="hint">Tipo + nome + dicas (aliases, cidade, palavras para busca).</p>
                 <form id="form-alvo-pessoa" class="alvo-row">
                   <div>
                     <label>Tipo</label>
@@ -659,14 +663,14 @@
                     <label>Dicas / aliases</label>
                     <input id="alvo-query" placeholder="aliases, cidade, palavras-chave" autocomplete="off" />
                   </div>
-                  <button type="submit" class="primary">Adicionar</button>
+                  <button type="submit" class="btn-add">Adicionar</button>
                 </form>
                 <div class="alvo-list" id="list-pessoas-temas"></div>
               </section>
 
               <section class="alvo-card">
                 <h4>Instagram</h4>
-                <p class="hint">Perfil separado. Marque oficial para gravar no Mix (Termômetro).</p>
+                <p class="hint">Perfil separado. Marque oficial para o Mix.</p>
                 <form id="form-alvo-ig" class="alvo-row ig">
                   <div>
                     <label>Handle</label>
@@ -674,19 +678,19 @@
                   </div>
                   <div>
                     <label>Rótulo (opcional)</label>
-                    <input id="ig-nome" placeholder="Nome exibido do perfil" autocomplete="off" />
+                    <input id="ig-nome" placeholder="Nome exibido" autocomplete="off" />
                   </div>
                   <label class="alvo-check">
-                    <input type="checkbox" id="ig-own" /> Oficial (Mix)
+                    <input type="checkbox" id="ig-own" /> Oficial
                   </label>
-                  <button type="submit" class="primary">Rastrear perfil</button>
+                  <button type="submit" class="btn-add">Adicionar IG</button>
                 </form>
                 <div class="alvo-list" id="list-instagram"></div>
               </section>
 
               <section class="alvo-card">
                 <h4>Eixos do Mix</h4>
-                <p class="hint">Dica explica o eixo para a IA. Palavras-chave ajudam o matching (plano de governo / dossiê no seed).</p>
+                <p class="hint">Dica = explicação para a IA. Palavras-chave = matching.</p>
                 <form id="form-eixo" class="alvo-row eixo">
                   <div>
                     <label>Nome do eixo</label>
@@ -700,7 +704,7 @@
                     <label>Palavras-chave</label>
                     <input id="eixo-kw" placeholder="obra, saude, educacao…" autocomplete="off" />
                   </div>
-                  <button type="submit" class="primary">Adicionar eixo</button>
+                  <button type="submit" class="btn-add">Adicionar eixo</button>
                 </form>
                 <div id="list-eixos"></div>
               </section>
@@ -2056,26 +2060,31 @@
     });
 
     $('btn-seed-radar').addEventListener('click', async () => {
-      if (!confirm('Preenche alvos e temas a partir da Gestão (memória, redes, planos e dossiê). Não apaga o que já existe. Continuar?')) return;
-      $('sync-nota').textContent = 'Preenchendo…';
+      if (!confirm('Limpa alvos/stream e restaura o seed da Gestão (candidato, adversários, IGs, temas). Continuar?')) return;
+      $('sync-nota').textContent = 'Restaurando…';
+      $('radar-err').textContent = '';
       try {
-        const r = await api('/gestao/seed-radar', { method: 'POST', body: '{}' });
-        const st = r.stats || {};
-        $('sync-nota').textContent = '+' + (r.added || 0) + ' · pessoa ' + (st.pessoa || 0) +
-          ' · adv ' + (st.adversario || 0) + ' · IG ' + (st.perfil || 0) +
-          ' · tema ' + (st.tema || 0);
+        const r = await api('/radar/reset?reseeds=true', { method: 'POST', body: '{}' });
+        const st = (r.seed && r.seed.stats) || {};
+        $('sync-nota').textContent = 'Restaurado · ' + (r.n_alvos || 0) + ' alvos' +
+          (r.seed && r.seed.added != null ? ' (+' + r.seed.added + ')' : '') +
+          (st.tema ? ' · temas ' + st.tema : '');
+        if (r.seed && r.seed.erro) {
+          $('radar-err').textContent = 'Seed parcial: ' + r.seed.erro;
+        }
+        await loadRadarMeta();
         loadAlvos();
-        loadRadarMeta();
-      } catch (e) { $('sync-nota').textContent = e.message; }
+        if (radarTab === 'vivo') loadStream();
+      } catch (e) { $('sync-nota').textContent = e.message; $('radar-err').textContent = e.message; }
     });
 
     $('btn-reset-radar').addEventListener('click', async () => {
-      if (!confirm('Apaga alvos, stream e coletas deste Radar. NÃO reseedeia. Continuar?')) return;
+      if (!confirm('Apaga alvos, stream e coletas. NÃO reseedeia. Continuar?')) return;
       $('radar-err').textContent = 'Limpando Radar…';
       try {
         const r = await api('/radar/reset?reseeds=false', { method: 'POST', body: '{}' });
         $('radar-err').textContent = 'Radar limpo: −' + ((r.limpo && r.limpo.alvos_apagados) || 0) +
-          ' alvos, −' + ((r.limpo && r.limpo.itens_apagados) || 0) + ' itens. Agora ' + (r.n_alvos || 0) + ' alvos.';
+          ' alvos. Agora ' + (r.n_alvos || 0) + '.';
         $('sync-nota').textContent = '';
         await loadRadarMeta();
         loadAlvos();

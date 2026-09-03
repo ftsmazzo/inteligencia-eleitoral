@@ -221,17 +221,30 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 stats["adversario"] += 1
 
     # Temas + keywords a partir de planos (acervo) e dossiê
-    extracao = temas_plano.extrair_campanha(
-        conn,
-        campanha_id=campanha_id,
-        uf=uf,
-        sq_candidato=str(sq) if sq else None,
-        nm_candidato=nome,
-        adversarios=list(dict.fromkeys(nomes_adv)),
-    )
-    stats["eixos_kw"] = radar_store.merge_eixo_keywords(
-        conn, campanha_id, extracao.get("keywords_eixos") or {}
-    )
+    extracao: dict[str, Any] = {
+        "temas_proprio": [],
+        "temas_adversario": [],
+        "temas_dossie": [],
+        "keywords_eixos": {},
+        "plano_chars": 0,
+    }
+    try:
+        extracao = temas_plano.extrair_campanha(
+            conn,
+            campanha_id=campanha_id,
+            uf=uf,
+            sq_candidato=str(sq) if sq else None,
+            nm_candidato=nome,
+            adversarios=list(dict.fromkeys(nomes_adv)),
+        )
+    except Exception:
+        pass
+    try:
+        stats["eixos_kw"] = radar_store.merge_eixo_keywords(
+            conn, campanha_id, extracao.get("keywords_eixos") or {}
+        )
+    except Exception:
+        stats["eixos_kw"] = 0
 
     for tm in (
         list(extracao.get("temas_proprio") or [])
@@ -244,20 +257,23 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
         existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
         if _existe(existentes, nome=nm_t):
             continue
-        radar_store.upsert_alvo(
-            conn,
-            campanha_id,
-            kind="tema",
-            nome=nm_t,
-            query_news=(tm.get("query_news") or nm_t)[:300],
-            handle_ig=None,
-            is_own=False,
-            papel=tm.get("papel") or "tema",
-            prioridade=4,
-            notas=(tm.get("eixo") or tm.get("fonte") or "")[:200],
-        )
-        added += 1
-        stats["tema"] += 1
+        try:
+            radar_store.upsert_alvo(
+                conn,
+                campanha_id,
+                kind="tema",
+                nome=nm_t,
+                query_news=(tm.get("query_news") or nm_t)[:300],
+                handle_ig=None,
+                is_own=False,
+                papel=tm.get("papel") or "tema",
+                prioridade=4,
+                notas=(tm.get("eixo") or tm.get("fonte") or "")[:200],
+            )
+            added += 1
+            stats["tema"] += 1
+        except Exception:
+            continue
 
     return {
         "ok": True,

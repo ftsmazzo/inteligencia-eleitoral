@@ -78,16 +78,30 @@ def humanize_campanha_nome(slug: str) -> str:
 
 def ensure_eixos(conn: psycopg.Connection, campanha_id: str) -> None:
     """Insere eixos padrão se faltarem (por nome). Não recria eixos apagados com outro nome."""
+    from radar.schema import ensure_keywords_column
+
+    has_kw = ensure_keywords_column(conn)
     for name, hint, keywords in DEFAULT_EIXOS:
-        conn.execute(
-            """
-            INSERT INTO ctl.radar_eixo (campanha_id, name, hint, keywords, enabled)
-            VALUES (%s::uuid, %s, %s, %s, TRUE)
-            ON CONFLICT (campanha_id, name) DO NOTHING
-            """,
-            (campanha_id, name, hint, keywords),
-        )
-    # Preenche keywords vazias nos eixos padrão (migração v3)
+        if has_kw:
+            conn.execute(
+                """
+                INSERT INTO ctl.radar_eixo (campanha_id, name, hint, keywords, enabled)
+                VALUES (%s::uuid, %s, %s, %s, TRUE)
+                ON CONFLICT (campanha_id, name) DO NOTHING
+                """,
+                (campanha_id, name, hint, keywords),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO ctl.radar_eixo (campanha_id, name, hint, enabled)
+                VALUES (%s::uuid, %s, %s, TRUE)
+                ON CONFLICT (campanha_id, name) DO NOTHING
+                """,
+                (campanha_id, name, hint),
+            )
+    if not has_kw:
+        return
     for name, _hint, keywords in DEFAULT_EIXOS:
         conn.execute(
             """
@@ -98,7 +112,6 @@ def ensure_eixos(conn: psycopg.Connection, campanha_id: str) -> None:
             """,
             (keywords, campanha_id, name),
         )
-    # Atualiza hint se ainda for o formato antigo (só keywords)
     for name, hint, keywords in DEFAULT_EIXOS:
         conn.execute(
             """
@@ -117,6 +130,9 @@ def list_eixos(
     *,
     seed_if_empty: bool = False,
 ) -> list[dict[str, Any]]:
+    from radar.schema import ensure_keywords_column
+
+    has_kw = ensure_keywords_column(conn)
     if seed_if_empty:
         n = conn.execute(
             "SELECT count(*) FROM ctl.radar_eixo WHERE campanha_id = %s::uuid",
@@ -124,15 +140,26 @@ def list_eixos(
         ).fetchone()
         if not n or int(n[0] or 0) == 0:
             ensure_eixos(conn, campanha_id)
-    rows = conn.execute(
-        """
-        SELECT id::text, name, hint, COALESCE(keywords, ''), enabled
-        FROM ctl.radar_eixo
-        WHERE campanha_id = %s::uuid
-        ORDER BY name
-        """,
-        (campanha_id,),
-    ).fetchall()
+    if has_kw:
+        rows = conn.execute(
+            """
+            SELECT id::text, name, hint, COALESCE(keywords, ''), enabled
+            FROM ctl.radar_eixo
+            WHERE campanha_id = %s::uuid
+            ORDER BY name
+            """,
+            (campanha_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT id::text, name, hint, '', enabled
+            FROM ctl.radar_eixo
+            WHERE campanha_id = %s::uuid
+            ORDER BY name
+            """,
+            (campanha_id,),
+        ).fetchall()
     return [
         {
             "id": r[0],
@@ -155,41 +182,68 @@ def upsert_eixo(
     enabled: bool = True,
     eixo_id: str | None = None,
 ) -> dict[str, Any]:
+    from radar.schema import ensure_keywords_column
+
+    has_kw = ensure_keywords_column(conn)
     name = (name or "").strip()
     if not name:
         raise ValueError("nome do eixo obrigatorio")
     hint = (hint or "").strip()
     keywords = (keywords or "").strip()
     if eixo_id:
-        row = conn.execute(
-            """
-            UPDATE ctl.radar_eixo
-            SET name=%s, hint=%s, keywords=%s, enabled=%s
-            WHERE id=%s::uuid AND campanha_id=%s::uuid
-            RETURNING id::text, name, hint, COALESCE(keywords, ''), enabled
-            """,
-            (name, hint, keywords, enabled, eixo_id, campanha_id),
-        ).fetchone()
+        if has_kw:
+            row = conn.execute(
+                """
+                UPDATE ctl.radar_eixo
+                SET name=%s, hint=%s, keywords=%s, enabled=%s
+                WHERE id=%s::uuid AND campanha_id=%s::uuid
+                RETURNING id::text, name, hint, COALESCE(keywords, ''), enabled
+                """,
+                (name, hint, keywords, enabled, eixo_id, campanha_id),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                UPDATE ctl.radar_eixo
+                SET name=%s, hint=%s, enabled=%s
+                WHERE id=%s::uuid AND campanha_id=%s::uuid
+                RETURNING id::text, name, hint, '', enabled
+                """,
+                (name, hint, enabled, eixo_id, campanha_id),
+            ).fetchone()
         if not row:
             raise ValueError("eixo nao encontrado")
     else:
-        row = conn.execute(
-            """
-            INSERT INTO ctl.radar_eixo (campanha_id, name, hint, keywords, enabled)
-            VALUES (%s::uuid, %s, %s, %s, %s)
-            ON CONFLICT (campanha_id, name) DO UPDATE SET
-              hint = EXCLUDED.hint,
-              keywords = EXCLUDED.keywords,
-              enabled = EXCLUDED.enabled
-            RETURNING id::text, name, hint, COALESCE(keywords, ''), enabled
-            """,
-            (campanha_id, name, hint, keywords, enabled),
-        ).fetchone()
+        if has_kw:
+            row = conn.execute(
+                """
+                INSERT INTO ctl.radar_eixo (campanha_id, name, hint, keywords, enabled)
+                VALUES (%s::uuid, %s, %s, %s, %s)
+                ON CONFLICT (campanha_id, name) DO UPDATE SET
+                  hint = EXCLUDED.hint,
+                  keywords = EXCLUDED.keywords,
+                  enabled = EXCLUDED.enabled
+                RETURNING id::text, name, hint, COALESCE(keywords, ''), enabled
+                """,
+                (campanha_id, name, hint, keywords, enabled),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                INSERT INTO ctl.radar_eixo (campanha_id, name, hint, enabled)
+                VALUES (%s::uuid, %s, %s, %s)
+                ON CONFLICT (campanha_id, name) DO UPDATE SET
+                  hint = EXCLUDED.hint,
+                  enabled = EXCLUDED.enabled
+                RETURNING id::text, name, hint, '', enabled
+                """,
+                (campanha_id, name, hint, enabled),
+            ).fetchone()
     return {
         "id": row[0],
         "name": row[1],
         "hint": row[2] or "",
-        "keywords": row[3] or "",
+        "keywords": (row[3] or "") if has_kw else keywords,
         "enabled": bool(row[4]),
     }
 
@@ -207,6 +261,10 @@ def merge_eixo_keywords(
     keywords_por_eixo: dict[str, str],
 ) -> int:
     """Mescla keywords extraídas sem apagar as existentes."""
+    from radar.schema import ensure_keywords_column
+
+    if not ensure_keywords_column(conn):
+        return 0
     updated = 0
     for name, kws in (keywords_por_eixo or {}).items():
         extra = [x.strip() for x in (kws or "").split(",") if x.strip()]

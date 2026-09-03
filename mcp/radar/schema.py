@@ -1,4 +1,4 @@
-"""DDL Radar — apply patch_radar.sql."""
+"""DDL Radar — apply patch_radar.sql (+ v2/v3)."""
 from __future__ import annotations
 
 import os
@@ -29,9 +29,90 @@ def _find_sql(name: str) -> Path | None:
     return None
 
 
+def _run_sql_script(conn: psycopg.Connection, text: str) -> None:
+    """Executa script SQL multi-statement (psycopg.execute = 1 comando)."""
+    stmts: list[str] = []
+    buf: list[str] = []
+    in_dollar = False
+    for line in text.splitlines():
+        if not in_dollar and line.strip().startswith("--"):
+            continue
+        parts = line.split("$$")
+        if len(parts) > 1 and (len(parts) - 1) % 2 == 1:
+            in_dollar = not in_dollar
+        buf.append(line)
+        if not in_dollar and line.rstrip().endswith(";"):
+            stmt = "\n".join(buf).strip()
+            buf = []
+            if stmt:
+                stmts.append(stmt)
+    tail = "\n".join(buf).strip()
+    if tail:
+        stmts.append(tail)
+    for stmt in stmts:
+        conn.execute(stmt)
+
+
+def ensure_keywords_column(conn: psycopg.Connection) -> bool:
+    """Garante ctl.radar_eixo.keywords. Retorna True se a coluna existe.
+
+    ALTER roda em conexão autocommit separada — se falhar, não aborta a
+    transação da request (causa clássica de erro em cascata no Postgres).
+    """
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'ctl'
+              AND table_name = 'radar_eixo'
+              AND column_name = 'keywords'
+            """
+        ).fetchone()
+        if row:
+            return True
+    except Exception:
+        return False
+
+    url = _ddl_url()
+    if url:
+        try:
+            with psycopg.connect(url, autocommit=True) as admin:
+                admin.execute(
+                    """
+                    ALTER TABLE ctl.radar_eixo
+                      ADD COLUMN IF NOT EXISTS keywords text NOT NULL DEFAULT ''
+                    """
+                )
+        except Exception:
+            pass
+
+    try:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'ctl'
+              AND table_name = 'radar_eixo'
+              AND column_name = 'keywords'
+            """
+        ).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+
 def ensure_schema() -> None:
     global _READY
     if _READY:
+        # Mesmo após ready, tenta keywords (migração pode ter falhado no boot).
+        url = _ddl_url()
+        if url:
+            try:
+                with psycopg.connect(url, autocommit=True) as conn:
+                    ensure_keywords_column(conn)
+            except Exception:
+                pass
         return
     url = _ddl_url()
     if not url:
@@ -44,10 +125,15 @@ def ensure_schema() -> None:
         raise RuntimeError("Schema Radar indisponível")
     with psycopg.connect(url, autocommit=True) as conn:
         if patch_apura:
-            conn.execute(patch_apura.read_text(encoding="utf-8"))
-        conn.execute(patch_radar.read_text(encoding="utf-8"))
+            _run_sql_script(conn, patch_apura.read_text(encoding="utf-8"))
+        _run_sql_script(conn, patch_radar.read_text(encoding="utf-8"))
         if patch_v2:
-            conn.execute(patch_v2.read_text(encoding="utf-8"))
+            _run_sql_script(conn, patch_v2.read_text(encoding="utf-8"))
         if patch_v3:
-            conn.execute(patch_v3.read_text(encoding="utf-8"))
+            try:
+                _run_sql_script(conn, patch_v3.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        # Hard guarantee — single statement (causa do UndefinedColumn em prod)
+        ensure_keywords_column(conn)
     _READY = True

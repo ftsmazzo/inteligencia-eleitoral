@@ -317,6 +317,9 @@ def reset_radar(
     """Limpa stream + alvos + runs. Com reseeds=true, preenche de novo via Gestão."""
     cid, cnome = _campanha(user)
     with _db() as conn:
+        from radar.schema import ensure_keywords_column
+
+        ensure_keywords_column(conn)
         limpo = store.resetar_radar(conn, cid)
         seed = None
         if reseeds:
@@ -326,6 +329,8 @@ def reset_radar(
                 seed = gestao_seed.seed_radar_da_gestao(conn, cid)
             except ValueError as exc:
                 seed = {"ok": False, "erro": str(exc)}
+            except Exception as exc:
+                seed = {"ok": False, "erro": f"{type(exc).__name__}: {exc}"}
         alvos = store.list_alvos(conn, cid, ativo_only=False)
         return {
             "ok": True,
