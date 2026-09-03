@@ -70,6 +70,31 @@ def _existe(
     return False
 
 
+def _norm(s: str | None) -> str:
+    import unicodedata
+
+    s = (s or "").strip().lower()
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def _pode_criar(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    existentes: list[dict[str, Any]],
+    *,
+    kind: str,
+    nome: str | None = None,
+    handle: str | None = None,
+) -> bool:
+    """Só cria se não existe ainda E o usuário não apagou esse alvo antes (bloqueio permanente)."""
+    if _existe(existentes, nome=nome, handle=handle):
+        return False
+    if radar_store.esta_excluido(conn, campanha_id, kind, nome, handle):
+        return False
+    return True
+
+
 def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
     """Preenche Alvos a partir da Gestão. Sempre ADITIVO — nunca apaga o que já existe
     (inclusive alvos cadastrados à mão, como Instagram oficial validado manualmente)."""
@@ -104,7 +129,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
     stats = {"pessoa": 0, "adversario": 0, "perfil": 0, "tema": 0, "eixos_kw": 0}
 
     existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
-    if not _existe(existentes, nome=nome):
+    if _pode_criar(conn, campanha_id, existentes, kind="pessoa", nome=nome):
         radar_store.upsert_alvo(
             conn,
             campanha_id,
@@ -121,25 +146,33 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
         stats["pessoa"] += 1
 
     pessoas: list[dict[str, Any]] = []
-    blocos = memoria.listar(conn, campanha_id, tipo="base_redes", limite=3)
+    # Só o bloco base_redes MAIS RECENTE — blocos antigos podem ter sido gerados
+    # antes de uma correção de escopo e trazer papel="proprio" para a pessoa errada
+    # (ex.: escopo apontava para outro candidato de nome parecido antes do ajuste).
+    blocos = memoria.listar(conn, campanha_id, tipo="base_redes", limite=1)
     for b in blocos:
         meta = b.get("meta") or {}
         pessoas.extend(meta.get("pessoas") or [])
 
     # adversários com sq_candidato (para casar plano de governo com precisão)
     adversarios_sq: list[dict[str, Any]] = []
+    nome_norm = _norm(nome)
 
     for p in pessoas:
         papel = p.get("papel") or "adversario"
         nm = (p.get("nm_urna") or "").strip()
         sq_p = p.get("sq_candidato")
         igs = _igs_limpos(p.get("ig"))
-        proprio = papel == "proprio"
+        # Nunca confia cegamente em papel="proprio" do bloco: o que decide se é o
+        # PRÓPRIO candidato é o nome bater com o escopo atual — não o rótulo salvo
+        # (blocos antigos podem ter sido gerados com escopo errado/desatualizado
+        # e marcar outra pessoa como "proprio", duplicando o candidato na tela).
+        proprio = (_norm(nm) == nome_norm) if nm else (papel == "proprio")
 
         if not proprio and nm and nm != nome:
             adversarios_sq.append({"nome": nm, "sq_candidato": sq_p})
             existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
-            if not _existe(existentes, nome=nm):
+            if _pode_criar(conn, campanha_id, existentes, kind="adversario", nome=nm):
                 radar_store.upsert_alvo(
                     conn,
                     campanha_id,
@@ -157,7 +190,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
 
         for h in igs:
             existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
-            if _existe(existentes, handle=h):
+            if not _pode_criar(conn, campanha_id, existentes, kind="perfil", handle=h):
                 continue
             radar_store.upsert_alvo(
                 conn,
@@ -188,7 +221,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                     continue
                 adversarios_sq.append({"nome": nome_adv, "sq_candidato": None})
                 existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
-                if _existe(existentes, nome=nome_adv):
+                if not _pode_criar(conn, campanha_id, existentes, kind="adversario", nome=nome_adv):
                     continue
                 radar_store.upsert_alvo(
                     conn,
@@ -236,7 +269,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
         if not nm_t:
             continue
         existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
-        if _existe(existentes, nome=nm_t):
+        if not _pode_criar(conn, campanha_id, existentes, kind="tema", nome=nm_t):
             continue
         try:
             radar_store.upsert_alvo(

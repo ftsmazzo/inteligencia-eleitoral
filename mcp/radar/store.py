@@ -472,11 +472,96 @@ def upsert_alvo(
     return next(a for a in rows if a["id"] == aid)
 
 
+def _normalizar_txt(s: str | None) -> str:
+    import unicodedata
+
+    s = (s or "").strip().lower()
+    s = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in s if not unicodedata.combining(c))
+
+
+def chave_alvo(kind: str, nome: str | None, handle_ig: str | None = None) -> str:
+    """Identidade estável do alvo p/ lista de bloqueio — sobrevive a recriação com outro id."""
+    if kind == "perfil" and handle_ig:
+        return f"ig:{_normalizar_txt(handle_ig).lstrip('@')}"
+    return f"{(kind or 'alvo').strip().lower()}:nome:{_normalizar_txt(nome)}"
+
+
+def marcar_excluido(conn: psycopg.Connection, campanha_id: str, kind: str, nome: str | None, handle_ig: str | None = None) -> None:
+    """Registra que este alvo foi apagado manualmente — seed/coleta nunca mais recria."""
+    from radar.schema import ensure_excluido_table
+
+    if not ensure_excluido_table(conn):
+        return
+    chave = chave_alvo(kind, nome, handle_ig)
+    try:
+        conn.execute(
+            """
+            INSERT INTO ctl.radar_alvo_excluido (campanha_id, chave)
+            VALUES (%s::uuid, %s)
+            ON CONFLICT (campanha_id, chave) DO NOTHING
+            """,
+            (campanha_id, chave),
+        )
+    except Exception:
+        pass
+
+
+def esta_excluido(conn: psycopg.Connection, campanha_id: str, kind: str, nome: str | None, handle_ig: str | None = None) -> bool:
+    from radar.schema import ensure_excluido_table
+
+    if not ensure_excluido_table(conn):
+        return False
+    chave = chave_alvo(kind, nome, handle_ig)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM ctl.radar_alvo_excluido WHERE campanha_id=%s::uuid AND chave=%s",
+            (campanha_id, chave),
+        ).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+
+def list_excluidos(conn: psycopg.Connection, campanha_id: str) -> list[str]:
+    from radar.schema import ensure_excluido_table
+
+    if not ensure_excluido_table(conn):
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT chave FROM ctl.radar_alvo_excluido WHERE campanha_id=%s::uuid ORDER BY criado_em DESC",
+            (campanha_id,),
+        ).fetchall()
+        return [r[0] for r in rows]
+    except Exception:
+        return []
+
+
+def desbloquear(conn: psycopg.Connection, campanha_id: str, chave: str) -> None:
+    """Remove da lista de bloqueio — seed volta a poder recriar esse alvo."""
+    from radar.schema import ensure_excluido_table
+
+    if not ensure_excluido_table(conn):
+        return
+    conn.execute(
+        "DELETE FROM ctl.radar_alvo_excluido WHERE campanha_id=%s::uuid AND chave=%s",
+        (campanha_id, chave),
+    )
+
+
 def delete_alvo(conn: psycopg.Connection, campanha_id: str, alvo_id: str) -> None:
+    row = conn.execute(
+        "SELECT kind, nome, handle_ig FROM ctl.radar_alvo WHERE id=%s::uuid AND campanha_id=%s::uuid",
+        (alvo_id, campanha_id),
+    ).fetchone()
     conn.execute(
         "DELETE FROM ctl.radar_alvo WHERE id=%s::uuid AND campanha_id=%s::uuid",
         (alvo_id, campanha_id),
     )
+    if row:
+        # Lembra a exclusão p/ "Preencher da Gestão" nunca mais recriar este alvo.
+        marcar_excluido(conn, campanha_id, row[0], row[1], row[2])
 
 
 def mark_alvo_seen(conn: psycopg.Connection, alvo_id: str, when: datetime | None = None) -> None:

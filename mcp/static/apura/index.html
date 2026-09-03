@@ -634,12 +634,15 @@
               <div class="alvo-toolbar">
                 <button type="button" class="btn-add" id="btn-seed-radar">Preencher da Gestão</button>
                 <button type="button" class="btn-wipe" id="btn-reset-radar">Limpar Radar</button>
+                <button type="button" class="secondary" id="btn-ver-bloqueados" style="padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:0.8rem;cursor:pointer">Ver bloqueados</button>
                 <span id="sync-nota" style="font-size:0.8rem;color:var(--muted)"></span>
               </div>
               <p class="hint" style="margin:0 0 4px;font-size:0.82rem;color:var(--muted)">
                 <b>Preencher da Gestão</b> só adiciona (candidato do escopo, adversários, temas do plano oficial) — nunca apaga o que você cadastrou à mão, inclusive Instagram.
                 <b>Limpar Radar</b> apaga tudo (alvos + stream) e não reseedeia sozinho.
+                Ao apagar um item (×), ele fica <b>bloqueado</b> — "Preencher da Gestão" nunca mais o recria.
               </p>
+              <div id="box-bloqueados" style="display:none"></div>
 
               <section class="alvo-card">
                 <h4>Pessoas, temas e adversários</h4>
@@ -1965,6 +1968,42 @@
           });
         });
       } catch (e) { $('radar-err').textContent = e.message; }
+    }
+
+    async function loadBloqueados() {
+      const box = $('box-bloqueados');
+      if (!box) return;
+      try {
+        const d = await api('/radar/alvos/excluidos');
+        const chaves = d.chaves || [];
+        if (!chaves.length) {
+          box.innerHTML = '<p class="alvo-empty" style="margin:8px 0">Nenhum alvo bloqueado.</p>';
+        } else {
+          box.innerHTML = '<div class="alvo-chip-row" style="margin:8px 0">' + chaves.map(c => {
+            const rotulo = c.replace(/^ig:/, '@').replace(/^[a-z]+:nome:/, '');
+            return '<span class="alvo-chip"><b>' + esc(rotulo) + '</b>' +
+              '<button type="button" data-unblock="' + esc(c) + '" title="Desbloquear (permite recriar de novo)">restaurar</button></span>';
+          }).join('') + '</div>';
+          box.querySelectorAll('[data-unblock]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              try {
+                await api('/radar/alvos/excluidos/' + encodeURIComponent(btn.getAttribute('data-unblock')), { method: 'DELETE' });
+                await loadBloqueados();
+              } catch (e) { $('radar-err').textContent = e.message; }
+            });
+          });
+        }
+      } catch (e) { $('radar-err').textContent = e.message; }
+    }
+
+    const btnVerBloqueados = $('btn-ver-bloqueados');
+    if (btnVerBloqueados) {
+      btnVerBloqueados.addEventListener('click', async () => {
+        const box = $('box-bloqueados');
+        const ligado = box.style.display !== 'none';
+        box.style.display = ligado ? 'none' : 'block';
+        if (!ligado) await loadBloqueados();
+      });
     }
 
     async function loadAlvos() {

@@ -302,6 +302,23 @@ def apagar_alvo(alvo_id: str, user: tuple[str, str, str] = Depends(_usuario)) ->
     return {"status": "ok"}
 
 
+@router.get("/alvos/excluidos")
+def listar_excluidos(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    """Alvos apagados manualmente — 'Preencher da Gestão' nunca recria estes."""
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        return {"chaves": store.list_excluidos(conn, cid)}
+
+
+@router.delete("/alvos/excluidos/{chave}")
+def remover_bloqueio(chave: str, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, str]:
+    """Desfaz o bloqueio — próximo 'Preencher da Gestão' pode recriar esse alvo."""
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        store.desbloquear(conn, cid, chave)
+    return {"status": "ok"}
+
+
 @router.post("/alvos/sync-tse")
 def sync_tse(ano: int = 2026, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     cid, cnome = _campanha(user)
