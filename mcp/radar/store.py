@@ -12,12 +12,33 @@ import psycopg
 BRT = ZoneInfo("America/Sao_Paulo")
 KINDS = ("pessoa", "adversario", "tema", "perfil")
 
+# (nome, dica/explicação para a IA, palavras-chave)
 DEFAULT_EIXOS = [
-    ("Gestao e entregas", "obras, servicos, saude, educacao, resultado de governo"),
-    ("Territorio e interior", "cidade, municipio, visita, interior, bairro"),
-    ("Enfrentamento", "adversario, denuncia, contraste, resposta a ataque"),
-    ("Identidade", "trajetoria, valores, biografia, fe, familia"),
-    ("Mobilizacao", "voto, urna, afiliacao, adesao, evento de campanha"),
+    (
+        "Gestao e entregas",
+        "Resultados de governo, obras e serviços públicos prestados à população",
+        "obras, servicos, saude, educacao, resultado de governo",
+    ),
+    (
+        "Territorio e interior",
+        "Presença territorial, visitas e vínculo com municípios e bairros",
+        "cidade, municipio, visita, interior, bairro",
+    ),
+    (
+        "Enfrentamento",
+        "Contraste com adversários, denúncias e resposta a ataques",
+        "adversario, denuncia, contraste, resposta a ataque",
+    ),
+    (
+        "Identidade",
+        "Trajetória, valores, biografia, fé e família do candidato",
+        "trajetoria, valores, biografia, fe, familia",
+    ),
+    (
+        "Mobilizacao",
+        "Pedido de voto, afiliação, adesão e eventos de campanha",
+        "voto, urna, afiliacao, adesao, evento de campanha",
+    ),
 ]
 
 # Config mínima por slug (só nome/UF/cargo). Alvos vêm do seed Gestão, não de placeholder.
@@ -56,22 +77,56 @@ def humanize_campanha_nome(slug: str) -> str:
 
 
 def ensure_eixos(conn: psycopg.Connection, campanha_id: str) -> None:
-    for name, hint in DEFAULT_EIXOS:
+    """Insere eixos padrão se faltarem (por nome). Não recria eixos apagados com outro nome."""
+    for name, hint, keywords in DEFAULT_EIXOS:
         conn.execute(
             """
-            INSERT INTO ctl.radar_eixo (campanha_id, name, hint, enabled)
-            VALUES (%s::uuid, %s, %s, TRUE)
+            INSERT INTO ctl.radar_eixo (campanha_id, name, hint, keywords, enabled)
+            VALUES (%s::uuid, %s, %s, %s, TRUE)
             ON CONFLICT (campanha_id, name) DO NOTHING
             """,
-            (campanha_id, name, hint),
+            (campanha_id, name, hint, keywords),
+        )
+    # Preenche keywords vazias nos eixos padrão (migração v3)
+    for name, _hint, keywords in DEFAULT_EIXOS:
+        conn.execute(
+            """
+            UPDATE ctl.radar_eixo
+            SET keywords = %s
+            WHERE campanha_id = %s::uuid AND name = %s
+              AND COALESCE(TRIM(keywords), '') = ''
+            """,
+            (keywords, campanha_id, name),
+        )
+    # Atualiza hint se ainda for o formato antigo (só keywords)
+    for name, hint, keywords in DEFAULT_EIXOS:
+        conn.execute(
+            """
+            UPDATE ctl.radar_eixo
+            SET hint = %s
+            WHERE campanha_id = %s::uuid AND name = %s
+              AND TRIM(hint) = TRIM(%s)
+            """,
+            (hint, campanha_id, name, keywords),
         )
 
 
-def list_eixos(conn: psycopg.Connection, campanha_id: str) -> list[dict[str, Any]]:
-    ensure_eixos(conn, campanha_id)
+def list_eixos(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    *,
+    seed_if_empty: bool = False,
+) -> list[dict[str, Any]]:
+    if seed_if_empty:
+        n = conn.execute(
+            "SELECT count(*) FROM ctl.radar_eixo WHERE campanha_id = %s::uuid",
+            (campanha_id,),
+        ).fetchone()
+        if not n or int(n[0] or 0) == 0:
+            ensure_eixos(conn, campanha_id)
     rows = conn.execute(
         """
-        SELECT id::text, name, hint, enabled
+        SELECT id::text, name, hint, COALESCE(keywords, ''), enabled
         FROM ctl.radar_eixo
         WHERE campanha_id = %s::uuid
         ORDER BY name
@@ -79,9 +134,106 @@ def list_eixos(conn: psycopg.Connection, campanha_id: str) -> list[dict[str, Any
         (campanha_id,),
     ).fetchall()
     return [
-        {"id": r[0], "name": r[1], "hint": r[2], "enabled": bool(r[3])}
+        {
+            "id": r[0],
+            "name": r[1],
+            "hint": r[2] or "",
+            "keywords": r[3] or "",
+            "enabled": bool(r[4]),
+        }
         for r in rows
     ]
+
+
+def upsert_eixo(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    *,
+    name: str,
+    hint: str = "",
+    keywords: str = "",
+    enabled: bool = True,
+    eixo_id: str | None = None,
+) -> dict[str, Any]:
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("nome do eixo obrigatorio")
+    hint = (hint or "").strip()
+    keywords = (keywords or "").strip()
+    if eixo_id:
+        row = conn.execute(
+            """
+            UPDATE ctl.radar_eixo
+            SET name=%s, hint=%s, keywords=%s, enabled=%s
+            WHERE id=%s::uuid AND campanha_id=%s::uuid
+            RETURNING id::text, name, hint, COALESCE(keywords, ''), enabled
+            """,
+            (name, hint, keywords, enabled, eixo_id, campanha_id),
+        ).fetchone()
+        if not row:
+            raise ValueError("eixo nao encontrado")
+    else:
+        row = conn.execute(
+            """
+            INSERT INTO ctl.radar_eixo (campanha_id, name, hint, keywords, enabled)
+            VALUES (%s::uuid, %s, %s, %s, %s)
+            ON CONFLICT (campanha_id, name) DO UPDATE SET
+              hint = EXCLUDED.hint,
+              keywords = EXCLUDED.keywords,
+              enabled = EXCLUDED.enabled
+            RETURNING id::text, name, hint, COALESCE(keywords, ''), enabled
+            """,
+            (campanha_id, name, hint, keywords, enabled),
+        ).fetchone()
+    return {
+        "id": row[0],
+        "name": row[1],
+        "hint": row[2] or "",
+        "keywords": row[3] or "",
+        "enabled": bool(row[4]),
+    }
+
+
+def delete_eixo(conn: psycopg.Connection, campanha_id: str, eixo_id: str) -> None:
+    conn.execute(
+        "DELETE FROM ctl.radar_eixo WHERE id=%s::uuid AND campanha_id=%s::uuid",
+        (eixo_id, campanha_id),
+    )
+
+
+def merge_eixo_keywords(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    keywords_por_eixo: dict[str, str],
+) -> int:
+    """Mescla keywords extraídas sem apagar as existentes."""
+    updated = 0
+    for name, kws in (keywords_por_eixo or {}).items():
+        extra = [x.strip() for x in (kws or "").split(",") if x.strip()]
+        if not extra:
+            continue
+        row = conn.execute(
+            """
+            SELECT id::text, COALESCE(keywords, '')
+            FROM ctl.radar_eixo
+            WHERE campanha_id=%s::uuid AND name=%s
+            """,
+            (campanha_id, name),
+        ).fetchone()
+        if not row:
+            continue
+        cur = [x.strip() for x in (row[1] or "").split(",") if x.strip()]
+        seen = {c.lower() for c in cur}
+        for e in extra:
+            if e.lower() not in seen:
+                cur.append(e)
+                seen.add(e.lower())
+        conn.execute(
+            "UPDATE ctl.radar_eixo SET keywords=%s WHERE id=%s::uuid",
+            (", ".join(cur), row[0]),
+        )
+        updated += 1
+    return updated
 
 
 def get_config(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
@@ -735,7 +887,10 @@ def campanha_do_usuario(conn: psycopg.Connection, usuario_id: str) -> tuple[str,
 
 
 def seed_template(conn: psycopg.Connection, campanha_id: str, campanha_nome: str) -> dict[str, Any]:
-    """Garante config + alvos iniciais PULSO se a campanha estiver vazia."""
+    """Garante config + eixos. NÃO cria alvos automaticamente (evita reidratar após apagar).
+
+    Alvos vêm só de POST /gestao/seed-radar ou cadastro manual.
+    """
     ensure_eixos(conn, campanha_id)
     slug = (campanha_nome or "").strip().lower()
     tpl = _SEED_TEMPLATES.get(slug)
@@ -758,39 +913,7 @@ def seed_template(conn: psycopg.Connection, campanha_id: str, campanha_nome: str
         cfg = get_config(conn, campanha_id)
 
     existing = list_alvos(conn, campanha_id, ativo_only=False)
-    if existing:
-        return {"created": False, "alvos": len(existing), "config": cfg}
-
-    # Sem placeholder de adversário/@ vazio — seed real vem da Gestão (POST /gestao/seed-radar).
-    created = 0
-    seeds = list((tpl or {}).get("alvos") or [])
-    if not seeds:
-        nome = (cfg.get("candidato_nome") or humanize_campanha_nome(campanha_nome)).strip()
-        if nome:
-            seeds = [
-                {
-                    "kind": "pessoa",
-                    "nome": nome,
-                    "query_news": f"{nome} {cfg.get('uf') or ''}".strip(),
-                    "papel": "proprio",
-                    "prioridade": 1,
-                }
-            ]
-    for s in seeds:
-        upsert_alvo(
-            conn,
-            campanha_id,
-            kind=s.get("kind") or "pessoa",
-            nome=s["nome"],
-            query_news=s.get("query_news") or "",
-            handle_ig=s.get("handle_ig"),
-            is_own=bool(s.get("is_own")),
-            papel=s.get("papel"),
-            prioridade=int(s.get("prioridade") or 5),
-            ativo=True,
-        )
-        created += 1
-    return {"created": True, "alvos": created, "config": cfg}
+    return {"created": False, "alvos": len(existing), "config": cfg}
 
 
 def resetar_radar(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
@@ -810,7 +933,6 @@ def resetar_radar(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         ).rowcount
     except Exception:
         n_runs = 0
-    ensure_eixos(conn, campanha_id)
     return {
         "ok": True,
         "itens_apagados": int(n_itens or 0),

@@ -134,17 +134,17 @@ class ConfigIn(BaseModel):
 def meta(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     cid, cnome = _campanha(user)
     with _db() as conn:
-        seed = seed_alvos.ensure_default_alvo(conn, cid, cnome)
         kpi = store.kpi_24h(conn, cid)
         run = store.last_run(conn, cid)
         cfg = store.get_config(conn, cid)
+        n_alvos = len(store.list_alvos(conn, cid, ativo_only=False))
     return {
         "campanha_id": cid,
         "campanha_nome": cnome,
         "config": cfg,
         "kpi": kpi,
         "last_run": run,
-        "seed": seed,
+        "n_alvos": n_alvos,
         "nivel": "indicio",
         "modulos": ["radar", "termometro_mix", "alertas", "sintese_rascunho"],
     }
@@ -154,7 +154,6 @@ def meta(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
 def get_config(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     cid, cnome = _campanha(user)
     with _db() as conn:
-        seed_alvos.ensure_default_alvo(conn, cid, cnome)
         return {"campanha_nome": cnome, **store.get_config(conn, cid)}
 
 
@@ -233,9 +232,8 @@ def alvos(
     agrupado: bool = False,
     user: tuple[str, str, str] = Depends(_usuario),
 ) -> Any:
-    cid, cnome = _campanha(user)
+    cid, _ = _campanha(user)
     with _db() as conn:
-        seed_alvos.ensure_default_alvo(conn, cid, cnome)
         if agrupado:
             return store.alvos_agrupados(conn, cid)
         return store.list_alvos(conn, cid, ativo_only=False)
@@ -313,10 +311,10 @@ def sync_tse(ano: int = 2026, user: tuple[str, str, str] = Depends(_usuario)) ->
 
 @router.post("/reset")
 def reset_radar(
-    reseeds: bool = True,
+    reseeds: bool = False,
     user: tuple[str, str, str] = Depends(_usuario),
 ) -> dict[str, Any]:
-    """Limpa stream + alvos + runs da campanha e (opcional) reseedeia a partir da Gestão."""
+    """Limpa stream + alvos + runs. Com reseeds=true, preenche de novo via Gestão."""
     cid, cnome = _campanha(user)
     with _db() as conn:
         limpo = store.resetar_radar(conn, cid)
@@ -327,11 +325,7 @@ def reset_radar(
             try:
                 seed = gestao_seed.seed_radar_da_gestao(conn, cid)
             except ValueError as exc:
-                # Sem escopo Gestão: só deixa limpo + config mínima
                 seed = {"ok": False, "erro": str(exc)}
-                seed_alvos.ensure_default_alvo(conn, cid, cnome)
-        else:
-            seed_alvos.ensure_default_alvo(conn, cid, cnome)
         alvos = store.list_alvos(conn, cid, ativo_only=False)
         return {
             "ok": True,
@@ -345,9 +339,8 @@ def reset_radar(
 
 @router.post("/coletar")
 def coletar(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
-    cid, cnome = _campanha(user)
+    cid, _ = _campanha(user)
     with _db() as conn:
-        seed_alvos.ensure_default_alvo(conn, cid, cnome)
         result = radar_collect.collect_campanha(conn, cid, mode="manual")
     return {"nivel": "indicio", **result}
 
@@ -364,7 +357,71 @@ def runs_last(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
 def eixos(user: tuple[str, str, str] = Depends(_usuario)) -> list[dict[str, Any]]:
     cid, _ = _campanha(user)
     with _db() as conn:
-        return store.list_eixos(conn, cid)
+        return store.list_eixos(conn, cid, seed_if_empty=True)
+
+
+class EixoIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    hint: str = Field(default="", max_length=400)
+    keywords: str = Field(default="", max_length=500)
+    enabled: bool = True
+
+
+class EixoPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    hint: str | None = Field(default=None, max_length=400)
+    keywords: str | None = Field(default=None, max_length=500)
+    enabled: bool | None = None
+
+
+@router.post("/eixos")
+def criar_eixo(body: EixoIn, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        try:
+            return store.upsert_eixo(
+                conn,
+                cid,
+                name=body.name,
+                hint=body.hint,
+                keywords=body.keywords,
+                enabled=body.enabled,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+
+
+@router.patch("/eixos/{eixo_id}")
+def patch_eixo(
+    eixo_id: str,
+    body: EixoPatch,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        cur = next((e for e in store.list_eixos(conn, cid) if e["id"] == eixo_id), None)
+        if not cur:
+            raise HTTPException(404, "Eixo não encontrado")
+        try:
+            return store.upsert_eixo(
+                conn,
+                cid,
+                name=body.name or cur["name"],
+                hint=cur["hint"] if body.hint is None else body.hint,
+                keywords=cur["keywords"] if body.keywords is None else body.keywords,
+                enabled=cur["enabled"] if body.enabled is None else body.enabled,
+                eixo_id=eixo_id,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+
+
+@router.delete("/eixos/{eixo_id}")
+def apagar_eixo(eixo_id: str, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, str]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        store.delete_eixo(conn, cid, eixo_id)
+    return {"status": "ok"}
 
 
 @router.get("/mix")

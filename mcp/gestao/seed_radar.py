@@ -1,4 +1,4 @@
-"""Seed Radar a partir do escopo Gestão + redes TSE (próprio e adversários)."""
+"""Seed Radar a partir do escopo Gestão + memória + planos/dossiê (sem botão TSE)."""
 from __future__ import annotations
 
 from typing import Any
@@ -6,6 +6,7 @@ from typing import Any
 import psycopg
 
 from gestao import memoria
+from gestao import temas_plano
 from gestao.store import get_status
 from radar import store as radar_store
 
@@ -63,7 +64,8 @@ def _existe(
         if any((a.get("handle_ig") or "").lower() == h for a in existentes):
             return True
     if nome:
-        if any((a.get("nome") or "") == nome for a in existentes):
+        nl = nome.strip().lower()
+        if any((a.get("nome") or "").strip().lower() == nl for a in existentes):
             return True
     return False
 
@@ -77,6 +79,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
     uf = st.get("sg_uf")
     cargo = st.get("cargo_label") or ""
     partido = st.get("sg_partido")
+    sq = st.get("sq_candidato")
 
     try:
         conn.execute(
@@ -96,6 +99,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
 
     radar_store.ensure_eixos(conn, campanha_id)
     added = 0
+    stats = {"pessoa": 0, "adversario": 0, "perfil": 0, "tema": 0, "eixos_kw": 0}
 
     if not any(
         a["nome"] == nome and a["kind"] == "pessoa"
@@ -111,14 +115,18 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
             is_own=False,
             papel="proprio",
             prioridade=1,
+            notas=f"{partido or ''} · seed gestão".strip(" ·"),
         )
         added += 1
+        stats["pessoa"] += 1
 
     pessoas: list[dict[str, Any]] = []
     blocos = memoria.listar(conn, campanha_id, tipo="base_redes", limite=3)
     for b in blocos:
         meta = b.get("meta") or {}
         pessoas.extend(meta.get("pessoas") or [])
+
+    nomes_adv: list[str] = []
 
     if pessoas:
         for p in pessoas:
@@ -133,13 +141,17 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                     kind="adversario",
                     nome=nm,
                     query_news=f"{nm} {uf or ''}".strip(),
-                    handle_ig=None,  # IG fica só como kind=perfil
+                    handle_ig=None,
                     is_own=False,
                     papel="adversario",
                     prioridade=2,
                     notas=(p.get("sg_partido") or ""),
                 )
                 added += 1
+                stats["adversario"] += 1
+                nomes_adv.append(nm)
+            elif papel == "adversario" and nm and nm != nome:
+                nomes_adv.append(nm)
             for h in igs:
                 existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
                 if _existe(existentes, handle=h):
@@ -149,7 +161,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                     conn,
                     campanha_id,
                     kind="perfil",
-                    nome=f"{'Instagram oficial' if proprio else 'IG adversário'} @{h}",
+                    nome=f"{'@' + h}",
                     query_news="" if proprio else f"{nm} {uf or ''}".strip(),
                     handle_ig=h,
                     is_own=proprio,
@@ -157,6 +169,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                     prioridade=1 if proprio else 2,
                 )
                 added += 1
+                stats["perfil"] += 1
     else:
         handles = _igs_limpos(
             [h for b in blocos for h in ((b.get("meta") or {}).get("ig") or [])]
@@ -169,7 +182,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 conn,
                 campanha_id,
                 kind="perfil",
-                nome=f"Instagram oficial @{h}",
+                nome=f"@{h}",
                 query_news="",
                 handle_ig=h,
                 is_own=True,
@@ -177,6 +190,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 prioridade=1,
             )
             added += 1
+            stats["perfil"] += 1
         conc = memoria.listar(conn, campanha_id, tipo="base_concorrentes", limite=1)
         if conc:
             linhas = [
@@ -188,6 +202,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 nome_adv = ln.split("·")[0].strip()
                 if not nome_adv or nome_adv == nome:
                     continue
+                nomes_adv.append(nome_adv)
                 existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
                 if _existe(existentes, nome=nome_adv):
                     continue
@@ -203,5 +218,53 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                     prioridade=2,
                 )
                 added += 1
+                stats["adversario"] += 1
 
-    return {"ok": True, "added": added, "candidato": nome, "partido": partido, "uf": uf}
+    # Temas + keywords a partir de planos (acervo) e dossiê
+    extracao = temas_plano.extrair_campanha(
+        conn,
+        campanha_id=campanha_id,
+        uf=uf,
+        sq_candidato=str(sq) if sq else None,
+        nm_candidato=nome,
+        adversarios=list(dict.fromkeys(nomes_adv)),
+    )
+    stats["eixos_kw"] = radar_store.merge_eixo_keywords(
+        conn, campanha_id, extracao.get("keywords_eixos") or {}
+    )
+
+    for tm in (
+        list(extracao.get("temas_proprio") or [])
+        + list(extracao.get("temas_adversario") or [])
+        + list(extracao.get("temas_dossie") or [])
+    ):
+        nm_t = (tm.get("nome") or "").strip()
+        if not nm_t:
+            continue
+        existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
+        if _existe(existentes, nome=nm_t):
+            continue
+        radar_store.upsert_alvo(
+            conn,
+            campanha_id,
+            kind="tema",
+            nome=nm_t,
+            query_news=(tm.get("query_news") or nm_t)[:300],
+            handle_ig=None,
+            is_own=False,
+            papel=tm.get("papel") or "tema",
+            prioridade=4,
+            notas=(tm.get("eixo") or tm.get("fonte") or "")[:200],
+        )
+        added += 1
+        stats["tema"] += 1
+
+    return {
+        "ok": True,
+        "added": added,
+        "candidato": nome,
+        "partido": partido,
+        "uf": uf,
+        "stats": stats,
+        "plano_chars": extracao.get("plano_chars") or 0,
+    }

@@ -94,7 +94,16 @@ def collect_campanha(
 
     store.ensure_eixos(conn, campanha_id)
     eixos_rows = store.list_eixos(conn, campanha_id)
-    eixos = [(e["name"], e["hint"]) for e in eixos_rows if e["enabled"]]
+    eixos = []
+    for e in eixos_rows:
+        if not e["enabled"]:
+            continue
+        dica = (e.get("hint") or "").strip()
+        kws = (e.get("keywords") or "").strip()
+        catalog = dica
+        if kws:
+            catalog = f"{dica} | palavras-chave: {kws}" if dica else kws
+        eixos.append((e["name"], catalog))
     alvos = store.list_alvos(conn, campanha_id, ativo_only=True)
     run_id = store.start_run(conn, campanha_id, mode)
     novos = 0
