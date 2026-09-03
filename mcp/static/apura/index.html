@@ -315,6 +315,10 @@
     }
     .radar-item:hover { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
     .radar-item.own { border-color: #9ec5c0; background: linear-gradient(180deg, var(--brand-light) 0%, var(--surface) 60%); }
+    .radar-item.ln-urg-critica { border-left: 4px solid var(--danger); }
+    .radar-item.ln-urg-alta { border-left: 4px solid #e0724a; }
+    .radar-item.ln-urg-media { border-left: 4px solid var(--accent); }
+    .radar-item.ln-urg-baixa { border-left: 4px solid var(--ok); }
     .radar-item h4 { font-size: 0.95rem; margin-bottom: 4px; line-height: 1.35; }
     .radar-item h4 a { color: var(--ink); text-decoration: none; }
     .radar-item h4 a:hover { color: var(--brand); }
@@ -423,6 +427,53 @@
       border: none; background: none; color: var(--danger); cursor: pointer; font-size: 0.8rem; font-weight: 650;
     }
     table.eixo-table button:hover { text-decoration: underline; }
+
+    table.alvo-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 10px; }
+    table.alvo-table th, table.alvo-table td {
+      text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; color: var(--ink);
+    }
+    table.alvo-table th { color: var(--muted); font-weight: 650; font-size: 0.7rem; text-transform: uppercase; letter-spacing: .03em; }
+    table.alvo-table tbody tr:hover td { background: var(--surface-2); }
+    table.alvo-table td.muted-cell {
+      color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    table.alvo-table td.row-actions { white-space: nowrap; text-align: right; }
+    .link-btn {
+      border: none; background: none; color: var(--brand); cursor: pointer; font-size: 0.78rem;
+      font-weight: 650; padding: 3px 7px; border-radius: 6px; transition: background .15s;
+    }
+    .link-btn:hover { background: var(--brand-light); }
+    .link-btn.danger { color: var(--danger); }
+    .link-btn.danger:hover { background: var(--danger-light); }
+    .papel-badge {
+      display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 700;
+      padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap;
+      text-transform: uppercase; letter-spacing: .02em;
+    }
+    .papel-badge.badge-proprio { background: var(--accent-light); color: #8a5a10; border-color: #f0d98a; }
+    .papel-badge.badge-adversario { background: var(--danger-light); color: var(--danger); border-color: var(--danger-line); }
+    .papel-badge.badge-tema { background: var(--brand-light); color: var(--brand); border-color: #9ec5c0; }
+    .papel-badge.badge-outro { background: var(--surface-2); color: var(--muted); }
+    .edit-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 4px !important; }
+    .edit-row input, .edit-row select {
+      padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; flex: 1; min-width: 130px;
+    }
+    .edit-row input:focus, .edit-row select:focus { outline: none; border-color: var(--brand); box-shadow: var(--ring); }
+    .edit-row .btn-add.small, .edit-row .btn-ghost.small { padding: 7px 12px; font-size: 0.76rem; }
+    .ig-handle-link { color: var(--brand); font-weight: 650; text-decoration: none; }
+    .ig-handle-link:hover { text-decoration: underline; }
+    .canal-ic {
+      display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px;
+      border-radius: 6px; margin-right: 5px; vertical-align: -4px; font-size: 0.62rem; font-weight: 800; color: #fff;
+    }
+    .canal-ic.ic-instagram { background: linear-gradient(45deg,#f58529,#dd2a7b,#8134af,#515bd4); }
+    .canal-ic.ic-news { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+    .radar-badges span.b-urg-critica { background: var(--danger); color: #fff; border-color: var(--danger); }
+    .radar-badges span.b-urg-alta { background: var(--danger-light); color: var(--danger); border-color: var(--danger-line); }
+    .radar-badges span.b-urg-media { background: var(--accent-light); color: #8a5a10; border-color: #f0d98a; }
+    .radar-badges span.b-urg-baixa { background: var(--ok-light); color: var(--ok); border-color: #a7f3d0; }
+    .radar-badges span.b-pol-positivo { background: var(--ok-light); color: var(--ok); border-color: #a7f3d0; }
+    .radar-badges span.b-pol-negativo { background: var(--danger-light); color: var(--danger); border-color: var(--danger-line); }
     .app-err { text-align: center; color: var(--danger); font-size: 0.85rem; min-height: 1.2em; margin-bottom: 8px; }
     .composer.loading { opacity: .55; pointer-events: none; }
     .relatorio-box { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; background: #fafbfc; box-shadow: var(--shadow-sm); }
@@ -825,7 +876,9 @@
           <div class="radar-body">
             <form id="form-config" style="max-width:480px;display:grid;gap:10px">
               <div><label>Candidato monitorado</label><input id="cfg-nome" placeholder="Nome na urna / público" /></div>
-              <div><label>UF</label><input id="cfg-uf" maxlength="2" placeholder="AP" style="text-transform:uppercase" /></div>
+              <div><label>UF</label><input id="cfg-uf" maxlength="2" placeholder="AP" style="text-transform:uppercase" />
+                <p class="hint" style="margin:4px 0 0">Usada para limitar a busca de notícias ao estado (evita clima do Brasil todo em nomes/temas genéricos).</p>
+              </div>
               <div><label>Cargo</label><input id="cfg-cargo" placeholder="governador, senador…" /></div>
               <div><label>Notas</label><textarea id="cfg-notas" rows="3" placeholder="Contexto interno da campanha"></textarea></div>
               <button type="submit" class="btn-add" style="justify-self:start">Salvar configuração</button>
@@ -1924,6 +1977,22 @@
       return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
+    function canalIcon(canal) {
+      const c = (canal || '').toLowerCase();
+      if (c === 'instagram') return '<span class="canal-ic ic-instagram" title="Instagram">IG</span>';
+      return '<span class="canal-ic ic-news" title="Notícia">N</span>';
+    }
+
+    function badgeClass(kind, val) {
+      const v = (val || '').toLowerCase();
+      if (kind === 'urg') return v ? ' b-urg-' + v : '';
+      if (kind === 'pol') {
+        if (v === 'positivo' || v === 'positive') return ' b-pol-positivo';
+        if (v === 'negativo' || v === 'negative') return ' b-pol-negativo';
+      }
+      return '';
+    }
+
     function renderItens(box, itens, emptyMsg) {
       if (!itens.length) {
         box.innerHTML = '<p style="color:var(--muted);padding:12px 0">' + esc(emptyMsg) + '</p>';
@@ -1933,12 +2002,19 @@
         const title = it.url
           ? '<a href="' + it.url + '" target="_blank" rel="noopener">' + esc(it.titulo) + '</a>'
           : esc(it.titulo);
-        const badges = [it.entity_kind, it.polarity || it.tom, it.urgencia, it.tipo, it.eixo].filter(Boolean)
-          .map(b => '<span>' + esc(b) + '</span>').join('');
+        const pol = it.polarity || it.tom;
+        const badges = [
+          it.urgencia ? '<span class="b-urg' + badgeClass('urg', it.urgencia) + '">' + esc(it.urgencia) + '</span>' : '',
+          pol ? '<span class="b-pol' + badgeClass('pol', pol) + '">' + esc(pol) + '</span>' : '',
+          it.entity_kind ? '<span>' + esc(it.entity_kind) + '</span>' : '',
+          it.tipo ? '<span>' + esc(it.tipo) + '</span>' : '',
+          it.eixo ? '<span>' + esc(it.eixo) + '</span>' : '',
+        ].filter(Boolean).join('');
         const score = it.score != null ? it.score : it.clima_score;
-        const meta = [it.canal, it.fonte, it.origem, it.alvo || it.entity_name, it.quando].filter(Boolean).join(' · ');
-        return '<article class="radar-item' + (it.origem === 'oficial' ? ' own' : '') + '">' +
-          '<h4>' + title + '</h4>' +
+        const meta = [it.fonte, it.origem, it.alvo || it.entity_name, it.quando].filter(Boolean).join(' · ');
+        const urgCls = it.origem !== 'oficial' ? badgeClass('urg', it.urgencia).trim() : '';
+        return '<article class="radar-item' + (it.origem === 'oficial' ? ' own' : '') + (urgCls ? ' ' + urgCls.replace('b-', 'ln-') : '') + '">' +
+          '<h4>' + canalIcon(it.canal) + title + '</h4>' +
           '<div class="radar-meta">' + esc(meta) + '</div>' +
           (badges ? '<div class="radar-badges">' + badges + '</div>' : '') +
           '<div class="radar-meta">clima ' + (score != null ? score : '—') +
@@ -2003,21 +2079,60 @@
       } catch (e) { $('radar-err').textContent = e.message; }
     }
 
-    function chipsAlvos(rows) {
+    let _alvosCache = [];
+
+    function fmtData(iso) {
+      if (!iso) return '—';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) +
+          ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      } catch (e) { return '—'; }
+    }
+
+    function papelBadge(a) {
+      const own = a.is_own || a.papel === 'proprio';
+      if (own) return '<span class="papel-badge badge-proprio">★ próprio</span>';
+      if (a.kind === 'adversario' || a.papel === 'adversario') return '<span class="papel-badge badge-adversario">adversário</span>';
+      if (a.kind === 'tema') return '<span class="papel-badge badge-tema">tema</span>';
+      return '<span class="papel-badge badge-outro">' + esc(a.papel || a.kind || 'outro') + '</span>';
+    }
+
+    function tabelaAlvos(rows) {
       if (!rows || !rows.length) return '<p class="alvo-empty">Nenhum item ainda.</p>';
-      return '<div class="alvo-chip-row">' + rows.map(a => {
-        const tip = a.handle_ig ? ('@' + a.handle_ig) : (a.query_news || '');
-        const own = a.is_own || a.papel === 'proprio';
-        const tag = a.kind === 'perfil'
-          ? (a.is_own ? 'oficial · Mix' : 'ig')
-          : (own ? 'próprio (monitorado)' : a.kind);
-        return '<span class="alvo-chip' + (own ? ' own' : '') + '">' +
-          (own ? '<span class="star">★</span>' : '') +
-          '<b>' + esc(a.nome) + '</b>' +
-          (tip ? '<span>' + esc(tip) + '</span>' : '') +
-          '<span>' + esc(tag) + '</span>' +
-          '<button type="button" data-del-alvo="' + a.id + '" title="Remover">×</button></span>';
-      }).join('') + '</div>';
+      return '<table class="alvo-table"><thead><tr>' +
+        '<th>Papel</th><th>Nome</th><th>Dicas / palavras-chave</th><th>Criado</th><th></th>' +
+        '</tr></thead><tbody>' + rows.map(a => {
+          return '<tr data-row-alvo="' + a.id + '">' +
+            '<td>' + papelBadge(a) + '</td>' +
+            '<td><b>' + esc(a.nome) + '</b></td>' +
+            '<td class="muted-cell" title="' + esc(a.query_news || a.notas || '') + '">' + esc(a.query_news || a.notas || '—') + '</td>' +
+            '<td class="muted-cell">' + fmtData(a.criado_em) + '</td>' +
+            '<td class="row-actions">' +
+              '<button type="button" class="link-btn" data-edit-alvo="' + a.id + '">editar</button>' +
+              '<button type="button" class="link-btn danger" data-del-alvo="' + a.id + '">remover</button>' +
+            '</td></tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    function tabelaInstagram(rows) {
+      if (!rows || !rows.length) return '<p class="alvo-empty">Nenhum item ainda.</p>';
+      return '<table class="alvo-table"><thead><tr>' +
+        '<th>Rede</th><th>Handle</th><th>Papel</th><th>Criado</th><th></th>' +
+        '</tr></thead><tbody>' + rows.map(a => {
+          const h = a.handle_ig || '';
+          return '<tr data-row-alvo="' + a.id + '">' +
+            '<td>' + canalIcon('instagram') + '</td>' +
+            '<td>' + (h
+              ? '<a class="ig-handle-link" href="https://instagram.com/' + esc(h) + '" target="_blank" rel="noopener">@' + esc(h) + '</a>'
+              : '<span class="muted-cell">sem @</span>') + '</td>' +
+            '<td>' + papelBadge(a) + '</td>' +
+            '<td class="muted-cell">' + fmtData(a.criado_em) + '</td>' +
+            '<td class="row-actions">' +
+              '<button type="button" class="link-btn" data-edit-alvo="' + a.id + '">editar</button>' +
+              '<button type="button" class="link-btn danger" data-del-alvo="' + a.id + '">remover</button>' +
+            '</td></tr>';
+        }).join('') + '</tbody></table>';
     }
 
     function bindDelAlvos(root) {
@@ -2030,6 +2145,37 @@
           } catch (e) { $('radar-err').textContent = e.message; }
         });
       });
+      root.querySelectorAll('[data-edit-alvo]').forEach(btn => {
+        btn.addEventListener('click', () => abrirEdicaoAlvo(root, btn.getAttribute('data-edit-alvo')));
+      });
+    }
+
+    function abrirEdicaoAlvo(root, id) {
+      const a = _alvosCache.find(x => x.id === id);
+      const tr = root.querySelector('tr[data-row-alvo="' + id + '"]');
+      if (!a || !tr) return;
+      const isIg = a.kind === 'perfil';
+      tr.innerHTML = '<td colspan="5"><div class="edit-row">' +
+        (isIg
+          ? '<input class="edit-nome" value="' + esc(a.handle_ig || '') + '" placeholder="@handle" />' +
+            '<label class="alvo-check"><input type="checkbox" class="edit-own"' + (a.is_own ? ' checked' : '') + ' /> Oficial</label>'
+          : '<input class="edit-nome" value="' + esc(a.nome || '') + '" placeholder="Nome" />' +
+            '<input class="edit-query" value="' + esc(a.query_news || '') + '" placeholder="Dicas / palavras-chave" />'
+        ) +
+        '<button type="button" class="btn-add small" data-save-alvo="' + id + '">Salvar</button>' +
+        '<button type="button" class="btn-ghost small" data-cancel-edit="' + id + '">Cancelar</button>' +
+        '</div></td>';
+      tr.querySelector('[data-save-alvo]').addEventListener('click', async () => {
+        try {
+          const body = isIg
+            ? { handle_ig: tr.querySelector('.edit-nome').value.trim().replace(/^@/, ''), is_own: tr.querySelector('.edit-own').checked }
+            : { nome: tr.querySelector('.edit-nome').value.trim(), query_news: tr.querySelector('.edit-query').value.trim() };
+          await api('/radar/alvos/' + id, { method: 'PATCH', body: JSON.stringify(body) });
+          await loadAlvos();
+          loadRadarMeta();
+        } catch (e) { $('radar-err').textContent = e.message; }
+      });
+      tr.querySelector('[data-cancel-edit]').addEventListener('click', () => loadAlvos());
     }
 
     async function loadEixos() {
@@ -2106,10 +2252,11 @@
         const igs = []
           .concat(g.instagram_oficial || [])
           .concat(g.instagram_outros || []);
+        _alvosCache = pessoas.concat(igs);
         const boxP = $('list-pessoas-temas');
         const boxI = $('list-instagram');
-        if (boxP) { boxP.innerHTML = chipsAlvos(pessoas); bindDelAlvos(boxP); }
-        if (boxI) { boxI.innerHTML = chipsAlvos(igs); bindDelAlvos(boxI); }
+        if (boxP) { boxP.innerHTML = tabelaAlvos(pessoas); bindDelAlvos(boxP); }
+        if (boxI) { boxI.innerHTML = tabelaInstagram(igs); bindDelAlvos(boxI); }
         await loadEixos();
       } catch (e) {
         $('radar-err').textContent = e.message;
@@ -2202,7 +2349,14 @@
           ' · adversário ' + (st.adversario || 0) + ' · IG ' + (st.perfil || 0) +
           ' · tema ' + (st.tema || 0);
         if (semPlano) {
-          $('radar-err').textContent = 'Plano de governo do candidato do escopo não encontrado no acervo — sem temas próprios (nada foi inventado). Cadastre Instagram e temas à mão se precisar.';
+          const diag = (r.plano_diag && r.plano_diag.proprio) || {};
+          let msg = 'Plano de governo do candidato do escopo não encontrado no acervo — sem temas próprios (nada foi inventado).';
+          if (diag.sq_tentado) msg += ' sq tentado: ' + diag.sq_tentado + '.';
+          if (diag.candidatos && diag.candidatos.length) {
+            msg += ' Candidatos do mesmo pleito no acervo: ' +
+              diag.candidatos.map(c => c.nome + ' (sim. ' + c.score + ')').join(', ') + '.';
+          }
+          $('radar-err').textContent = msg + ' Cadastre Instagram e temas à mão se precisar.';
         }
         await loadRadarMeta();
         loadAlvos();
@@ -2267,21 +2421,36 @@
         const d = await api('/radar/sintese');
         const b = d.blocos || {};
         const box = $('radar-sintese');
-        const list = (arr, empty) => (arr && arr.length)
+        const listSimple = (arr, empty) => (arr && arr.length)
           ? '<ul style="margin:6px 0 14px 18px">' + arr.map(x => '<li>' + esc(typeof x === 'string' ? x : (x.titulo || JSON.stringify(x))) + '</li>').join('') + '</ul>'
+          : '<p style="color:var(--muted)">' + empty + '</p>';
+        const listAgrupado = (arr, empty) => (arr && arr.length)
+          ? '<ul style="margin:6px 0 14px 18px">' + arr.map(x =>
+              '<li><b>' + esc(x.alvo || '—') + '</b> — ' + (x.menções || 0) + ' menção(ões)' +
+              (x.score_medio != null ? ' · clima médio ' + x.score_medio : '') +
+              (x.titulo_recente ? '<br><span style="color:var(--muted);font-size:0.82em">' + esc(x.titulo_recente) +
+                (x.quando ? ' · ' + esc(x.quando) : '') + '</span>' : '') +
+              '</li>').join('') + '</ul>'
+          : '<p style="color:var(--muted)">' + empty + '</p>';
+        const listAlertas = (arr, empty) => (arr && arr.length)
+          ? '<ul style="margin:6px 0 14px 18px">' + arr.map(x =>
+              '<li>' + esc(x.titulo) + (x.alvo ? ' — <b>' + esc(x.alvo) + '</b>' : '') +
+              (x.urgencia ? ' · ' + esc(x.urgencia) : '') + (x.score != null ? ' · score ' + x.score : '') +
+              (x.quando ? ' · ' + esc(x.quando) : '') + '</li>').join('') + '</ul>'
           : '<p style="color:var(--muted)">' + empty + '</p>';
         box.innerHTML =
           '<p style="color:var(--muted);margin-bottom:12px">Rascunho semanal PULSO · ' + esc(d.candidato || '') +
           ' · revisão humana obrigatória · nível indício</p>' +
-          '<h4 style="color:var(--brand)">Cenário</h4>' + list(b.cenario, 'Sem itens de clima') +
-          '<h4 style="color:var(--brand)">Adversários</h4>' + list(b.adversarios, 'Sem movimentos de adversários') +
-          '<h4 style="color:var(--brand)">Alertas</h4>' + list(b.alertas, 'Sem alertas') +
+          (d.resumo ? '<p style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.88rem">' + esc(d.resumo) + '</p>' : '') +
+          '<h4 style="color:var(--brand)">Cenário (próprio)</h4>' + listAgrupado(b.cenario, 'Sem itens de clima próprio') +
+          '<h4 style="color:var(--brand)">Adversários</h4>' + listAgrupado(b.adversarios, 'Sem movimentos de adversários — cadastre adversários em Alvos') +
+          '<h4 style="color:var(--brand)">Alertas</h4>' + listAlertas(b.alertas, 'Sem alertas') +
           '<h4 style="color:var(--brand)">Comunicação (Mix)</h4>' +
           ((b.comunicacao || []).length
             ? '<ul style="margin:6px 0 14px 18px">' + b.comunicacao.map(x => '<li>' + esc(x.eixo) + ': ' + x.pct + '% (' + x.n + ')' +
               (x.status && x.status !== 'ok' ? ' · ' + x.status : '') + '</li>').join('') + '</ul>'
             : '<p style="color:var(--muted)">Sem peças oficiais</p>') +
-          '<h4 style="color:var(--brand)">Recomendações sugeridas</h4>' + list(b.recomendacoes, '—') +
+          '<h4 style="color:var(--brand)">Recomendações sugeridas</h4>' + listSimple(b.recomendacoes, '—') +
           '<p style="font-size:0.8rem;color:var(--muted)">' + esc(d.nota || '') + '</p>';
       } catch (e) { $('radar-err').textContent = e.message; }
     }

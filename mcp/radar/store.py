@@ -970,48 +970,112 @@ def mix_por_eixo(
 
 
 def sintese_semanal(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
-    """Rascunho RELATÓRIO PULSO a partir do store — revisão humana."""
+    """Rascunho RELATÓRIO PULSO a partir do store — revisão humana.
+
+    Evita texto genérico: usa nomes reais dos alvos, contagens e scores desta
+    campanha (não frases prontas) sempre que o dado existir no store.
+    """
     cfg = get_config(conn, campanha_id)
+    kpi = kpi_24h(conn, campanha_id)
     alerta = alertas(conn, campanha_id, janela_horas=168, limite=10)
     mix = mix_por_eixo(conn, campanha_id, janela_horas=168)
-    clima = stream(conn, campanha_id, origem="clima", janela_horas=168, page=1, limite=15)
-    adv = stream(
-        conn,
-        campanha_id,
-        origem="clima",
-        entity_kind="adversario",
-        janela_horas=168,
-        page=1,
-        limite=10,
-    )
+    clima = stream(conn, campanha_id, origem="clima", janela_horas=168, page=1, limite=40)
+    ativos = [a for a in list_alvos(conn, campanha_id, ativo_only=True)]
+    n_adv = len([a for a in ativos if a["kind"] == "adversario"])
+    n_temas = len([a for a in ativos if a["kind"] == "tema"])
+    ig_oficial = [a for a in ativos if a["kind"] == "perfil" and a["is_own"]]
+
+    itens_clima = clima.get("itens") or []
+    itens_proprio = [it for it in itens_clima if (it.get("entity_kind") or "") != "adversario"]
+    itens_adv = [it for it in itens_clima if (it.get("entity_kind") or "") == "adversario"]
+
+    def _agrupar_por_alvo(itens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        agrup: dict[str, dict[str, Any]] = {}
+        for it in itens:
+            nome_alvo = it.get("alvo") or it.get("entity_name") or "—"
+            g = agrup.setdefault(nome_alvo, {"alvo": nome_alvo, "n": 0, "scores": [], "exemplo": it})
+            g["n"] += 1
+            if isinstance(it.get("score"), (int, float)):
+                g["scores"].append(it["score"])
+        out = []
+        for g in agrup.values():
+            score_medio = round(sum(g["scores"]) / len(g["scores"]), 1) if g["scores"] else None
+            ex = g["exemplo"]
+            out.append(
+                {
+                    "alvo": g["alvo"],
+                    "menções": g["n"],
+                    "score_medio": score_medio,
+                    "titulo_recente": ex.get("titulo"),
+                    "quando": ex.get("quando"),
+                    "urgencia": ex.get("urgencia"),
+                    "fonte": ex.get("fonte"),
+                }
+            )
+        out.sort(key=lambda x: -x["menções"])
+        return out
+
+    resumo = (
+        f"{cfg.get('candidato_nome') or 'Candidato'} · {cfg.get('cargo') or ''} {cfg.get('uf') or ''} · "
+        f"{kpi.get('itens_24h', 0)} itens nas últimas 24h ({kpi.get('clima_24h', 0)} clima / "
+        f"{kpi.get('oficial_24h', 0)} oficial) · {kpi.get('alertas_24h', 0)} alerta(s) alta/crítica · "
+        f"{n_adv} adversário(s) monitorado(s) · {n_temas} tema(s) do plano de governo · "
+        f"{len(ig_oficial)} perfil(is) oficial(is) no Mix"
+    ).strip()
+
     return {
         "status": "ok",
         "nivel": "indicio",
         "candidato": cfg.get("candidato_nome") or "",
         "uf": cfg.get("uf"),
+        "resumo": resumo,
         "blocos": {
-            "cenario": [it["titulo"] for it in (clima.get("itens") or [])[:5]],
+            "cenario": _agrupar_por_alvo(itens_proprio)[:6],
             "comunicacao": mix.get("distribuicao") or [],
-            "adversarios": [it["titulo"] for it in (adv.get("itens") or [])[:5]],
+            "adversarios": _agrupar_por_alvo(itens_adv)[:6],
             "alertas": [
                 {
                     "titulo": it["titulo"],
+                    "alvo": it.get("alvo") or it.get("entity_name"),
                     "urgencia": it.get("urgencia"),
                     "tipo": it.get("tipo"),
                     "score": it.get("score"),
+                    "quando": it.get("quando"),
                 }
-                for it in (alerta.get("itens") or [])[:5]
+                for it in (alerta.get("itens") or [])[:6]
             ],
-            "recomendacoes": [
-                "Revisar alertas de alta/crítica.",
-                "Checar eixos super/sub-representados no Mix.",
-                "Validar movimentos de adversários listados.",
-                "Completar handles Instagram oficial se vazios.",
-                "Cruzar clima com fato TSE no chat Apura (modo narrativa).",
-            ],
+            "recomendacoes": _recomendacoes(cfg, kpi, mix, ig_oficial, n_adv, alerta),
         },
-        "nota": "Rascunho automático PULSO. Não é entrega final — revisão humana obrigatória.",
+        "nota": "Rascunho automático PULSO — nomes, contagens e scores vêm do que foi coletado desta campanha. Não é entrega final — revisão humana obrigatória.",
     }
+
+
+def _recomendacoes(
+    cfg: dict[str, Any],
+    kpi: dict[str, Any],
+    mix: dict[str, Any],
+    ig_oficial: list[dict[str, Any]],
+    n_adv: int,
+    alerta: dict[str, Any],
+) -> list[str]:
+    """Recomendações específicas desta campanha — não frases genéricas fixas."""
+    out: list[str] = []
+    n_alertas = int(kpi.get("alertas_24h") or 0)
+    if n_alertas:
+        titulos = ", ".join(it["titulo"] for it in (alerta.get("itens") or [])[:2])
+        out.append(f"{n_alertas} alerta(s) alta/crítica nas 24h — revisar primeiro: {titulos}.")
+    for d in mix.get("distribuicao") or []:
+        if d.get("status") == "super":
+            out.append(f"Eixo '{d['eixo']}' super-representado ({d['pct']}% das peças oficiais) — variar comunicação.")
+        elif d.get("status") == "sub":
+            out.append(f"Eixo '{d['eixo']}' sub-representado ({d['pct']}%) — {d.get('hint') or 'pouca peça nesse eixo'}.")
+    if not ig_oficial:
+        out.append("Nenhum Instagram oficial cadastrado — Mix fica sem dado; cadastre o @ do candidato em Alvos.")
+    if not n_adv:
+        out.append("Nenhum adversário cadastrado em Alvos — sem contraste no clima. Cadastre concorrentes do mesmo pleito.")
+    if not out:
+        out.append(f"Sem pendência crítica nesta janela para {cfg.get('candidato_nome') or 'a campanha'} — manter monitoramento.")
+    return out[:6]
 
 
 def campanha_do_usuario(conn: psycopg.Connection, usuario_id: str) -> tuple[str, str] | None:

@@ -16,6 +16,34 @@ SLOTS = {8, 14, 20}
 _POLL_LOCK = threading.Lock()
 _LAST_SLOT_KEY: str | None = None
 
+UF_NOME = {
+    "AC": "Acre", "AL": "Alagoas", "AM": "Amazonas", "AP": "Amapá", "BA": "Bahia",
+    "CE": "Ceará", "DF": "Distrito Federal", "ES": "Espírito Santo", "GO": "Goiás",
+    "MA": "Maranhão", "MG": "Minas Gerais", "MS": "Mato Grosso do Sul",
+    "MT": "Mato Grosso", "PA": "Pará", "PB": "Paraíba", "PE": "Pernambuco",
+    "PI": "Piauí", "PR": "Paraná", "RJ": "Rio de Janeiro", "RN": "Rio Grande do Norte",
+    "RO": "Rondônia", "RR": "Roraima", "RS": "Rio Grande do Sul", "SC": "Santa Catarina",
+    "SE": "Sergipe", "SP": "São Paulo", "TO": "Tocantins",
+}
+
+
+def _query_com_escopo(q: str, uf: str | None) -> str:
+    """Amarra a busca de notícias ao estado da campanha (evita trazer Brasil todo
+    p/ nomes comuns/genéricos, ex.: temas ou políticos nacionais homônimos)."""
+    q = (q or "").strip()
+    if not uf:
+        return q
+    uf = uf.strip().upper()
+    nome_uf = UF_NOME.get(uf, "")
+    if not nome_uf:
+        return q
+    # A sigla (ex.: "AP") sozinha não ajuda o texto do Google News — o nome do
+    # estado por extenso é o sinal que realmente restringe a busca geográfica.
+    ja_tem_nome = nome_uf.lower() in q.lower()
+    if ja_tem_nome:
+        return q
+    return f"{q} {nome_uf}"
+
 
 def _since_for_alvo(last_seen: str | None) -> datetime:
     if last_seen:
@@ -92,6 +120,9 @@ def collect_campanha(
 ) -> dict[str, Any]:
     from clima_motores import buscar_instagram_apify, buscar_news_google
 
+    cfg = store.get_config(conn, campanha_id)
+    uf_campanha = (cfg.get("uf") or "").strip().upper() or None
+
     store.ensure_eixos(conn, campanha_id)
     eixos_rows = store.list_eixos(conn, campanha_id)
     eixos = []
@@ -130,8 +161,9 @@ def collect_campanha(
         if not q and kind in ("pessoa", "adversario", "tema"):
             q = nome
         if q and kind in ("pessoa", "adversario", "tema"):
+            q_uf = _query_com_escopo(q, uf_campanha)
             try:
-                news = buscar_news_google(q, janela_horas=horas, limite=12)
+                news = buscar_news_google(q_uf, janela_horas=horas, limite=12)
                 for it in news:
                     pub = _parse_quando_to_dt(it.get("quando")) or datetime.now(timezone.utc)
                     if pub <= since:

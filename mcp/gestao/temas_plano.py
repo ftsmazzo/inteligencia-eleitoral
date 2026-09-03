@@ -1,11 +1,15 @@
 """Extrai temas e palavras-chave do plano de governo (acervo) por sq_candidato exato.
 
-Nível indício — heurística léxica sobre texto oficial do plano. Nunca casa por nome
-solto (ILIKE) para evitar colar tema do adversário errado no candidato do escopo.
-Sem sq_candidato confirmado, não gera tema — ausência é inexistente, não zero.
+Nível indício — heurística léxica sobre texto oficial do plano. Nunca casa por ILIKE
+solto no acervo inteiro (evita colar tema do adversário errado em quem quer que seja).
+Quando o sq_candidato não é conhecido (comum p/ adversários vindos só do nome, sem
+redes), tenta um fallback estrito: mesmo pleito (uf + cargo + ano_eleicao) + nome mais
+parecido entre os poucos candidatos daquele pleito — nunca cruza pleitos diferentes.
+Sem nenhum match, não gera tema — ausência é inexistente, não zero.
 """
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
 from collections import Counter
@@ -64,6 +68,69 @@ def _textos_plano_por_sq(
     return texts
 
 
+def _candidatos_do_pleito(
+    conn: psycopg.Connection,
+    *,
+    uf: str | None,
+    cargo: str | None,
+    ano_eleicao: int | None,
+) -> list[tuple[str, str]]:
+    """Lista (sq_candidato, nm_candidato) dos planos de governo do mesmo pleito."""
+    if not uf or not cargo:
+        return []
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT d.meta->>'sq_candidato', COALESCE(d.nm_candidato, '')
+            FROM acervo.documento d
+            WHERE d.ativo IS TRUE AND d.tipo = 'plano_governo'
+              AND lower(d.cargo) = lower(%s) AND upper(d.sg_uf) = upper(%s)
+              AND (%s::int IS NULL OR d.ano_eleicao = %s::int)
+              AND d.meta->>'sq_candidato' IS NOT NULL
+            """,
+            (cargo, uf, ano_eleicao, ano_eleicao),
+        ).fetchall()
+    except Exception:
+        return []
+    return [(str(r[0]), r[1] or "") for r in rows if r[0]]
+
+
+def _sq_por_nome_no_pleito(
+    conn: psycopg.Connection,
+    *,
+    nome: str | None,
+    uf: str | None,
+    cargo: str | None,
+    ano_eleicao: int | None,
+    excluir_sq: set[str] | None = None,
+    limiar: float = 0.72,
+) -> tuple[str | None, float, list[dict[str, Any]]]:
+    """Fallback sem sq: acha o candidato mais parecido por nome DENTRO do mesmo
+    pleito (uf+cargo+ano) — nunca cruza pleitos. Tolerante a texto corrompido
+    (encoding ruim no PDF/nome) porque compara só letras a-z após normalizar."""
+    alvo = re.sub(r"[^a-z]", "", _norm(nome or ""))
+    if not alvo:
+        return None, 0.0, []
+    excluir = {str(s) for s in (excluir_sq or set())}
+    candidatos = _candidatos_do_pleito(conn, uf=uf, cargo=cargo, ano_eleicao=ano_eleicao)
+    melhor_sq, melhor_score = None, 0.0
+    debug: list[dict[str, Any]] = []
+    for sq, nm in candidatos:
+        if sq in excluir:
+            continue
+        cand = re.sub(r"[^a-z]", "", _norm(nm))
+        if not cand:
+            continue
+        score = difflib.SequenceMatcher(None, alvo, cand).ratio()
+        debug.append({"sq": sq, "nome": nm, "score": round(score, 2)})
+        if score > melhor_score:
+            melhor_score, melhor_sq = score, sq
+    debug.sort(key=lambda d: -d["score"])
+    if melhor_sq and melhor_score >= limiar:
+        return melhor_sq, melhor_score, debug[:6]
+    return None, melhor_score, debug[:6]
+
+
 def extrair_de_textos(textos: list[str]) -> dict[str, Any]:
     blob = _norm(" ".join(textos))
     temas: list[dict[str, Any]] = []
@@ -100,25 +167,66 @@ def extrair_campanha(
     sq_candidato: str | None,
     nm_candidato: str | None,
     adversarios: list[dict[str, Any]] | None = None,
+    cargo: str | None = None,
+    ano_eleicao: int | None = 2026,
 ) -> dict[str, Any]:
-    """Temas do plano do candidato do escopo (sq exato) + adversários com sq conhecido.
+    """Temas do plano do candidato do escopo + adversários.
 
-    `adversarios` deve trazer {"nome": ..., "sq_candidato": ...} — vem da nominata/base_redes,
-    não de string solta. Adversário sem sq não gera tema (evita casar plano errado).
+    Casa por sq_candidato exato quando disponível. Quando falta (ou o sq exato não
+    tem texto no acervo), tenta um fallback restrito ao MESMO pleito (uf+cargo+ano):
+    nome mais parecido entre os poucos candidatos daquele pleito — nunca cruza
+    pleitos/UFs/cargos diferentes. `adversarios` deve trazer {"nome":..., "sq_candidato":...}
+    vindo da nominata/base_redes (pode vir sem sq — o fallback tenta achar por nome).
     """
+    diag: dict[str, Any] = {"proprio": {}, "adversarios": []}
+    todos_sq_conhecidos = {str(sq_candidato)} if sq_candidato else set()
+    for a in adversarios or []:
+        if a.get("sq_candidato"):
+            todos_sq_conhecidos.add(str(a["sq_candidato"]))
+
     proprio: dict[str, Any] = {"temas": [], "keywords_eixos": {}, "chars": 0}
-    if sq_candidato:
-        textos = _textos_plano_por_sq(conn, sq_candidato=sq_candidato)
-        if textos:
-            proprio = extrair_de_textos(textos)
+    sq_proprio_usado = str(sq_candidato) if sq_candidato else None
+    textos = _textos_plano_por_sq(conn, sq_candidato=sq_proprio_usado) if sq_proprio_usado else []
+    if not textos:
+        sq_fb, score, cands = _sq_por_nome_no_pleito(
+            conn,
+            nome=nm_candidato,
+            uf=uf,
+            cargo=cargo,
+            ano_eleicao=ano_eleicao,
+            excluir_sq=todos_sq_conhecidos - ({sq_proprio_usado} if sq_proprio_usado else set()),
+        )
+        diag["proprio"] = {"sq_tentado": sq_proprio_usado, "sq_fallback": sq_fb, "score": round(score, 2), "candidatos": cands}
+        if sq_fb:
+            textos = _textos_plano_por_sq(conn, sq_candidato=sq_fb)
+            sq_proprio_usado = sq_fb
+            todos_sq_conhecidos.add(sq_fb)
+    else:
+        diag["proprio"] = {"sq_tentado": sq_proprio_usado, "sq_fallback": None, "score": 1.0, "candidatos": []}
+    if textos:
+        proprio = extrair_de_textos(textos)
 
     adv_temas: list[dict[str, Any]] = []
     for adv in (adversarios or [])[:8]:
         sq_adv = adv.get("sq_candidato")
         nome_adv = (adv.get("nome") or "").strip()
-        if not sq_adv or not nome_adv:
+        if not nome_adv:
             continue
-        t_adv = _textos_plano_por_sq(conn, sq_candidato=sq_adv, limite_chunks=30)
+        sq_adv_usado = str(sq_adv) if sq_adv else None
+        t_adv = _textos_plano_por_sq(conn, sq_candidato=sq_adv_usado, limite_chunks=30) if sq_adv_usado else []
+        if not t_adv:
+            sq_fb, score, cands = _sq_por_nome_no_pleito(
+                conn,
+                nome=nome_adv,
+                uf=uf,
+                cargo=cargo,
+                ano_eleicao=ano_eleicao,
+                excluir_sq=todos_sq_conhecidos - ({sq_adv_usado} if sq_adv_usado else set()),
+            )
+            diag["adversarios"].append({"nome": nome_adv, "sq_tentado": sq_adv_usado, "sq_fallback": sq_fb, "score": round(score, 2)})
+            if sq_fb:
+                t_adv = _textos_plano_por_sq(conn, sq_candidato=sq_fb, limite_chunks=30)
+                todos_sq_conhecidos.add(sq_fb)
         if not t_adv:
             continue
         ex = extrair_de_textos(t_adv)
@@ -137,4 +245,6 @@ def extrair_campanha(
         "temas_adversario": adv_temas[:8],
         "keywords_eixos": proprio.get("keywords_eixos") or {},
         "plano_chars": proprio.get("chars") or 0,
+        "sq_proprio_usado": sq_proprio_usado,
+        "diag": diag,
     }

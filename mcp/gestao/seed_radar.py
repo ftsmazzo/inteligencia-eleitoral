@@ -1,6 +1,9 @@
 """Seed Radar a partir do escopo Gestão + memória + planos (sq exato). Aditivo — nunca apaga."""
 from __future__ import annotations
 
+import json
+import uuid
+from pathlib import Path
 from typing import Any
 
 import psycopg
@@ -9,6 +12,122 @@ from gestao import memoria
 from gestao import temas_plano
 from gestao.store import get_status
 from radar import store as radar_store
+from radar.collect import UF_NOME
+
+_SEED_DIR = Path(__file__).resolve().parents[1] / "seed"
+
+
+def _upsert_documento_acervo(conn: psycopg.Connection, doc: dict[str, Any]) -> None:
+    """Mesma lógica de scripts/carregar_acervo_planos.py::carregar_db — upsert por sha256."""
+    dig = doc.get("sha256")
+    if not dig:
+        return
+    row = conn.execute(
+        "SELECT id FROM acervo.documento WHERE sha256 = %s AND tipo = %s",
+        (dig, doc["tipo"]),
+    ).fetchone()
+    meta_json = json.dumps(doc.get("meta") or {}, ensure_ascii=False)
+    if row:
+        doc_id = row[0]
+        conn.execute("DELETE FROM acervo.chunk WHERE documento_id = %s", (doc_id,))
+        conn.execute(
+            """
+            UPDATE acervo.documento SET
+              titulo=%s, descricao=%s, nivel=%s, ano_eleicao=%s,
+              vigencia_inicio=%s, vigencia_fim=%s, escopo=%s,
+              sg_uf=%s, nm_candidato=%s, cargo=%s, tags=%s, fonte_orgao=%s,
+              id_base_raw=%s, meta=%s, ativo=true, atualizado_em=now()
+            WHERE id=%s
+            """,
+            (
+                doc["titulo"], doc.get("descricao"), doc.get("nivel"), doc.get("ano_eleicao"),
+                doc.get("vigencia_inicio"), doc.get("vigencia_fim"), doc.get("escopo"),
+                doc.get("sg_uf"), doc.get("nm_candidato"), doc.get("cargo"), doc.get("tags"),
+                doc.get("fonte_orgao"), doc.get("id_base_raw"), meta_json, doc_id,
+            ),
+        )
+    else:
+        doc_id = uuid.uuid4()
+        conn.execute(
+            """
+            INSERT INTO acervo.documento (
+              id, tipo, titulo, descricao, nivel, ano_eleicao,
+              vigencia_inicio, vigencia_fim, escopo, sg_uf, sg_partido,
+              nm_candidato, cargo, tags, fonte_orgao, sha256, id_base_raw, meta
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+            """,
+            (
+                doc_id, doc["tipo"], doc["titulo"], doc.get("descricao"), doc.get("nivel"),
+                doc.get("ano_eleicao"), doc.get("vigencia_inicio"), doc.get("vigencia_fim"),
+                doc.get("escopo"), doc.get("sg_uf"), doc.get("sg_partido"), doc.get("nm_candidato"),
+                doc.get("cargo"), doc.get("tags"), doc.get("fonte_orgao"), dig, doc.get("id_base_raw"),
+                meta_json,
+            ),
+        )
+    chunks = doc.get("chunks") or []
+    if chunks:
+        conn.executemany(
+            """
+            INSERT INTO acervo.chunk (documento_id, ord, secao, texto, token_count)
+            VALUES (%s,%s,%s,%s,%s)
+            """,
+            [
+                (doc_id, ch["ord"], ch.get("secao", ""), ch["texto"], max(1, len(ch["texto"]) // 4))
+                for ch in chunks
+            ],
+        )
+
+
+def _garantir_planos_uf(
+    conn: psycopg.Connection,
+    *,
+    uf: str | None,
+    cargo: str | None,
+    ano_eleicao: int | None,
+) -> int:
+    """Auto-carrega planos de governo do MESMO pleito (uf+cargo+ano) a partir do seed
+    empacotado em mcp/seed/, só se o acervo ainda não tiver nenhum documento desse
+    pleito. Idempotente (upsert por sha256) — nunca duplica, nunca mexe em outro pleito."""
+    if not uf or not cargo or not ano_eleicao:
+        return 0
+    try:
+        n = conn.execute(
+            """
+            SELECT count(*) FROM acervo.documento
+            WHERE tipo='plano_governo' AND lower(cargo)=lower(%s)
+              AND upper(sg_uf)=upper(%s) AND ano_eleicao=%s
+            """,
+            (cargo, uf, ano_eleicao),
+        ).fetchone()
+        if n and int(n[0] or 0) > 0:
+            return 0
+    except Exception:
+        return 0
+    seed_path = _SEED_DIR / f"acervo_planos_{ano_eleicao}.jsonl"
+    if not seed_path.exists():
+        return 0
+    carregados = 0
+    try:
+        with seed_path.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    doc = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if doc.get("tipo") != "plano_governo":
+                    continue
+                if (doc.get("cargo") or "").lower() != cargo.lower():
+                    continue
+                if (doc.get("sg_uf") or "").upper() != uf.upper():
+                    continue
+                _upsert_documento_acervo(conn, doc)
+                carregados += 1
+    except Exception:
+        return carregados
+    return carregados
 
 _IG_LIXO = {
     "channel",
@@ -104,6 +223,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
 
     nome = st.get("nm_urna") or st.get("nm_candidato")
     uf = st.get("sg_uf")
+    uf_nome = UF_NOME.get((uf or "").strip().upper(), "") or (uf or "")
     cargo = st.get("cargo_label") or ""
     partido = st.get("sg_partido")
     sq = st.get("sq_candidato")
@@ -135,7 +255,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
             campanha_id,
             kind="pessoa",
             nome=nome,
-            query_news=f"{nome} {uf or ''} {cargo}".strip(),
+            query_news=f"{nome} {uf_nome} {cargo}".strip(),
             handle_ig=None,
             is_own=False,
             papel="proprio",
@@ -178,7 +298,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                     campanha_id,
                     kind="adversario",
                     nome=nm,
-                    query_news=f"{nm} {uf or ''}".strip(),
+                    query_news=f"{nm} {uf_nome}".strip(),
                     handle_ig=None,
                     is_own=False,
                     papel="adversario",
@@ -197,7 +317,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 campanha_id,
                 kind="perfil",
                 nome=f"@{h}" + (" (oficial)" if proprio else f" ({nm})" if nm else ""),
-                query_news="" if proprio else f"{nm} {uf or ''}".strip(),
+                query_news="" if proprio else f"{nm} {uf_nome}".strip(),
                 handle_ig=h,
                 is_own=proprio,
                 papel="proprio" if proprio else "adversario",
@@ -228,7 +348,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                     campanha_id,
                     kind="adversario",
                     nome=nome_adv,
-                    query_news=f"{nome_adv} {uf or ''}",
+                    query_news=f"{nome_adv} {uf_nome}",
                     handle_ig=None,
                     is_own=False,
                     papel="adversario",
@@ -237,7 +357,17 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 added += 1
                 stats["adversario"] += 1
 
-    # Temas + keywords a partir do plano de governo (só sq exato — sem cruzar nome).
+    # Temas + keywords a partir do plano de governo (sq exato, com fallback por nome
+    # restrito ao mesmo pleito — ver temas_plano.py).
+    ano_eleicao = st.get("ano_ref") or 2026
+    cargo_key = (cargo or "").strip().lower() or None
+    try:
+        stats["planos_carregados"] = _garantir_planos_uf(
+            conn, uf=uf, cargo=cargo_key, ano_eleicao=ano_eleicao
+        )
+    except Exception:
+        stats["planos_carregados"] = 0
+
     extracao: dict[str, Any] = {
         "temas_proprio": [],
         "temas_adversario": [],
@@ -252,6 +382,8 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
             sq_candidato=str(sq) if sq else None,
             nm_candidato=nome,
             adversarios=adversarios_sq,
+            cargo=cargo_key,
+            ano_eleicao=ano_eleicao,
         )
     except Exception:
         pass
@@ -298,4 +430,5 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
         "stats": stats,
         "plano_chars": extracao.get("plano_chars") or 0,
         "plano_proprio_encontrado": bool(extracao.get("plano_chars")),
+        "plano_diag": extracao.get("diag") or {},
     }
