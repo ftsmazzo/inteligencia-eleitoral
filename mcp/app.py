@@ -889,7 +889,17 @@ def _campanha_id_do_token(authorization: str | None, x_token: str | None) -> str
                 """,
                 (got,),
             ).fetchone()
-        return row[0] if row and row[0] else None
+            if row and row[0]:
+                return row[0]
+            row2 = conn.execute(
+                """
+                SELECT campanha_id::text
+                FROM ctl.apura_usuario
+                WHERE mcp_token = %s AND ativo IS TRUE
+                """,
+                (got,),
+            ).fetchone()
+            return row2[0] if row2 and row2[0] else None
     except Exception:
         return None
 
@@ -1539,28 +1549,35 @@ async def _mcp_exec(
     allowed = mcp_packs.PACKS.get(pack)
     if not allowed or name not in allowed:
         raise HTTPException(400, f"tool inexistente neste catálogo ({pack})")
+    campanha_uuid = None
+    if pack in ("rag", "contexto"):
+        campanha_uuid = _campanha_id_do_token(authorization, x_token)
     if name == "catalogo":
         if pack == "fato":
             return catalogo(authorization, x_token)
         return mcp_packs.catalogo_pack(pack)
     if name == "escopo":
         with db() as conn:
-            return mcp_packs.montar_escopo(conn)
+            return mcp_packs.montar_escopo(conn, campanha_id=campanha_uuid)
     if name == "memoria":
         body_m = MemoriaMcpIn(**p)
         with db() as conn:
             return mcp_packs.montar_memoria(
-                conn, query=body_m.query, tipo=body_m.tipo, limite=body_m.limite
+                conn,
+                campanha_id=campanha_uuid,
+                query=body_m.query,
+                tipo=body_m.tipo,
+                limite=body_m.limite,
             )
     if name == "temas_plano":
         with db() as conn:
-            return mcp_packs.montar_temas(conn)
+            return mcp_packs.montar_temas(conn, campanha_id=campanha_uuid)
     if name == "radar":
         with db() as conn:
-            return mcp_packs.montar_radar(conn)
+            return mcp_packs.montar_radar(conn, campanha_id=campanha_uuid)
     if name in ("acervo", "acervo_comparar") and pack == "rag":
         with db() as conn:
-            status = mcp_packs.resolver_campanha_amapa(conn)
+            status = mcp_packs.resolver_campanha(conn, campanha_id=campanha_uuid)
         if not status:
             return mcp_packs.campanha_ausente()
         p = mcp_packs.filtrar_rag(p, status)

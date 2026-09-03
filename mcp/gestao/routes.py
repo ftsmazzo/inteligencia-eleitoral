@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from apura.auth import decodificar_jwt, usuario_por_id
-from gestao import dossie, equipe, memoria, motor, nominata_query, paineis, seed_radar, store
+from gestao import dossie, equipe, memoria, motor, mcps_page, nominata_query, paineis, seed_radar, store
 from gestao.schema import ensure_schema
 
 router = APIRouter(prefix="/apura/api/gestao", tags=["gestao"])
@@ -372,6 +372,21 @@ def listar_paineis(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, 
     cid, _ = _campanha(user)
     with _db() as conn:
         return paineis.catalogo(store.get_status(conn, cid))
+
+
+@router.get("/mcps")
+def pagina_mcps(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    """Página MCPs da campanha do usuário: links, token e o que cada um entrega."""
+    cid, _ = _campanha(user)
+    uid, email, mcp_token = user
+    with _db() as conn:
+        return mcps_page.montar_pagina(
+            conn,
+            campanha_id=cid,
+            usuario_id=uid,
+            email=email,
+            mcp_token=mcp_token or "",
+        )
 
 
 @router.get("/paineis/mapa-forca")

@@ -117,29 +117,49 @@ def catalogo_pack(pack: str) -> dict[str, Any]:
     }
 
 
-def resolver_campanha_amapa(conn: psycopg.Connection) -> dict[str, Any] | None:
+def resolver_campanha(
+    conn: psycopg.Connection,
+    *,
+    campanha_id: str | None = None,
+    slug: str | None = None,
+) -> dict[str, Any] | None:
+    """Resolve escopo: UUID do token, slug explícito, ou default Amapá."""
     from gestao import store
 
+    if campanha_id:
+        status = store.get_status(conn, campanha_id)
+        return status or None
+    nome = (slug or SLUG_AMAPA).strip()
     row = conn.execute(
         """
         SELECT id::text FROM ctl.campanha
         WHERE nome = %s AND ativo IS TRUE
         """,
-        (SLUG_AMAPA,),
+        (nome,),
     ).fetchone()
     if not row or not row[0]:
         return None
-    status = store.get_status(conn, row[0])
-    return status or None
+    return store.get_status(conn, row[0]) or None
 
 
-def campanha_ausente() -> dict[str, Any]:
+def resolver_campanha_amapa(conn: psycopg.Connection) -> dict[str, Any] | None:
+    return resolver_campanha(conn, slug=SLUG_AMAPA)
+
+
+def campanha_ausente(slug: str | None = None) -> dict[str, Any]:
+    nome = slug or SLUG_AMAPA
     return {
         "status": "vazio",
         "nivel": "indicio",
-        "campanha": SLUG_AMAPA,
-        "aviso": "Campanha governador-amapa inexistente neste banco.",
+        "campanha": nome,
+        "aviso": f"Campanha {nome} inexistente neste banco.",
     }
+
+
+def _slug_status(status: dict[str, Any] | None) -> str:
+    if not status:
+        return SLUG_AMAPA
+    return (status.get("campanha_nome") or SLUG_AMAPA).strip() or SLUG_AMAPA
 
 
 def filtrar_rag(params: dict[str, Any], status: dict[str, Any]) -> dict[str, Any]:
@@ -152,18 +172,19 @@ def filtrar_rag(params: dict[str, Any], status: dict[str, Any]) -> dict[str, Any
     return p
 
 
-def montar_escopo(conn: psycopg.Connection) -> dict[str, Any]:
+def montar_escopo(conn: psycopg.Connection, *, campanha_id: str | None = None) -> dict[str, Any]:
     from gestao import memoria
     from radar import store as radar_store
 
-    status = resolver_campanha_amapa(conn)
+    status = resolver_campanha(conn, campanha_id=campanha_id)
     if not status:
         return campanha_ausente()
+    slug = _slug_status(status)
     radar_cfg = radar_store.get_config(conn, status["campanha_id"])
     return {
         "status": "ok",
         "nivel": "referencia",
-        "campanha": SLUG_AMAPA,
+        "campanha": slug,
         "escopo": {
             "candidato": status.get("nm_urna") or status.get("nm_candidato"),
             "nome": status.get("nm_candidato"),
@@ -185,15 +206,17 @@ def montar_escopo(conn: psycopg.Connection) -> dict[str, Any]:
 def montar_memoria(
     conn: psycopg.Connection,
     *,
+    campanha_id: str | None = None,
     query: str | None = None,
     tipo: str | None = None,
     limite: int = 20,
 ) -> dict[str, Any]:
     from gestao import memoria
 
-    status = resolver_campanha_amapa(conn)
+    status = resolver_campanha(conn, campanha_id=campanha_id)
     if not status:
         return campanha_ausente()
+    slug = _slug_status(status)
     linhas = memoria.listar(
         conn,
         status["campanha_id"],
@@ -204,18 +227,19 @@ def montar_memoria(
     return {
         "status": "ok" if linhas else "vazio",
         "nivel": "indicio",
-        "campanha": SLUG_AMAPA,
+        "campanha": slug,
         "linhas": linhas,
         "aviso": "Memória da campanha. Não use como cifra de urna.",
     }
 
 
-def montar_temas(conn: psycopg.Connection) -> dict[str, Any]:
+def montar_temas(conn: psycopg.Connection, *, campanha_id: str | None = None) -> dict[str, Any]:
     from gestao import temas_plano
 
-    status = resolver_campanha_amapa(conn)
+    status = resolver_campanha(conn, campanha_id=campanha_id)
     if not status:
         return campanha_ausente()
+    slug = _slug_status(status)
     cargo_key = None
     from gestao.store import CARGOS
 
@@ -235,23 +259,24 @@ def montar_temas(conn: psycopg.Connection) -> dict[str, Any]:
     return {
         "status": "ok" if (dados.get("temas_proprio") or dados.get("plano_chars")) else "vazio",
         "nivel": "indicio",
-        "campanha": SLUG_AMAPA,
+        "campanha": slug,
         **dados,
         "aviso": "Temas extraídos do plano (heurística). Não é resultado de urna.",
     }
 
 
-def montar_radar(conn: psycopg.Connection) -> dict[str, Any]:
+def montar_radar(conn: psycopg.Connection, *, campanha_id: str | None = None) -> dict[str, Any]:
     from radar import store as radar_store
 
-    status = resolver_campanha_amapa(conn)
+    status = resolver_campanha(conn, campanha_id=campanha_id)
     if not status:
         return campanha_ausente()
+    slug = _slug_status(status)
     cfg = radar_store.get_config(conn, status["campanha_id"])
     return {
         "status": "ok" if (cfg.get("candidato_nome") or cfg.get("uf")) else "vazio",
         "nivel": "indicio",
-        "campanha": SLUG_AMAPA,
+        "campanha": slug,
         "config": cfg,
         "aviso": "Configuração do Radar, não o feed. Clima em tempo real: tool clima no MCP /mcp.",
     }

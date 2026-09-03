@@ -276,8 +276,50 @@
       display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
       background: var(--brand-light); color: var(--brand); margin-bottom: 12px; text-transform: uppercase;
     }
-    #radar-view, #gestao-view, #paineis-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
-    #radar-view.on, #gestao-view.on, #paineis-view.on { display: flex; }
+    #radar-view, #gestao-view, #paineis-view, #mcps-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+    #radar-view.on, #gestao-view.on, #paineis-view.on, #mcps-view.on { display: flex; }
+    .mcps-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 48px; }
+    .mcps-hero h3 { font-family: Fraunces, serif; font-size: 1.55rem; color: var(--brand); margin-bottom: 6px; }
+    .mcps-hero p { color: var(--muted); max-width: 640px; line-height: 1.5; margin-bottom: 8px; }
+    .mcps-meta { font-size: 0.85rem; color: var(--muted); margin-bottom: 18px; }
+    .mcps-token-box {
+      background: var(--accent-light); border: 1px solid #e8d48a; border-radius: 16px;
+      padding: 16px 18px; margin-bottom: 20px; max-width: 820px;
+    }
+    .mcps-token-box strong { display: block; margin-bottom: 6px; }
+    .mcps-token-box code {
+      display: block; word-break: break-all; background: #fff; border-radius: 10px;
+      padding: 12px; font-size: 0.82rem; margin: 8px 0 12px; border: 1px solid var(--line);
+    }
+    .mcps-token-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .mcps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: 22px; }
+    .mcp-card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+      padding: 18px; box-shadow: var(--shadow-sm);
+    }
+    .mcp-card h4 { font-size: 1.05rem; margin-bottom: 4px; color: var(--brand); }
+    .mcp-card .tag {
+      display: inline-block; font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; padding: 3px 8px; border-radius: 999px; margin-bottom: 8px;
+    }
+    .mcp-card .tag.cifra { background: var(--brand-light); color: var(--brand); }
+    .mcp-card .tag.texto { background: #f1f5f9; color: var(--muted); }
+    .mcp-card .one { color: var(--ink); font-size: 0.92rem; margin-bottom: 10px; line-height: 1.45; }
+    .mcp-card ul { margin: 0 0 10px 1.1em; padding: 0; color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
+    .mcp-card .url {
+      font-size: 0.75rem; word-break: break-all; color: var(--brand-mid); margin: 8px 0;
+      background: var(--surface-2); padding: 8px 10px; border-radius: 8px;
+    }
+    .mcp-card .quando { font-size: 0.82rem; color: var(--ink); margin-top: 8px; }
+    .mcps-ext, .mcps-cfg {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+      padding: 18px; max-width: 820px; margin-bottom: 16px;
+    }
+    .mcps-ext h4, .mcps-cfg h4 { margin-bottom: 8px; color: var(--brand); }
+    .mcps-cfg pre {
+      background: #0c1222; color: #e2e8f0; padding: 14px; border-radius: 12px;
+      overflow: auto; font-size: 0.75rem; max-height: 280px; margin: 10px 0;
+    }
     .equipe-box { max-width: 920px; margin-top: 18px; }
     .equipe-form { display: grid; grid-template-columns: 1.4fr 1fr 120px auto; gap: 8px; align-items: end; margin: 12px 0; }
     @media (max-width: 900px) { .equipe-form { grid-template-columns: 1fr; } }
@@ -743,6 +785,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
           Painéis
         </button>
+        <button type="button" id="btn-view-mcps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          MCPs
+        </button>
       </div>
       <div class="sess-list" id="sess-list"></div>
       <div class="sidebar-actions">
@@ -990,6 +1036,12 @@
           <button type="button" data-painel="socio">Socioeconômico × voto</button>
         </div>
         <div class="paineis-body" id="paineis-body"><p class="hint">Carregando…</p></div>
+      </div>
+
+      <div id="mcps-view">
+        <div class="mcps-wrap" id="mcps-body">
+          <p class="hint">Carregando MCPs da campanha…</p>
+        </div>
       </div>
     </div>
   </div>
@@ -1713,25 +1765,116 @@
       const radar = wh === 'radar';
       const gestao = wh === 'gestao';
       const paineis = wh === 'paineis';
+      const mcps = wh === 'mcps';
       $('btn-view-chat').classList.toggle('on', chat);
       $('btn-view-radar').classList.toggle('on', radar);
       $('btn-view-gestao').classList.toggle('on', gestao);
       $('btn-view-paineis').classList.toggle('on', paineis);
+      $('btn-view-mcps').classList.toggle('on', mcps);
       $('chat-view').classList.toggle('off', !chat);
       $('radar-view').classList.toggle('on', radar);
       $('gestao-view').classList.toggle('on', gestao);
       $('paineis-view').classList.toggle('on', paineis);
+      $('mcps-view').classList.toggle('on', mcps);
       if (radar) loadRadarMeta().then(() => showRadarTab(radarTab));
       if (gestao) loadGestao();
       if (paineis) loadPainel(painelTab);
+      if (mcps) loadMcps();
     }
     $('btn-view-chat').addEventListener('click', () => setView('chat'));
     $('btn-view-radar').addEventListener('click', () => setView('radar'));
     $('btn-view-gestao').addEventListener('click', () => setView('gestao'));
     $('btn-view-paineis').addEventListener('click', () => setView('paineis'));
+    $('btn-view-mcps').addEventListener('click', () => setView('mcps'));
     document.querySelectorAll('[data-goto-gestao]').forEach(a => {
       a.addEventListener('click', (e) => { e.preventDefault(); setView('gestao'); });
     });
+
+    let mcpsCache = null;
+    async function loadMcps() {
+      const box = $('mcps-body');
+      if (!box) return;
+      box.innerHTML = '<p class="hint">Carregando…</p>';
+      try {
+        mcpsCache = await api('/gestao/mcps');
+        renderMcps(mcpsCache);
+      } catch (e) {
+        box.innerHTML = '<p class="hint">Não foi possível carregar os MCPs: ' + esc(e.message) + '</p>';
+      }
+    }
+
+    function renderMcps(d) {
+      const box = $('mcps-body');
+      if (!box || !d) return;
+      const c = d.campanha || {};
+      const packs = d.pacotes || [];
+      const ext = d.mcp_externo || {};
+      const cards = packs.map(p => {
+        const lista = (p.entrega || []).map(x => '<li>' + esc(x) + '</li>').join('');
+        const nao = (p.nao_entrega || []).map(x => '<li>' + esc(x) + '</li>').join('');
+        return (
+          '<article class="mcp-card">' +
+            '<span class="tag ' + (p.cifra ? 'cifra' : 'texto') + '">' + (p.cifra ? 'Números oficiais' : 'Texto / contexto') + '</span>' +
+            '<h4>' + esc(p.nome) + '</h4>' +
+            '<p class="one">' + esc(p.em_uma_frase || p.para_que) + '</p>' +
+            '<strong style="font-size:0.8rem">O que entrega</strong><ul>' + lista + '</ul>' +
+            (nao ? '<strong style="font-size:0.8rem">O que não faz</strong><ul>' + nao + '</ul>' : '') +
+            '<div class="url">' + esc(p.url) + '</div>' +
+            '<button type="button" class="link-btn" data-copy-url="' + esc(p.url) + '">copiar link</button> ' +
+            '<p class="quando"><strong>Quando usar:</strong> ' + esc(p.quando_usar || '') + '</p>' +
+          '</article>'
+        );
+      }).join('');
+      const cfg = JSON.stringify(d.config_cursor || {}, null, 2);
+      const comoExt = (ext.como || []).map(x => '<li>' + esc(x) + '</li>').join('');
+      box.innerHTML =
+        '<div class="mcps-hero">' +
+          '<h3>MCPs desta campanha</h3>' +
+          '<p>Três conexões prontas para Cursor, Claude ou outra IA. Mesmo token nos três. Números só pelo <strong>MCP Fato</strong>.</p>' +
+          '<p class="mcps-meta">' +
+            esc(c.candidato || 'Campanha') +
+            (c.cargo ? ' · ' + esc(c.cargo) : '') +
+            (c.uf ? ' · ' + esc(c.uf) : '') +
+            (c.ano_ref ? ' · ' + esc(String(c.ano_ref)) : '') +
+            (c.nome ? ' · ' + esc(c.nome) : '') +
+          '</p>' +
+        '</div>' +
+        '<div class="mcps-token-box">' +
+          '<strong>Token da equipe (já pronto)</strong>' +
+          '<p style="font-size:0.85rem;color:var(--muted);margin:0">' + esc(d.token_aviso || '') + '</p>' +
+          '<code id="mcps-token">' + esc(d.token || '(sem token)') + '</code>' +
+          '<div class="mcps-token-actions">' +
+            '<button type="button" class="btn-add" id="btn-copy-token">Copiar token</button>' +
+            '<button type="button" class="link-btn" id="btn-copy-cfg">Copiar JSON (Cursor)</button>' +
+            (d.guia_url ? '<a class="link-btn" href="' + esc(d.guia_url) + '" target="_blank" rel="noopener">Abrir guia público</a>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="mcps-grid">' + cards + '</div>' +
+        '<div class="mcps-ext">' +
+          '<h4>Dá para conectar MCP de outra aplicação?</h4>' +
+          '<p style="color:var(--muted);font-size:0.92rem;line-height:1.5">' + esc(ext.resumo || '') + '</p>' +
+          (comoExt ? '<ul style="margin:10px 0 0 1.1em;color:var(--muted);font-size:0.88rem">' + comoExt + '</ul>' : '') +
+        '</div>' +
+        '<div class="mcps-cfg">' +
+          '<h4>JSON para colar no Cursor / Claude</h4>' +
+          '<p style="font-size:0.85rem;color:var(--muted)">' + esc((d.como_conectar && d.como_conectar.cursor) || '') + '</p>' +
+          '<pre id="mcps-cfg-json">' + esc(cfg) + '</pre>' +
+        '</div>';
+
+      $('btn-copy-token')?.addEventListener('click', () => {
+        const t = d.token || '';
+        if (!t) return;
+        navigator.clipboard.writeText(t).then(() => alert('Token copiado.')).catch(() => {});
+      });
+      $('btn-copy-cfg')?.addEventListener('click', () => {
+        navigator.clipboard.writeText(cfg).then(() => alert('JSON copiado.')).catch(() => {});
+      });
+      box.querySelectorAll('[data-copy-url]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          navigator.clipboard.writeText(btn.getAttribute('data-copy-url') || '').then(() => alert('Link copiado.')).catch(() => {});
+        });
+      });
+    }
 
     function syncAmbienteBanner() {
       const st = gestaoStatus && gestaoStatus.ambiente_status;
