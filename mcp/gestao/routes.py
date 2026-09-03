@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from apura.auth import decodificar_jwt, usuario_por_id
-from gestao import nominata_query, store
+from gestao import dossie, memoria, motor, nominata_query, seed_radar, store
 from gestao.schema import ensure_schema
 
 router = APIRouter(prefix="/apura/api/gestao", tags=["gestao"])
@@ -85,18 +85,27 @@ class AmbienteIn(BaseModel):
     status: str = Field(description="rascunho|configurando|pronto")
 
 
+class DossieIn(BaseModel):
+    html: str = Field(min_length=40)
+    nome_arquivo: str = Field(default="dossie.html", max_length=200)
+
+
 @router.get("/status")
 def status(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     cid, _ = _campanha(user)
     with _db() as conn:
-        return store.get_status(conn, cid)
+        st = store.get_status(conn, cid)
+        st["papel"] = store.papel_usuario(conn, user[0])
+        return st
 
 
 @router.post("/iniciar")
 def iniciar(body: IniciarIn, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     with _db() as conn:
         try:
-            return store.iniciar(conn, user[0], body.nome)
+            st = store.iniciar(conn, user[0], body.nome)
+            st["papel"] = store.papel_usuario(conn, user[0])
+            return st
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
@@ -132,7 +141,7 @@ def escopo(body: EscopoIn, user: tuple[str, str, str] = Depends(_usuario)) -> di
             st = store.iniciar(conn, user[0], None)
             cid = st["campanha_id"]
         try:
-            return store.salvar_escopo(
+            out = store.salvar_escopo(
                 conn,
                 cid,
                 ano_ref=body.ano_ref,
@@ -144,6 +153,8 @@ def escopo(body: EscopoIn, user: tuple[str, str, str] = Depends(_usuario)) -> di
                 sg_partido=body.sg_partido,
                 nr_candidato=body.nr_candidato,
             )
+            out["papel"] = store.papel_usuario(conn, user[0])
+            return out
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
@@ -154,5 +165,81 @@ def ambiente(body: AmbienteIn, user: tuple[str, str, str] = Depends(_usuario)) -
     with _db() as conn:
         try:
             return store.set_ambiente(conn, cid, body.status)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/motor")
+def rodar_motor(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        try:
+            result = motor.rodar_motor(conn, cid)
+            try:
+                seed = seed_radar.seed_radar_da_gestao(conn, cid)
+                result["radar_seed"] = seed
+            except Exception as exc:
+                result["radar_seed"] = {"ok": False, "erro": str(exc)}
+            return result
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(502, f"Motor falhou ({exc})") from exc
+
+
+@router.get("/memoria")
+def listar_memoria(
+    tipo: str | None = None,
+    limite: int = 50,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        itens = memoria.listar(conn, cid, tipo=tipo, limite=limite)
+        return {"itens": itens, "total": len(itens)}
+
+
+@router.post("/dossie")
+def upload_dossie(body: DossieIn, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    if len(body.html) > 4_000_000:
+        raise HTTPException(400, "HTML grande demais (máx. ~4 MB)")
+    with _db() as conn:
+        try:
+            return dossie.ingerir_html(
+                conn, cid, body.html, nome_arquivo=body.nome_arquivo or "dossie.html"
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/seed-radar")
+def seed_radar_ep(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        try:
+            return seed_radar.seed_radar_da_gestao(conn, cid)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/liberar")
+def liberar(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        papel = store.papel_usuario(conn, user[0])
+        if papel != "coordenador":
+            # S4: qualquer user da campanha pode liberar se ainda não há coordenador formal
+            try:
+                conn.execute(
+                    "UPDATE ctl.apura_usuario SET papel = 'coordenador' WHERE id = %s::uuid",
+                    (user[0],),
+                )
+            except Exception:
+                pass
+        try:
+            st = store.liberar_equipe(conn, cid)
+            st["papel"] = "coordenador"
+            return st
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc

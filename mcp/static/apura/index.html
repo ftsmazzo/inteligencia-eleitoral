@@ -1543,22 +1543,34 @@
         return;
       }
 
-      // step 5 resumo
+      // step 5 resumo + motor + dossiê + liberar
       const c = draft.candidato || {};
-      card.innerHTML = '<h4>Resumo do escopo</h4><p class="hint">Confirme e grave. Depois você poderá marcar o ambiente como pronto.</p>' +
+      const memN = gestaoStatus.memoria_blocos || 0;
+      card.innerHTML = '<h4>Ambiente da campanha</h4><p class="hint">Grave o escopo, rode o motor (Base de Verdade + Perfil), envie o dossiê HTML e libere a equipe.</p>' +
         '<div class="gestao-resumo">' +
-        '<div><span>Ano</span><b>' + esc(draft.ano) + '</b></div>' +
-        '<div><span>Cargo</span><b>' + esc(draft.cargo_label || draft.cd_cargo) + '</b></div>' +
-        '<div><span>UF</span><b>' + esc(draft.sg_uf) + '</b></div>' +
+        '<div><span>Ano</span><b>' + esc(draft.ano || gestaoStatus.ano_ref) + '</b></div>' +
+        '<div><span>Cargo</span><b>' + esc(draft.cargo_label || gestaoStatus.cargo_label || draft.cd_cargo) + '</b></div>' +
+        '<div><span>UF</span><b>' + esc(draft.sg_uf || gestaoStatus.sg_uf || '—') + '</b></div>' +
         '<div><span>Candidato</span><b>' + esc(c.nm_urna || c.nm_candidato || gestaoStatus.nm_urna) + '</b></div>' +
         '<div><span>Partido</span><b>' + esc(c.sg_partido || gestaoStatus.sg_partido || '—') + '</b></div>' +
+        '<div><span>Memória</span><b>' + memN + ' blocos · perfil ' + (gestaoStatus.tem_perfil ? 'ok' : 'pendente') +
+        ' · dossiê ' + (gestaoStatus.tem_dossie ? 'ok' : 'pendente') + '</b></div>' +
+        '<div><span>Equipe</span><b>' + (gestaoStatus.equipe_liberada ? 'liberada' : 'ainda fechada') + '</b></div>' +
         '</div>' +
-        '<p class="hint">Próximos sprints: Base de Verdade, Perfil de Eleitor e upload de dossiê.</p>' +
         '<div class="gestao-actions">' +
         '<button type="button" class="secondary" id="g-back">Voltar</button>' +
         '<button type="button" class="primary" id="g-save">Salvar escopo</button>' +
-        '<button type="button" class="secondary" id="g-pronto">Marcar ambiente pronto</button>' +
-        '</div>';
+        '<button type="button" class="primary" id="g-motor">Gerar Base + Perfil</button>' +
+        '</div>' +
+        '<div style="margin-top:16px"><label>Dossiê HTML (opcional)</label>' +
+        '<input type="file" id="g-dossie" accept=".html,text/html" />' +
+        '<div class="gestao-actions"><button type="button" class="secondary" id="g-upload">Inserir dossiê na memória</button></div></div>' +
+        '<div class="gestao-actions">' +
+        '<button type="button" class="secondary" id="g-mem">Ver memória</button>' +
+        '<button type="button" class="secondary" id="g-seed">Seed Radar</button>' +
+        '<button type="button" class="primary" id="g-liberar">Liberar equipe (pronto)</button>' +
+        '</div>' +
+        '<div id="g-mem-box" style="margin-top:12px;font-size:0.85rem;color:var(--muted)"></div>';
       $('g-back').onclick = () => { gestaoStep = 4; renderGestaoStep(); };
       $('g-save').onclick = async () => {
         $('gestao-err').textContent = '';
@@ -1570,11 +1582,11 @@
             sg_partido: gestaoStatus.sg_partido,
             nr_candidato: gestaoStatus.nr_candidato,
           };
-          const ufSave = (draft.cd_cargo === 1 || draft.sg_uf === 'BR') ? null : draft.sg_uf;
+          const ufSave = (draft.cd_cargo === 1 || draft.sg_uf === 'BR') ? null : (draft.sg_uf || gestaoStatus.sg_uf);
           gestaoStatus = await api('/gestao/escopo', {
             method: 'POST',
             body: JSON.stringify({
-              ano_ref: draft.ano,
+              ano_ref: draft.ano || gestaoStatus.ano_ref || 2026,
               cd_cargo: draft.cd_cargo || gestaoStatus.cd_cargo,
               sg_uf: ufSave,
               sq_candidato: cand.sq_candidato,
@@ -1587,26 +1599,64 @@
           $('gestao-status-pill').textContent = gestaoStatus.ambiente_status;
           syncAmbienteBanner();
           $('gestao-err').textContent = 'Escopo salvo.';
+          renderGestaoStep();
           return true;
         } catch (e) { $('gestao-err').textContent = e.message; return false; }
       };
-      $('g-pronto').onclick = async () => {
+      $('g-motor').onclick = async () => {
+        $('gestao-err').textContent = 'Rodando motor…';
         try {
-          if (draft.candidato && draft.candidato.sq_candidato) {
-            const ok = await $('g-save').onclick();
-            if (ok === false) return;
+          if (draft.candidato && draft.candidato.sq_candidato && !gestaoStatus.sq_candidato) {
+            await $('g-save').onclick();
           }
-          if (!gestaoStatus.sq_candidato) {
-            $('gestao-err').textContent = 'Salve o escopo antes de marcar pronto.';
-            return;
-          }
-          gestaoStatus = await api('/gestao/ambiente', {
-            method: 'POST',
-            body: JSON.stringify({ status: 'pronto' }),
-          });
+          const r = await api('/gestao/motor', { method: 'POST', body: '{}' });
+          gestaoStatus = r.status || await api('/gestao/status');
           $('gestao-status-pill').textContent = gestaoStatus.ambiente_status;
           syncAmbienteBanner();
-          $('gestao-err').textContent = 'Ambiente marcado como pronto.';
+          $('gestao-err').textContent = 'Motor ok: ' + (r.blocos || 0) + ' blocos, concorrentes ' + (r.concorrentes || 0) +
+            ', radar +' + ((r.radar_seed && r.radar_seed.added) || 0);
+          renderGestaoStep();
+        } catch (e) { $('gestao-err').textContent = e.message; }
+      };
+      $('g-upload').onclick = async () => {
+        const f = $('g-dossie').files && $('g-dossie').files[0];
+        if (!f) { $('gestao-err').textContent = 'Escolha um arquivo HTML'; return; }
+        try {
+          const html = await f.text();
+          const data = await api('/gestao/dossie', {
+            method: 'POST',
+            body: JSON.stringify({ html: html, nome_arquivo: f.name || 'dossie.html' }),
+          });
+          gestaoStatus = await api('/gestao/status');
+          $('gestao-err').textContent = 'Dossiê indexado: ' + (data.blocos || 0) + ' blocos';
+          renderGestaoStep();
+        } catch (e) { $('gestao-err').textContent = e.message; }
+      };
+      $('g-mem').onclick = async () => {
+        try {
+          const d = await api('/gestao/memoria?limite=30');
+          $('g-mem-box').innerHTML = (d.itens || []).map(it =>
+            '<div style="border-bottom:1px solid var(--line);padding:8px 0"><b>' + esc(it.tipo) + '</b> — ' +
+            esc(it.titulo) + '<br><span>' + esc((it.corpo || '').slice(0, 220)) + '…</span></div>'
+          ).join('') || 'Memória vazia.';
+        } catch (e) { $('gestao-err').textContent = e.message; }
+      };
+      $('g-seed').onclick = async () => {
+        try {
+          const r = await api('/gestao/seed-radar', { method: 'POST', body: '{}' });
+          $('gestao-err').textContent = 'Radar seed: +' + (r.added || 0) + ' alvos';
+        } catch (e) { $('gestao-err').textContent = e.message; }
+      };
+      $('g-liberar').onclick = async () => {
+        try {
+          if (draft.candidato && draft.candidato.sq_candidato && !gestaoStatus.sq_candidato) {
+            await $('g-save').onclick();
+          }
+          gestaoStatus = await api('/gestao/liberar', { method: 'POST', body: '{}' });
+          $('gestao-status-pill').textContent = gestaoStatus.ambiente_status;
+          syncAmbienteBanner();
+          $('gestao-err').textContent = 'Equipe liberada. Ambiente pronto.';
+          renderGestaoStep();
         } catch (e) { $('gestao-err').textContent = e.message; }
       };
     }

@@ -50,7 +50,8 @@ def get_status(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         """
         SELECT id::text, nome, ambiente_status, ano_ref, cd_cargo, sg_uf,
                sq_candidato, nm_candidato, nm_urna, sg_partido, nr_candidato,
-               escopo_json, atualizado_em
+               escopo_json, atualizado_em,
+               COALESCE(equipe_liberada, false)
         FROM ctl.campanha
         WHERE id = %s::uuid
         """,
@@ -86,6 +87,7 @@ def get_status(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         "nr_candidato": row[10],
         "escopo_json": escopo or {},
         "atualizado_em": row[12].isoformat() if row[12] else None,
+        "equipe_liberada": bool(row[13]),
         "tem_perfil": bool(mem and mem[0]),
         "tem_dossie": bool(mem and mem[1]),
         "memoria_blocos": int(mem[2] or 0) if mem else 0,
@@ -140,6 +142,14 @@ def iniciar(
             """,
             (cid,),
         )
+    # quem inicia vira coordenador
+    try:
+        conn.execute(
+            "UPDATE ctl.apura_usuario SET papel = 'coordenador' WHERE id = %s::uuid",
+            (usuario_id,),
+        )
+    except Exception:
+        pass
     return get_status(conn, cid)
 
 
@@ -214,8 +224,10 @@ def set_ambiente(conn: psycopg.Connection, campanha_id: str, status: str) -> dic
             """,
             (campanha_id,),
         ).fetchone()
-        if not row or not all(row):
-            raise ValueError("Defina o escopo (ano, cargo, UF, candidato) antes de marcar pronto")
+        if not row or row[0] is None or row[1] is None or row[3] is None:
+            raise ValueError("Defina o escopo (ano, cargo, candidato) antes de marcar pronto")
+        if int(row[1]) != 1 and not row[2]:
+            raise ValueError("UF obrigatória para este cargo")
     conn.execute(
         """
         UPDATE ctl.campanha
@@ -225,3 +237,31 @@ def set_ambiente(conn: psycopg.Connection, campanha_id: str, status: str) -> dic
         (st, campanha_id),
     )
     return get_status(conn, campanha_id)
+
+
+def liberar_equipe(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
+    st = get_status(conn, campanha_id)
+    if not st.get("sq_candidato"):
+        raise ValueError("Salve o escopo antes de liberar a equipe")
+    conn.execute(
+        """
+        UPDATE ctl.campanha
+        SET ambiente_status = 'pronto',
+            equipe_liberada = TRUE,
+            atualizado_em = now()
+        WHERE id = %s::uuid
+        """,
+        (campanha_id,),
+    )
+    return get_status(conn, campanha_id)
+
+
+def papel_usuario(conn: psycopg.Connection, usuario_id: str) -> str:
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(papel, 'equipe') FROM ctl.apura_usuario WHERE id = %s::uuid",
+            (usuario_id,),
+        ).fetchone()
+        return (row[0] if row else "equipe") or "equipe"
+    except Exception:
+        return "equipe"

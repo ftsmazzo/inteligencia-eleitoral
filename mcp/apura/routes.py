@@ -44,7 +44,8 @@ if not (_SQL / "patch_apura.sql").exists():
 _PATCH = _SQL / "patch_apura.sql"
 _PATCH_TOKENS = _SQL / "patch_mcp_tokens.sql"
 _PATCH_GESTAO = _SQL / "patch_gestao.sql"
-_SCHEMA_VER = 8
+_PATCH_GESTAO_V2 = _SQL / "patch_gestao_v2.sql"
+_SCHEMA_VER = 9
 _READY_VER = 0
 
 
@@ -72,6 +73,8 @@ def _ensure_schema() -> None:
             conn.execute(_PATCH.read_text(encoding="utf-8"))
             if _PATCH_GESTAO.exists():
                 conn.execute(_PATCH_GESTAO.read_text(encoding="utf-8"))
+            if _PATCH_GESTAO_V2.exists():
+                conn.execute(_PATCH_GESTAO_V2.read_text(encoding="utf-8"))
     except psycopg.Error as exc:
         raise HTTPException(503, f"Falha ao preparar banco Apura ({exc.pgcode or 'erro'})") from exc
     _READY_VER = _SCHEMA_VER
@@ -421,11 +424,23 @@ async def chat(
             skills_txt = (SKILL_WAR_ROOM_DEFAULT + "\n\n" + skills_txt).strip()
         if body.modo_narrativa and SKILL_NARRATIVA_DEFAULT not in skills_txt:
             skills_txt = (skills_txt + "\n\n" + SKILL_NARRATIVA_DEFAULT).strip()
+        campanha_ctx = ""
+        try:
+            from gestao import memoria as gestao_memoria
+            from gestao.store import campanha_do_usuario
+
+            camp = campanha_do_usuario(conn, uid)
+            if camp:
+                campanha_ctx = gestao_memoria.texto_para_apura(conn, camp[0])
+        except Exception:
+            campanha_ctx = ""
 
     async def stream_and_save() -> Any:
         final_content = ""
         final_dados = None
-        async for chunk in executar_chat(historico, mcp_token, skills_txt, body.modo_narrativa):
+        async for chunk in executar_chat(
+            historico, mcp_token, skills_txt, body.modo_narrativa, campanha_ctx
+        ):
             yield chunk
             if chunk.startswith("event: done"):
                 line = chunk.split("\n", 1)[1]

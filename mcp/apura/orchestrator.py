@@ -153,14 +153,17 @@ def _pediu_relatorio_html(mensagem: str) -> bool:
     return bool(_RELATORIO_RE.search(mensagem or ""))
 
 
-def _system_redator(skills_text: str) -> str:
-    if not skills_text.strip():
-        return SYSTEM_WRITER
-    return (
-        f"{SYSTEM_WRITER}\n\n"
-        "--- SKILLS DO USUÁRIO (tom, estrutura e estilo; não alteram fontes de dados) ---\n"
-        f"{skills_text.strip()}"
-    )
+def _system_redator(skills_text: str, campanha_ctx: str = "") -> str:
+    base = SYSTEM_WRITER
+    if skills_text.strip():
+        base = (
+            f"{base}\n\n"
+            "--- SKILLS DO USUÁRIO (tom, estrutura e estilo; não alteram fontes de dados) ---\n"
+            f"{skills_text.strip()}"
+        )
+    if campanha_ctx.strip():
+        base = f"{base}\n\n{campanha_ctx.strip()}"
+    return base
 
 
 def _entrada_redator(
@@ -254,12 +257,20 @@ async def executar_chat(
     mcp_token: str,
     skills_text: str = "",
     modo_narrativa: bool = False,
+    campanha_ctx: str = "",
 ) -> AsyncIterator[str]:
     """Gera eventos SSE: status, token, done (opcional relatorio_html), error."""
     pergunta = _ultima_pergunta(historico)
     orch_system = SYSTEM_ORCHESTRATOR
     if modo_narrativa:
         orch_system = f"{SYSTEM_ORCHESTRATOR}\n\n{NARRATIVA_ORCHESTRATOR}"
+    if campanha_ctx.strip():
+        orch_system = (
+            f"{orch_system}\n\n"
+            "Há conhecimento de campanha (perfil/dossiê/base). Use-o para orientar "
+            "estratégia e narrativa; números oficiais continuam só via tools.\n"
+            f"{campanha_ctx.strip()[:6000]}"
+        )
     orch_messages: list[dict[str, Any]] = [{"role": "system", "content": orch_system}]
     orch_messages.extend(_historico_orquestrador(historico))
 
@@ -305,7 +316,7 @@ async def executar_chat(
 
         yield _sse("status", {"fase": "redigindo"})
         writer_messages = [
-            {"role": "system", "content": _system_redator(skills_text)},
+            {"role": "system", "content": _system_redator(skills_text, campanha_ctx)},
             {"role": "user", "content": _entrada_redator(pergunta, historico, tool_log, notas)},
         ]
         full_parts: list[str] = []
