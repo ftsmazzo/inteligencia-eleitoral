@@ -241,7 +241,15 @@ def resetar_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]
     """Apaga memória/radar da campanha e zera escopo — recomeço limpo."""
     conn.execute("DELETE FROM ctl.campanha_memoria WHERE campanha_id = %s::uuid", (campanha_id,))
     try:
+        conn.execute("DELETE FROM ctl.radar_item WHERE campanha_id = %s::uuid", (campanha_id,))
+    except Exception:
+        pass
+    try:
         conn.execute("DELETE FROM ctl.radar_alvo WHERE campanha_id = %s::uuid", (campanha_id,))
+    except Exception:
+        pass
+    try:
+        conn.execute("DELETE FROM ctl.radar_run WHERE campanha_id = %s::uuid", (campanha_id,))
     except Exception:
         pass
     try:

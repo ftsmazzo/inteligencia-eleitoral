@@ -24,10 +24,13 @@ def _handle_from_url(url: str) -> tuple[str | None, str | None]:
         path = urlparse(u if "://" in u else "https://" + u).path.strip("/")
     except Exception:
         path = ""
-    parts = [p for p in path.split("/") if p]
+    junk = {"p", "reel", "reels", "tv", "stories", "explore", "accounts", "direct", "about", "share", "channel"}
+    parts = [p for p in path.split("/") if p and p.lower() not in junk]
     handle = parts[0] if parts else None
     if handle:
-        handle = handle.lstrip("@").split("?")[0]
+        handle = handle.lstrip("@").split("?")[0].strip()
+    if not handle or handle.lower() in junk | {"www", "instagram"}:
+        handle = None
     if "instagram.com" in low:
         return "instagram", handle
     if "twitter.com" in low or "x.com" in low:

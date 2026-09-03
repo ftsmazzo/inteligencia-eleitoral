@@ -311,6 +311,38 @@ def sync_tse(ano: int = 2026, user: tuple[str, str, str] = Depends(_usuario)) ->
         return seed_alvos.sync_tse_redes(conn, cid, cnome, ano=ano)
 
 
+@router.post("/reset")
+def reset_radar(
+    reseeds: bool = True,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    """Limpa stream + alvos + runs da campanha e (opcional) reseedeia a partir da Gestão."""
+    cid, cnome = _campanha(user)
+    with _db() as conn:
+        limpo = store.resetar_radar(conn, cid)
+        seed = None
+        if reseeds:
+            from gestao import seed_radar as gestao_seed
+
+            try:
+                seed = gestao_seed.seed_radar_da_gestao(conn, cid)
+            except ValueError as exc:
+                # Sem escopo Gestão: só deixa limpo + config mínima
+                seed = {"ok": False, "erro": str(exc)}
+                seed_alvos.ensure_default_alvo(conn, cid, cnome)
+        else:
+            seed_alvos.ensure_default_alvo(conn, cid, cnome)
+        alvos = store.list_alvos(conn, cid, ativo_only=False)
+        return {
+            "ok": True,
+            "campanha": cnome,
+            "limpo": limpo,
+            "seed": seed,
+            "alvos": alvos,
+            "n_alvos": len(alvos),
+        }
+
+
 @router.post("/coletar")
 def coletar(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     cid, cnome = _campanha(user)

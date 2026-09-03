@@ -20,31 +20,19 @@ DEFAULT_EIXOS = [
     ("Mobilizacao", "voto, urna, afiliacao, adesao, evento de campanha"),
 ]
 
-# Templates iniciais por slug de campanha (editáveis na UI)
+# Config mínima por slug (só nome/UF/cargo). Alvos vêm do seed Gestão, não de placeholder.
 _SEED_TEMPLATES: dict[str, dict[str, Any]] = {
     "governador-amapa": {
-        "candidato_nome": "Clécio Luís",
+        "candidato_nome": "CLÉCIO",
         "uf": "AP",
         "cargo": "governador",
-        "alvos": [
-            {"kind": "pessoa", "nome": "Clécio Luís", "query_news": "Clécio Luís Amapá", "papel": "proprio", "prioridade": 1},
-            {"kind": "perfil", "nome": "Instagram oficial (preencher @)", "handle_ig": None, "is_own": True, "papel": "proprio", "prioridade": 1},
-            {"kind": "adversario", "nome": "Adversário 1 (editar)", "query_news": "", "papel": "adversario", "prioridade": 2},
-            {"kind": "tema", "nome": "Segurança pública", "query_news": "segurança Amapá", "papel": "tema", "prioridade": 3},
-            {"kind": "tema", "nome": "Emprego e renda", "query_news": "emprego Amapá", "papel": "tema", "prioridade": 3},
-        ],
+        "alvos": [],
     },
     "alfredo-gaspar": {
         "candidato_nome": "Alfredo Gaspar",
         "uf": "AL",
         "cargo": "deputado federal",
-        "alvos": [
-            {"kind": "pessoa", "nome": "Alfredo Gaspar", "query_news": "Alfredo Gaspar", "papel": "proprio", "prioridade": 1},
-            {"kind": "perfil", "nome": "Instagram oficial (preencher @)", "handle_ig": None, "is_own": True, "papel": "proprio", "prioridade": 1},
-            {"kind": "adversario", "nome": "Adversário 1 (editar)", "query_news": "", "papel": "adversario", "prioridade": 2},
-            {"kind": "tema", "nome": "Segurança pública", "query_news": "segurança pública", "papel": "tema", "prioridade": 3},
-            {"kind": "tema", "nome": "Cenário eleitoral 2026", "query_news": "eleições 2026", "papel": "cenario", "prioridade": 4},
-        ],
+        "alvos": [],
     },
 }
 
@@ -773,23 +761,21 @@ def seed_template(conn: psycopg.Connection, campanha_id: str, campanha_nome: str
     if existing:
         return {"created": False, "alvos": len(existing), "config": cfg}
 
+    # Sem placeholder de adversário/@ vazio — seed real vem da Gestão (POST /gestao/seed-radar).
     created = 0
-    seeds = (tpl or {}).get("alvos") or [
-        {
-            "kind": "pessoa",
-            "nome": cfg.get("candidato_nome") or humanize_campanha_nome(campanha_nome),
-            "query_news": cfg.get("candidato_nome") or humanize_campanha_nome(campanha_nome),
-            "papel": "proprio",
-            "prioridade": 1,
-        },
-        {
-            "kind": "perfil",
-            "nome": "Instagram oficial (preencher @)",
-            "is_own": True,
-            "papel": "proprio",
-            "prioridade": 1,
-        },
-    ]
+    seeds = list((tpl or {}).get("alvos") or [])
+    if not seeds:
+        nome = (cfg.get("candidato_nome") or humanize_campanha_nome(campanha_nome)).strip()
+        if nome:
+            seeds = [
+                {
+                    "kind": "pessoa",
+                    "nome": nome,
+                    "query_news": f"{nome} {cfg.get('uf') or ''}".strip(),
+                    "papel": "proprio",
+                    "prioridade": 1,
+                }
+            ]
     for s in seeds:
         upsert_alvo(
             conn,
@@ -805,3 +791,30 @@ def seed_template(conn: psycopg.Connection, campanha_id: str, campanha_nome: str
         )
         created += 1
     return {"created": True, "alvos": created, "config": cfg}
+
+
+def resetar_radar(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
+    """Apaga stream, alvos e runs da campanha. Mantém eixos. Config permanece (nome/UF)."""
+    n_itens = conn.execute(
+        "DELETE FROM ctl.radar_item WHERE campanha_id = %s::uuid",
+        (campanha_id,),
+    ).rowcount
+    n_alvos = conn.execute(
+        "DELETE FROM ctl.radar_alvo WHERE campanha_id = %s::uuid",
+        (campanha_id,),
+    ).rowcount
+    try:
+        n_runs = conn.execute(
+            "DELETE FROM ctl.radar_run WHERE campanha_id = %s::uuid",
+            (campanha_id,),
+        ).rowcount
+    except Exception:
+        n_runs = 0
+    ensure_eixos(conn, campanha_id)
+    return {
+        "ok": True,
+        "itens_apagados": int(n_itens or 0),
+        "alvos_apagados": int(n_alvos or 0),
+        "runs_apagados": int(n_runs or 0),
+        "config": get_config(conn, campanha_id),
+    }

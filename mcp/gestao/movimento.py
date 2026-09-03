@@ -41,10 +41,17 @@ def _handle_ig(url: str) -> str | None:
         path = urlparse(url if "://" in url else "https://" + url).path.strip("/")
     except Exception:
         return None
-    parts = [p for p in path.split("/") if p and p not in ("p", "reel", "tv")]
+    parts = [p for p in path.split("/") if p and p.lower() not in (
+        "p", "reel", "reels", "tv", "stories", "explore", "accounts", "direct", "about", "share", "channel"
+    )]
     if not parts:
         return None
-    return parts[0].lstrip("@").split("?")[0]
+    h = parts[0].lstrip("@").split("?")[0].strip()
+    if not h or h.lower() in {"channel", "share", "www", "instagram"}:
+        return None
+    if len(h) < 2 or "/" in h:
+        return None
+    return h
 
 
 def _canal(url: str) -> str:

@@ -97,6 +97,8 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
                 if _existe(existentes, handle=h):
                     continue
+                if (h or "").lower() in {"channel", "share", "instagram", "www"}:
+                    continue
                 proprio = papel == "proprio"
                 radar_store.upsert_alvo(
                     conn,

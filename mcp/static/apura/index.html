@@ -590,6 +590,7 @@
             </form>
             <div class="radar-actions">
               <button type="button" id="btn-sync-tse">Tentar redes TSE</button>
+              <button type="button" class="secondary" id="btn-reset-radar" style="border-color:#c44;color:#c44">Limpar Radar e reseedeiar</button>
               <span id="sync-nota" style="font-size:0.8rem;color:var(--muted)"></span>
             </div>
             <div id="radar-alvos-list"></div>
@@ -1865,6 +1866,20 @@
         loadAlvos();
         loadRadarMeta();
       } catch (e) { $('sync-nota').textContent = e.message; }
+    });
+
+    $('btn-reset-radar').addEventListener('click', async () => {
+      if (!confirm('Apaga alvos, stream e coletas deste Radar e reseedeia a partir da Gestão. Continuar?')) return;
+      $('radar-err').textContent = 'Limpando Radar…';
+      try {
+        const r = await api('/radar/reset?reseeds=true', { method: 'POST', body: '{}' });
+        $('radar-err').textContent = 'Radar limpo: −' + ((r.limpo && r.limpo.alvos_apagados) || 0) +
+          ' alvos, −' + ((r.limpo && r.limpo.itens_apagados) || 0) + ' itens · reseed +' +
+          ((r.seed && r.seed.added) || 0) + ' · agora ' + (r.n_alvos || 0) + ' alvos.';
+        await loadRadarMeta();
+        loadAlvos();
+        if (radarTab === 'vivo') loadStream();
+      } catch (e) { $('radar-err').textContent = e.message; }
     });
 
     async function loadColeta() { await loadRadarMeta(); }
