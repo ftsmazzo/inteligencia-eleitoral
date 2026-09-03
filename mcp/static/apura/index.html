@@ -75,7 +75,7 @@
     .auth-err { color: var(--danger); font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
 
     /* App layout */
-    #app-screen { display: grid; grid-template-columns: 280px 1fr; height: 100dvh; max-height: 100dvh; overflow: hidden; }
+    #app-screen { display: grid; grid-template-columns: 332px 1fr; height: 100dvh; max-height: 100dvh; overflow: hidden; }
     @media (max-width: 768px) { #app-screen { grid-template-columns: 1fr; } .sidebar { display: none; } }
 
     .sidebar { background: var(--surface); border-right: 1px solid var(--line); display: flex; flex-direction: column;
@@ -206,10 +206,10 @@
     }
     .modo-narrativa input { width: auto; margin: 0; accent-color: var(--brand); }
     .modo-narrativa label { margin: 0; font-weight: 500; cursor: pointer; }
-    .nav-views { display: flex; gap: 4px; padding: 2px 16px 14px; }
+    .nav-views { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px 14px 14px; }
     .nav-views button {
-      flex: 1; min-width: 0; padding: 9px 8px; border-radius: 10px; border: 1px solid transparent;
-      background: var(--surface-2); font-weight: 650; font-size: 0.78rem; cursor: pointer; color: var(--muted);
+      min-width: 0; padding: 10px 8px; border-radius: 10px; border: 1px solid transparent;
+      background: var(--surface-2); font-weight: 650; font-size: 0.8rem; cursor: pointer; color: var(--muted);
       display: flex; align-items: center; justify-content: center; gap: 6px; transition: .15s var(--ease);
     }
     .nav-views button svg { width: 14px; height: 14px; flex-shrink: 0; }
@@ -296,13 +296,35 @@
     }
     .paineis-tabs button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
     .paineis-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 40px; }
-    .p-kpis { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 14px; }
+    .p-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 16px; }
+    @media (max-width: 1100px) { .p-kpis { grid-template-columns: 1fr 1fr; } }
     .p-kpi {
-      background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 120px;
+      background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px;
       box-shadow: var(--shadow-sm);
     }
-    .p-kpi b { display: block; font-family: Fraunces, serif; font-size: 1.2rem; color: var(--brand); }
+    .p-kpi b { display: block; font-family: Fraunces, serif; font-size: 1.55rem; color: var(--brand); line-height: 1.15; }
     .p-kpi span { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; font-weight: 650; }
+    .p-kpi em { display: block; font-style: normal; font-size: 0.8rem; color: var(--ink); margin-top: 8px; line-height: 1.4; font-weight: 550; }
+    .p-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+    @media (max-width: 980px) { .p-charts { grid-template-columns: 1fr; } }
+    .p-chart-card {
+      background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px 12px;
+      box-shadow: var(--shadow-sm); min-height: 290px;
+    }
+    .p-chart-card h4 { font-size: 0.86rem; margin-bottom: 6px; }
+    .p-chart-card p { font-size: 0.75rem; color: var(--muted); margin-bottom: 8px; line-height: 1.4; }
+    .p-decisoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    @media (max-width: 980px) { .p-decisoes { grid-template-columns: 1fr; } }
+    .p-decisao {
+      background: #fff; border: 1px solid var(--line); border-left: 4px solid var(--brand);
+      border-radius: 12px; padding: 12px 14px;
+    }
+    .p-decisao.disputar, .p-decisao.alta { border-left-color: var(--danger); }
+    .p-decisao.defender { border-left-color: var(--ok); }
+    .p-decisao h5 { font-size: 0.92rem; margin-bottom: 4px; }
+    .p-decisao p { font-size: 0.8rem; color: var(--muted); line-height: 1.4; }
+    details.p-detalhe { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+    details.p-detalhe summary { cursor: pointer; font-weight: 650; color: var(--brand); font-size: 0.88rem; }
     .p-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
     .p-filters label { margin: 0; font-size: 0.75rem; }
     .p-filters input, .p-filters select { margin: 0; padding: 8px 10px; max-width: 220px; }
@@ -990,6 +1012,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="/apura/assets/painel.js"></script>
   <script>
     const API = '/apura/api';
@@ -2585,16 +2608,17 @@
       const rows = (equipeCache.itens || []).map(u => {
         const acoes = pode
           ? ('<button type="button" class="link-btn" data-eq-senha="' + u.id + '">nova senha</button>' +
-             '<button type="button" class="link-btn danger" data-eq-ativo="' + u.id + '" data-on="' + (u.ativo ? '0' : '1') + '">' +
-             (u.ativo ? 'desativar' : 'ativar') + '</button>')
+             '<button type="button" class="link-btn danger" data-eq-del="' + u.id + '">excluir</button>')
           : '—';
         return '<tr><td>' + esc(u.nome || '—') + '</td><td>' + esc(u.email) + '</td>' +
           '<td>' + esc(u.papel) + '</td><td>' + (u.ativo ? 'ativo' : 'inativo') + '</td>' +
           '<td>' + (u.quota_ilimitada ? 'ilimitada' : fmtN(u.quota_max)) + '</td>' +
           '<td class="row-actions">' + acoes + '</td></tr>';
       }).join('');
+      const nLimp = (equipeCache.limpeza_testes && equipeCache.limpeza_testes.n) || 0;
       box.innerHTML = '<h4>Usuários da equipe</h4>' +
-        '<p class="hint">O coordenador gera logins da campanha. Senha aparece só na criação/reset — anote e envie no privado.</p>' +
+        '<p class="hint">O coordenador gera logins da campanha. Senha aparece só na criação/reset. Contas demo/teste são removidas automaticamente.</p>' +
+        (nLimp ? ('<div class="senha-flash">Removidos ' + nLimp + ' usuário(s) de teste/demo desta campanha.</div>') : '') +
         (pode
           ? ('<div class="equipe-form">' +
              '<div><label>E-mail</label><input id="eq-email" type="email" placeholder="pessoa@campanha.com" /></div>' +
@@ -2632,13 +2656,11 @@
           } catch (e) { $('eq-flash').innerHTML = '<p class="gestao-err">' + esc(e.message) + '</p>'; }
         };
       });
-      box.querySelectorAll('[data-eq-ativo]').forEach(btn => {
+      box.querySelectorAll('[data-eq-del]').forEach(btn => {
         btn.onclick = async () => {
+          if (!confirm('Excluir este usuário de vez?')) return;
           try {
-            await api('/gestao/equipe/' + btn.getAttribute('data-eq-ativo') + '/ativo', {
-              method: 'POST',
-              body: JSON.stringify({ ativo: btn.getAttribute('data-on') === '1' }),
-            });
+            await api('/gestao/equipe/' + btn.getAttribute('data-eq-del'), { method: 'DELETE' });
             loadEquipe();
           } catch (e) { $('eq-flash').innerHTML = '<p class="gestao-err">' + esc(e.message) + '</p>'; }
         };
@@ -2647,6 +2669,23 @@
 
     let painelTab = 'mapa';
     let painelSort = { key: 'eleitores', dir: -1 };
+    let _charts = [];
+    const C = { brand: '#0d4f4a', brand2: '#12665f', accent: '#c98a1c', danger: '#b91c1c', ok: '#15803d', muted: '#8a92a5' };
+    function killCharts() {
+      _charts.forEach(ch => { try { ch.destroy(); } catch (_) {} });
+      _charts = [];
+    }
+    function mkChart(id, cfg) {
+      if (typeof Chart === 'undefined') return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (!Chart.defaults._apura) {
+        Chart.defaults.font.family = 'DM Sans, system-ui, sans-serif';
+        Chart.defaults.color = C.muted;
+        Chart.defaults._apura = true;
+      }
+      _charts.push(new Chart(el, cfg));
+    }
     document.querySelectorAll('[data-painel]').forEach(btn => {
       btn.addEventListener('click', () => {
         painelTab = btn.getAttribute('data-painel');
@@ -2654,7 +2693,6 @@
         loadPainel(painelTab);
       });
     });
-
     function filterRows(rows, q) {
       const s = (q || '').trim().toLowerCase();
       if (!s) return rows;
@@ -2670,7 +2708,7 @@
         return String(va).localeCompare(String(vb), 'pt') * dir;
       });
     }
-    function bindSort(keyDefault) {
+    function bindSort() {
       document.querySelectorAll('#paineis-body th[data-sort]').forEach(th => {
         th.onclick = () => {
           const k = th.getAttribute('data-sort');
@@ -2680,9 +2718,15 @@
         };
       });
     }
-
+    function chartOpts(extra) {
+      return Object.assign({
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } }
+      }, extra || {});
+    }
     async function loadPainel(tab) {
       const box = $('paineis-body');
+      killCharts();
       box.innerHTML = '<p class="hint">Consultando a base oficial…</p>';
       try {
         if (tab === 'mapa') await renderMapaForca(box);
@@ -2692,130 +2736,123 @@
         box.innerHTML = '<p class="gestao-err">' + esc(e.message) + '</p>';
       }
     }
-
     async function renderMapaForca(box) {
       const ano = ($('p-ano-el') && $('p-ano-el').value) || '2022';
-      const q = ($('p-q') && $('p-q').value) || '';
-      const pri = ($('p-pri') && $('p-pri').value) || '';
       const d = await api('/gestao/paineis/mapa-forca?ano_eleitorado=' + encodeURIComponent(ano));
       if (d.status === 'vazio') { box.innerHTML = '<p class="hint">' + esc(d.mensagem || 'Sem dados') + '</p>'; return; }
-      $('paineis-sub').textContent = (d.candidato || '') + ' · ' + (d.cargo || '') + ' · ' + (d.uf || '') + ' · ' + (d.fonte || '');
-      let rows = filterRows(d.linhas || [], q);
-      if (pri) rows = rows.filter(r => r.prioridade === pri);
-      rows = sortRows(rows, painelSort.key || 'eleitores', painelSort.dir);
+      $('paineis-sub').textContent = (d.candidato || '') + ' · ' + (d.cargo || '') + ' ' + (d.uf || '') + ' — onde o voto pesa';
+      const all = d.linhas || [];
       const k = d.kpis || {};
+      const pesoMetro = k.eleitorado_total ? Math.round(1000 * (k.metro_eleitores || 0) / k.eleitorado_total) / 10 : 0;
+      const topEl = sortRows(all, 'eleitores', -1).slice(0, 8);
+      const counts = { disputar: 0, defender: 0, virada: 0, manter: 0 };
+      all.forEach(r => { if (counts[r.prioridade] != null) counts[r.prioridade]++; });
+      const disputar = sortRows(all.filter(r => r.prioridade === 'disputar'), 'eleitores', -1).slice(0, 4);
+      const defender = sortRows(all.filter(r => r.prioridade === 'defender'), 'eleitores', -1).slice(0, 4);
       box.innerHTML =
-        '<p class="p-nota">' + esc(d.nota || '') + ' Decisão: <b>disputar</b> = muito eleitor + vitória adversária em 2022; <b>defender</b> = base grande nossa.</p>' +
+        '<div class="p-filters"><div><label>Eleitorado</label><select id="p-ano-el"><option value="2022">2022</option><option value="2024">2024</option><option value="2018">2018</option></select></div></div>' +
         '<div class="p-kpis">' +
-        '<div class="p-kpi"><b>' + fmtN(k.municipios) + '</b><span>Municípios</span></div>' +
-        '<div class="p-kpi"><b>' + fmtN(k.eleitorado_total) + '</b><span>Eleitorado ' + esc(String(d.ano_eleitorado)) + '</span></div>' +
-        '<div class="p-kpi"><b>' + fmtN(k.metro_eleitores) + '</b><span>Macapá+Santana</span></div>' +
-        '<div class="p-kpi"><b>' + fmtN(k.disputar) + '</b><span>Disputar</span></div>' +
-        '<div class="p-kpi"><b>' + fmtN(k.defender) + '</b><span>Defender</span></div></div>' +
-        '<div class="p-filters">' +
-        '<div><label>Buscar município</label><input id="p-q" value="' + esc(q) + '" placeholder="Macapá, interior…" /></div>' +
-        '<div><label>Eleitorado</label><select id="p-ano-el"><option value="2022">2022</option><option value="2024">2024</option><option value="2018">2018</option></select></div>' +
-        '<div><label>Prioridade</label><select id="p-pri"><option value="">todas</option><option value="disputar">disputar</option><option value="defender">defender</option><option value="virada">virada</option><option value="manter">manter</option></select></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.eleitorado_total) + '</b><span>Eleitorado ' + esc(String(d.ano_eleitorado)) + '</span><em>' + fmtPct(pesoMetro) + ' está na região metropolitana (Macapá + Santana).</em></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.disputar) + '</b><span>Municípios para disputar</span><em>Muito eleitor e vitória adversária em 2022 — aqui o esforço rende mais.</em></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.defender) + '</b><span>Bases para defender</span><em>Onde o nosso já venceu e o eleitorado é grande — não abandonar.</em></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.municipios) + '</b><span>Municípios no mapa</span><em>Último turno de governador 2018 e 2022, sem rateio.</em></div></div>' +
+        '<div class="p-charts">' +
+        '<div class="p-chart-card"><h4>Como priorizar o território</h4><p>Quantos municípios em cada decisão.</p><div style="height:240px"><canvas id="ch-prio"></canvas></div></div>' +
+        '<div class="p-chart-card"><h4>Onde o eleitorado se concentra</h4><p>Os 8 maiores colégios — agenda finita começa aqui.</p><div style="height:240px"><canvas id="ch-peso"></canvas></div></div>' +
+        '<div class="p-chart-card"><h4>Nosso % em 2022 nos maiores</h4><p>Quanto da urna de governador ficou conosco.</p><div style="height:240px"><canvas id="ch-nosso"></canvas></div></div>' +
+        '<div class="p-chart-card"><h4>Metrópole × interior</h4><p>Peso do eleitorado, não número de municípios.</p><div style="height:240px"><canvas id="ch-reg"></canvas></div></div>' +
         '</div>' +
-        '<table class="p-table"><thead><tr>' +
-        '<th data-sort="municipio">Município</th><th data-sort="regiao">Região</th>' +
-        '<th data-sort="eleitores">Eleitores</th><th data-sort="peso_eleitorado_pct">Peso</th>' +
-        '<th>Gov 2018</th><th>Gov 2022</th><th data-sort="nosso_2022_pct">Nosso 2022</th>' +
-        '<th data-sort="prioridade">Prioridade</th><th>O que fazer</th></tr></thead><tbody>' +
-        rows.map(r => {
-          const g18 = r.gov_2018 || {}; const g22 = r.gov_2022 || {};
-          return '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + esc(r.regiao) + '</td>' +
-            '<td>' + fmtN(r.eleitores) + '</td><td>' + barPct(r.peso_eleitorado_pct) + fmtPct(r.peso_eleitorado_pct) + '</td>' +
-            '<td>' + esc(g18.nome || '—') + (g18.pct != null ? ' · ' + fmtPct(g18.pct) : '') + '</td>' +
-            '<td>' + esc(g22.nome || '—') + (g22.pct != null ? ' · ' + fmtPct(g22.pct) : '') + '</td>' +
-            '<td>' + (r.nosso_2022_pct != null ? barPct(r.nosso_2022_pct) + fmtPct(r.nosso_2022_pct) : '—') + '</td>' +
-            '<td>' + prioBadge(r.prioridade) + '</td><td class="acao-cell">' + esc(r.acao) + '</td></tr>';
-        }).join('') + '</tbody></table>';
+        '<h4 style="margin:4px 0 10px">Agenda desta semana</h4>' +
+        '<div class="p-decisoes">' +
+        disputar.map(r => '<article class="p-decisao disputar"><h5>Disputar · ' + esc(r.municipio) + '</h5><p>' + fmtN(r.eleitores) + ' eleitores · nosso 2022 ' + fmtPct(r.nosso_2022_pct) + ' · ' + esc(r.acao) + '</p></article>').join('') +
+        defender.map(r => '<article class="p-decisao defender"><h5>Defender · ' + esc(r.municipio) + '</h5><p>' + fmtN(r.eleitores) + ' eleitores · nosso 2022 ' + fmtPct(r.nosso_2022_pct) + ' · ' + esc(r.acao) + '</p></article>').join('') +
+        '</div>' +
+        '<details class="p-detalhe"><summary>Tabela município a município</summary>' +
+        '<table class="p-table"><thead><tr><th data-sort="municipio">Município</th><th>Região</th><th data-sort="eleitores">Eleitores</th><th>Gov 2018</th><th>Gov 2022</th><th data-sort="nosso_2022_pct">Nosso %</th><th>Prioridade</th></tr></thead><tbody>' +
+        all.map(r => {
+          const g18 = r.gov_2018 || {}, g22 = r.gov_2022 || {};
+          return '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + esc(r.regiao) + '</td><td>' + fmtN(r.eleitores) + '</td>' +
+            '<td>' + esc(g18.nome || '—') + '</td><td>' + esc(g22.nome || '—') + '</td><td>' + fmtPct(r.nosso_2022_pct) + '</td>' +
+            '<td>' + prioBadge(r.prioridade) + '</td></tr>';
+        }).join('') + '</tbody></table></details>';
       $('p-ano-el').value = String(d.ano_eleitorado || '2022');
-      $('p-pri').value = pri;
-      $('p-q').addEventListener('change', () => loadPainel('mapa'));
       $('p-ano-el').addEventListener('change', () => loadPainel('mapa'));
-      $('p-pri').addEventListener('change', () => loadPainel('mapa'));
       bindSort();
+      mkChart('ch-prio', { type: 'doughnut', data: { labels: ['Disputar', 'Defender', 'Virada', 'Manter'], datasets: [{ data: [counts.disputar, counts.defender, counts.virada, counts.manter], backgroundColor: [C.danger, C.ok, C.accent, C.muted] }] }, options: chartOpts() });
+      mkChart('ch-peso', { type: 'bar', data: { labels: topEl.map(r => r.municipio), datasets: [{ label: 'Eleitores', data: topEl.map(r => r.eleitores || 0), backgroundColor: C.brand }] }, options: chartOpts({ indexAxis: 'y', plugins: { legend: { display: false } } }) });
+      mkChart('ch-nosso', { type: 'bar', data: { labels: topEl.map(r => r.municipio), datasets: [{ label: '% nosso 2022', data: topEl.map(r => r.nosso_2022_pct || 0), backgroundColor: C.brand2 }] }, options: chartOpts({ plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }) });
+      const elMetro = all.filter(r => r.regiao === 'metropolitana').reduce((s, r) => s + (r.eleitores || 0), 0);
+      const elInt = all.filter(r => r.regiao !== 'metropolitana').reduce((s, r) => s + (r.eleitores || 0), 0);
+      mkChart('ch-reg', { type: 'doughnut', data: { labels: ['Metropolitana', 'Interior'], datasets: [{ data: [elMetro, elInt], backgroundColor: [C.brand, C.accent] }] }, options: chartOpts() });
     }
-
     async function renderPerfil(box) {
       const ano = ($('p-ano-el') && $('p-ano-el').value) || '2022';
-      const q = ($('p-q') && $('p-q').value) || '';
       const d = await api('/gestao/paineis/perfil-eleitorado?ano=' + encodeURIComponent(ano));
       if (d.status === 'vazio') { box.innerHTML = '<p class="hint">' + esc(d.mensagem || 'Sem dados') + '</p>'; return; }
-      $('paineis-sub').textContent = (d.uf || '') + ' · eleitorado ' + d.ano + ' · ' + (d.fonte || '');
-      let rows = filterRows(d.linhas || [], q);
-      rows = sortRows(rows, painelSort.key || 'eleitores', painelSort.dir);
+      $('paineis-sub').textContent = (d.uf || '') + ' · para quem a mensagem precisa falar em cada lugar';
+      const all = sortRows(d.linhas || [], 'eleitores', -1);
       const k = d.kpis || {};
+      const metro = all.filter(r => r.regiao === 'metropolitana');
+      const top = all.slice(0, 8);
       box.innerHTML =
-        '<p class="p-nota">' + esc(d.nota || '') + ' Use isso para tom de peça: interior com baixa escolaridade ≠ tom de Macapá.</p>' +
+        '<div class="p-filters"><div><label>Ano do perfil</label><select id="p-ano-el"><option value="2022">2022</option><option value="2024">2024</option><option value="2018">2018</option></select></div></div>' +
         '<div class="p-kpis">' +
-        '<div class="p-kpi"><b>' + fmtPct(k.pct_feminino_uf) + '</b><span>Mulheres (UF)</span></div>' +
-        '<div class="p-kpi"><b>' + fmtPct(k.pct_ate_29_uf) + '</b><span>Até 29 anos</span></div>' +
-        '<div class="p-kpi"><b>' + fmtPct(k.pct_baixa_esc_metro) + '</b><span>Baixa esc. metro</span></div>' +
-        '<div class="p-kpi"><b>' + fmtPct(k.pct_baixa_esc_interior) + '</b><span>Baixa esc. interior</span></div></div>' +
-        '<div class="p-filters">' +
-        '<div><label>Buscar</label><input id="p-q" value="' + esc(q) + '" /></div>' +
-        '<div><label>Ano do perfil</label><select id="p-ano-el"><option value="2022">2022</option><option value="2024">2024</option><option value="2018">2018</option></select></div>' +
+        '<div class="p-kpi"><b>' + fmtPct(k.pct_feminino_uf) + '</b><span>Mulheres na UF</span><em>Peça que só fala “o trabalhador” ignora metade da urna.</em></div>' +
+        '<div class="p-kpi"><b>' + fmtPct(k.pct_ate_29_uf) + '</b><span>Até 29 anos</span><em>Linguagem e canal (rede × rádio) mudam com essa faixa.</em></div>' +
+        '<div class="p-kpi"><b>' + fmtPct(k.pct_baixa_esc_metro) + '</b><span>Baixa escolaridade · metro</span><em>Macapá/Santana: tom urbano, serviço, mobilidade.</em></div>' +
+        '<div class="p-kpi"><b>' + fmtPct(k.pct_baixa_esc_interior) + '</b><span>Baixa escolaridade · interior</span><em>Interior: proximidade e frase curta — não copiar a capital.</em></div></div>' +
+        '<div class="p-charts">' +
+        '<div class="p-chart-card"><h4>Metro × interior (perfil)</h4><p>Quem é o eleitor em cada recorte.</p><div style="height:240px"><canvas id="ch-perfil"></canvas></div></div>' +
+        '<div class="p-chart-card"><h4>Jovens nos maiores municípios</h4><p>% até 29 anos — onde a peça nova/digital faz sentido.</p><div style="height:240px"><canvas id="ch-jovem"></canvas></div></div>' +
         '</div>' +
-        '<table class="p-table"><thead><tr>' +
-        '<th data-sort="municipio">Município</th><th data-sort="regiao">Região</th><th data-sort="eleitores">Eleitores</th>' +
-        '<th data-sort="pct_feminino">Mulheres</th><th data-sort="pct_ate_29">Até 29</th><th data-sort="pct_60_mais">60+</th>' +
-        '<th data-sort="pct_baixa_escolaridade">Baixa esc.</th><th data-sort="pct_superior_completo">Superior</th><th>Mensagem</th></tr></thead><tbody>' +
-        rows.map(r => '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + esc(r.regiao) + '</td><td>' + fmtN(r.eleitores) + '</td>' +
-          '<td>' + barPct(r.pct_feminino) + fmtPct(r.pct_feminino) + '</td>' +
-          '<td>' + barPct(r.pct_ate_29) + fmtPct(r.pct_ate_29) + '</td>' +
-          '<td>' + barPct(r.pct_60_mais) + fmtPct(r.pct_60_mais) + '</td>' +
-          '<td>' + barPct(r.pct_baixa_escolaridade) + fmtPct(r.pct_baixa_escolaridade) + '</td>' +
-          '<td>' + barPct(r.pct_superior_completo) + fmtPct(r.pct_superior_completo) + '</td>' +
-          '<td class="acao-cell">' + esc(r.mensagem) + '</td></tr>').join('') +
-        '</tbody></table>';
+        '<div class="p-decisoes">' +
+        '<article class="p-decisao defender"><h5>Mensagem metropolitana</h5><p>' + (metro[0] ? (metro.map(m => m.municipio).join(' e ') + ' concentram a urna urbana. Mulheres ' + fmtPct(k.pct_feminino_metro) + '.') : 'Sem recorte metro.') + '</p></article>' +
+        '<article class="p-decisao disputar"><h5>Mensagem do interior</h5><p>Baixa escolaridade ' + fmtPct(k.pct_baixa_esc_interior) + ' — peça de serviço e presença, não jargão de gabinete.</p></article>' +
+        '</div>' +
+        '<details class="p-detalhe"><summary>Tabela por município</summary><table class="p-table"><thead><tr>' +
+        '<th data-sort="municipio">Município</th><th>Região</th><th data-sort="eleitores">Eleitores</th><th>Mulheres</th><th>Até 29</th><th>60+</th><th>Baixa esc.</th><th>Superior</th></tr></thead><tbody>' +
+        all.map(r => '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + esc(r.regiao) + '</td><td>' + fmtN(r.eleitores) + '</td>' +
+          '<td>' + fmtPct(r.pct_feminino) + '</td><td>' + fmtPct(r.pct_ate_29) + '</td><td>' + fmtPct(r.pct_60_mais) + '</td>' +
+          '<td>' + fmtPct(r.pct_baixa_escolaridade) + '</td><td>' + fmtPct(r.pct_superior_completo) + '</td></tr>').join('') +
+        '</tbody></table></details>';
       $('p-ano-el').value = String(d.ano || '2022');
-      $('p-q').addEventListener('change', () => loadPainel('perfil'));
       $('p-ano-el').addEventListener('change', () => loadPainel('perfil'));
       bindSort();
+      mkChart('ch-perfil', { type: 'bar', data: { labels: ['Mulheres', 'Até 29', 'Baixa escolaridade'], datasets: [
+        { label: 'Metropolitana', data: [k.pct_feminino_metro, k.pct_ate_29_uf, k.pct_baixa_esc_metro], backgroundColor: C.brand },
+        { label: 'Interior', data: [k.pct_feminino_interior, k.pct_ate_29_uf, k.pct_baixa_esc_interior], backgroundColor: C.accent }
+      ] }, options: chartOpts({ scales: { y: { min: 0, max: 100 } } }) });
+      mkChart('ch-jovem', { type: 'bar', data: { labels: top.map(r => r.municipio), datasets: [{ label: '% até 29', data: top.map(r => r.pct_ate_29 || 0), backgroundColor: C.brand2 }] }, options: chartOpts({ indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { min: 0, max: 50 } } }) });
     }
-
     async function renderSocio(box) {
-      const q = ($('p-q') && $('p-q').value) || '';
-      const opp = ($('p-opp') && $('p-opp').value) || '';
       const d = await api('/gestao/paineis/socio-voto');
       if (d.status === 'vazio') { box.innerHTML = '<p class="hint">' + esc(d.mensagem || 'Sem dados') + '</p>'; return; }
-      $('paineis-sub').textContent = (d.candidato || '') + ' · ' + (d.uf || '') + ' · CadÚnico ' + (d.anomes_cadunico || '—') + ' · Bolsa ' + (d.anomes_bolsa || '—');
-      let rows = filterRows(d.linhas || [], q);
-      if (opp) rows = rows.filter(r => r.oportunidade === opp);
-      rows = sortRows(rows, painelSort.key || 'taxa_extrema_pct', painelSort.dir);
+      $('paineis-sub').textContent = (d.candidato || '') + ' · CadÚnico ' + (d.anomes_cadunico || '—') + ' · Bolsa ' + (d.anomes_bolsa || '—') + ' × urna 2022';
+      const all = d.linhas || [];
       const k = d.kpis || {};
+      const alta = sortRows(all.filter(r => r.oportunidade === 'alta'), 'taxa_extrema_pct', -1).slice(0, 5);
+      const topDor = sortRows(all.filter(r => r.taxa_extrema_pct != null), 'taxa_extrema_pct', -1).slice(0, 8);
+      const scatter = all.filter(r => r.taxa_extrema_pct != null && r.nosso_2022_pct != null);
       box.innerHTML =
-        '<p class="p-nota">' + esc(d.nota || '') + '</p>' +
         '<div class="p-kpis">' +
-        '<div class="p-kpi"><b>' + fmtN(k.familias_cadunico) + '</b><span>Famílias CadÚnico</span></div>' +
-        '<div class="p-kpi"><b>' + fmtN(k.familias_bolsa) + '</b><span>Famílias Bolsa</span></div>' +
-        '<div class="p-kpi"><b>' + fmtN(k.oportunidade_alta) + '</b><span>Oportunidade alta</span></div>' +
-        '<div class="p-kpi"><b>inexistente</b><span>Desemprego municipal</span></div></div>' +
-        '<div class="p-filters">' +
-        '<div><label>Buscar</label><input id="p-q" value="' + esc(q) + '" /></div>' +
-        '<div><label>Oportunidade</label><select id="p-opp"><option value="">todas</option><option value="alta">alta</option><option value="defender_pauta">defender pauta</option><option value="media">média</option><option value="outra_pauta">outra pauta</option></select></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.oportunidade_alta) + '</b><span>Oportunidade aberta</span><em>Dor alta no CadÚnico e urna 2022 ainda não consolidada a nosso favor.</em></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.familias_cadunico) + '</b><span>Famílias CadÚnico</span><em>Fonte MDS — snapshot da competência mais recente na base.</em></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.familias_bolsa) + '</b><span>Famílias Bolsa Família</span><em>Proteção social já chega; o discurso precisa lastro local.</em></div>' +
+        '<div class="p-kpi"><b>inexistente</b><span>Desemprego municipal</span><em>Não está nesta base. Usamos extrema pobreza do CadÚnico, sem chute.</em></div></div>' +
+        '<div class="p-charts">' +
+        '<div class="p-chart-card"><h4>Dor econômica × nosso % 2022</h4><p>Cada ponto é um município. Alto e à esquerda = eco para pauta de renda.</p><div style="height:260px"><canvas id="ch-scatter"></canvas></div></div>' +
+        '<div class="p-chart-card"><h4>Extrema pobreza (CadÚnico)</h4><p>Os 8 municípios com maior taxa.</p><div style="height:260px"><canvas id="ch-dor"></canvas></div></div>' +
         '</div>' +
-        '<table class="p-table"><thead><tr>' +
-        '<th data-sort="municipio">Município</th><th data-sort="regiao">Região</th>' +
-        '<th data-sort="cadunico_familias">CadÚnico</th><th data-sort="taxa_extrema_pct">Extrema pobreza</th>' +
-        '<th data-sort="bolsa_familias">Bolsa fam.</th><th data-sort="bolsa_repassado">Repasse R$</th>' +
-        '<th>Vencedor 2022</th><th data-sort="nosso_2022_pct">Nosso %</th><th>Leitura</th></tr></thead><tbody>' +
-        rows.map(r => '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + esc(r.regiao) + '</td>' +
-          '<td>' + fmtN(r.cadunico_familias) + '</td>' +
-          '<td>' + barPct(r.taxa_extrema_pct) + fmtPct(r.taxa_extrema_pct) + '</td>' +
-          '<td>' + fmtN(r.bolsa_familias) + '</td>' +
-          '<td>' + (r.bolsa_repassado != null ? fmtN(Math.round(r.bolsa_repassado)) : '—') + '</td>' +
-          '<td>' + esc(r.vencedor_2022 || '—') + (r.vencedor_pct != null ? ' · ' + fmtPct(r.vencedor_pct) : '') + '</td>' +
-          '<td>' + (r.nosso_2022_pct != null ? fmtPct(r.nosso_2022_pct) : '—') + '</td>' +
-          '<td class="acao-cell">' + prioBadge(r.oportunidade || '') + ' ' + esc(r.leitura) + '</td></tr>').join('') +
-        '</tbody></table>';
-      $('p-opp').value = opp;
-      $('p-q').addEventListener('change', () => loadPainel('socio'));
-      $('p-opp').addEventListener('change', () => loadPainel('socio'));
+        '<h4 style="margin:4px 0 10px">Onde abrir peça de renda/serviço</h4>' +
+        '<div class="p-decisoes">' + alta.map(r => '<article class="p-decisao alta"><h5>' + esc(r.municipio) + '</h5><p>Extrema pobreza ' + fmtPct(r.taxa_extrema_pct) + ' · nosso 2022 ' + fmtPct(r.nosso_2022_pct) + ' · ' + esc(r.leitura) + '</p></article>').join('') + '</div>' +
+        '<details class="p-detalhe"><summary>Tabela socioeconômica</summary><table class="p-table"><thead><tr>' +
+        '<th data-sort="municipio">Município</th><th>CadÚnico</th><th data-sort="taxa_extrema_pct">Extrema %</th><th>Bolsa</th><th>Vencedor 2022</th><th>Nosso %</th></tr></thead><tbody>' +
+        all.map(r => '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + fmtN(r.cadunico_familias) + '</td><td>' + fmtPct(r.taxa_extrema_pct) + '</td>' +
+          '<td>' + fmtN(r.bolsa_familias) + '</td><td>' + esc(r.vencedor_2022 || '—') + '</td><td>' + fmtPct(r.nosso_2022_pct) + '</td></tr>').join('') +
+        '</tbody></table></details>';
       bindSort();
+      mkChart('ch-scatter', { type: 'scatter', data: { datasets: [{ label: 'Municípios', data: scatter.map(r => ({ x: r.nosso_2022_pct, y: r.taxa_extrema_pct, mun: r.municipio })), backgroundColor: C.brand }] }, options: chartOpts({ plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => (c.raw.mun || '') + ': nosso ' + c.raw.x + '% · extrema ' + c.raw.y + '%' } } }, scales: { x: { title: { display: true, text: 'Nosso % 2022' }, min: 0, max: 100 }, y: { title: { display: true, text: 'Extrema pobreza CadÚnico %' }, min: 0 } } }) });
+      mkChart('ch-dor', { type: 'bar', data: { labels: topDor.map(r => r.municipio), datasets: [{ label: 'Extrema pobreza %', data: topDor.map(r => r.taxa_extrema_pct || 0), backgroundColor: C.danger }] }, options: chartOpts({ indexAxis: 'y', plugins: { legend: { display: false } } }) });
     }
 
     if (jwt) {

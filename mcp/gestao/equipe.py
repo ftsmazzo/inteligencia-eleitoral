@@ -179,3 +179,81 @@ def garantir_bootstrap(conn: psycopg.Connection, campanha_id: str) -> dict[str, 
     criou["criado"] = True
     criou["promovido"] = False
     return criou
+
+
+_TESTE_EMAIL = re.compile(r"(teste|test|demo|exemplo|temp|tmp|fake)", re.I)
+
+
+def _liberar_token(conn: psycopg.Connection, usuario_id: str) -> None:
+    conn.execute(
+        """
+        UPDATE ctl.mcp_token
+        SET apura_usuario_id = NULL, ativo = FALSE
+        WHERE apura_usuario_id = %s::uuid
+        """,
+        (usuario_id,),
+    )
+
+
+def excluir(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    usuario_id: str,
+    *,
+    nao_excluir: str,
+) -> dict[str, Any]:
+    if usuario_id == nao_excluir:
+        raise ValueError("Não dá para excluir o usuário logado")
+    row = conn.execute(
+        """
+        SELECT id::text, email FROM ctl.apura_usuario
+        WHERE id = %s::uuid AND campanha_id = %s::uuid
+        """,
+        (usuario_id, campanha_id),
+    ).fetchone()
+    if not row:
+        raise ValueError("Usuário não encontrado nesta campanha")
+    if row[1] and row[1].lower() == BOOTSTRAP_EMAIL:
+        raise ValueError("Não exclua o coordenador Leonardo por este atalho")
+    _liberar_token(conn, usuario_id)
+    conn.execute(
+        "DELETE FROM ctl.apura_usuario WHERE id = %s::uuid AND campanha_id = %s::uuid",
+        (usuario_id, campanha_id),
+    )
+    return {"ok": True, "email": row[1]}
+
+
+def limpar_testes(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    *,
+    manter_id: str,
+) -> dict[str, Any]:
+    """Remove contas demo (cota limitada) e e-mails óbvios de teste. Mantém logado + Leonardo."""
+    rows = conn.execute(
+        """
+        SELECT id::text, email, quota_perguntas_max
+        FROM ctl.apura_usuario
+        WHERE campanha_id = %s::uuid
+        """,
+        (campanha_id,),
+    ).fetchall()
+    apagados: list[str] = []
+    for uid, email, qmax in rows:
+        if uid == manter_id:
+            continue
+        em = (email or "").lower()
+        if em == BOOTSTRAP_EMAIL:
+            continue
+        eh_demo = qmax is not None
+        eh_nome_teste = bool(_TESTE_EMAIL.search(em))
+        if not (eh_demo or eh_nome_teste):
+            continue
+        _liberar_token(conn, uid)
+        conn.execute(
+            "DELETE FROM ctl.apura_usuario WHERE id = %s::uuid AND campanha_id = %s::uuid",
+            (uid, campanha_id),
+        )
+        apagados.append(em)
+    return {"ok": True, "apagados": apagados, "n": len(apagados)}
+

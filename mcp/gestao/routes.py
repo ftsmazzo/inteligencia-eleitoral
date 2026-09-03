@@ -292,9 +292,38 @@ def listar_equipe(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, A
             equipe.garantir_bootstrap(conn, cid)
         except Exception:
             pass
+        limpeza = {"n": 0, "apagados": []}
+        try:
+            limpeza = equipe.limpar_testes(conn, cid, manter_id=user[0])
+        except Exception:
+            pass
         itens = equipe.listar(conn, cid)
         papel = store.papel_usuario(conn, user[0])
-        return {"itens": itens, "papel": papel, "pode_gerenciar": papel == "coordenador"}
+        return {
+            "itens": itens,
+            "papel": papel,
+            "pode_gerenciar": papel == "coordenador",
+            "limpeza_testes": limpeza,
+        }
+
+
+@router.post("/equipe/limpar-testes")
+def limpar_testes_ep(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        _exige_coordenador(conn, user)
+        return equipe.limpar_testes(conn, cid, manter_id=user[0])
+
+
+@router.delete("/equipe/{usuario_id}")
+def apagar_equipe(usuario_id: str, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        _exige_coordenador(conn, user)
+        try:
+            return equipe.excluir(conn, cid, usuario_id, nao_excluir=user[0])
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/equipe")
