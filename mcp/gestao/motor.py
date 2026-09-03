@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 import psycopg
 
 from gestao import memoria
+from gestao.perfil_eleitor import montar_perfil_eleitor
 from gestao.store import CARGOS, get_status
 
 _MOTOR_TIPOS = [
@@ -514,102 +515,13 @@ def _eleitorado(conn: psycopg.Connection, uf: str) -> dict[str, Any]:
     return out
 
 
-def _bloco_perfil(
-    st: dict[str, Any],
-    traj: list[dict[str, Any]],
-    urna_cand: dict[str, Any],
-    mapa: dict[str, Any],
-    pref: dict[str, Any],
-    elei: dict[str, Any],
-    conc: list[dict[str, Any]],
-    fichas: list[dict[str, Any]],
-) -> str:
-    nome = st.get("nm_urna") or st.get("nm_candidato") or "Candidato"
-    uf = st.get("sg_uf") or "—"
-    cargo = st.get("cargo_label") or _cargo_label(st.get("cd_cargo"))
-    votos = urna_cand.get("votos") or []
-    meta_u = urna_cand.get("meta") or {}
-
-    linhas = [
-        f"Perfil de eleitor — {cargo} · {uf} · campanha de {nome} ({st.get('sg_partido') or 's/partido'}).",
-        "Método: urna oficial de anos anteriores + mapa do cargo na UF + prefeitos 2024 + fichas territoriais. "
-        "2026 entra só como candidatura até existir urna.",
-        "",
-        "1) Território (UF):",
-        f"- Eleitorado 2026: {elei.get('eleitores_2026') or 'inexistente'}; "
-        f"2024: {elei.get('eleitores_2024') or 'inexistente'}; "
-        f"2022: {elei.get('eleitores_2022') or 'inexistente'}.",
-        f"- Municípios na malha: {elei.get('municipios') or '—'}.",
-    ]
-    if pref.get("total_eleitos"):
-        n_al = len(pref.get("aliados_partido") or [])
-        linhas.append(
-            f"- Prefeitos eleitos 2024 (urna): {pref['total_eleitos']}; "
-            f"mesmo partido do candidato ({st.get('sg_partido') or '—'}): {n_al}."
-        )
-        amostra = (pref.get("aliados_partido") or [])[:8] or (pref.get("outros") or [])[:8]
-        if amostra:
-            linhas.append(
-                "  Amostra: "
-                + "; ".join(f"{a['municipio']} — {a['prefeito']} ({a['partido']})" for a in amostra)
-            )
-    else:
-        linhas.append("- Prefeitos eleitos 2024: inexistente neste filtro (checar carga da urna municipal).")
-
-    linhas += ["", "2) Geografia do voto do candidato (anos anteriores):"]
-    if votos:
-        linhas.append(f"- Fonte: {meta_u.get('nota') or 'urna anterior'}.")
-        top = votos[:8]
-        linhas.append(
-            "  Mais votos: "
-            + "; ".join(f"{v['municipio']} ({v['votos']:,})".replace(",", ".") for v in top)
-        )
-    else:
-        linhas.append(
-            "- Sem votos nominais do próprio candidato na base "
-            "(comum em primeira disputa majoritária estadual; usar mapa do cargo + território)."
-        )
-
-    linhas += ["", f"3) Mapa do cargo na UF (última urna {_cargo_label(mapa.get('cd_cargo') or st.get('cd_cargo'))}):"]
-    if mapa.get("linhas"):
-        linhas.append(f"- Ano de referência: {mapa.get('ano')}.")
-        for ln in (mapa.get("linhas") or [])[:10]:
-            linhas.append(
-                f"  - {ln['municipio']}: {ln['eleito']} ({ln['partido']}) — "
-                f"{ln['votos']:,} votos".replace(",", ".")
-            )
-    else:
-        linhas.append("- Inexistente para este cargo/UF na última urna do recorte.")
-
-    if fichas:
-        linhas += ["", "4) Fichas territoriais do estado (Acervo):"]
-        for f in fichas[:2]:
-            trecho = (f.get("corpo") or "").replace("\n", " ")
-            if len(trecho) > 500:
-                trecho = trecho[:500] + "…"
-            linhas.append(f"- {f.get('titulo')}: {trecho}")
-
-    linhas += [
-        "",
-        "5) Densidade da disputa atual:",
-        f"- Concorrentes {st.get('ano_ref') or ''} no cargo/UF (cadastro): {len(conc)}.",
-        f"- Trajetória do candidato na base: {len(traj)} registro(s).",
-        "",
-        "Leitura operacional (indício — validar com dossiê/coordenação):",
-        "- Priorize municípios da urna própria (se houver) e contraste com quem controla prefeitura 2024.",
-        "- Em primeira candidatura ao cargo, o mapa da última urna do cargo é o chão do pleito — não invente voto 2026.",
-        "- Cifras = Trilha A; fichas = referência derivada.",
-    ]
-    return "\n".join(linhas)
-
-
 def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
     st = get_status(conn, campanha_id)
     if not st.get("sq_candidato") or not st.get("cd_cargo") or not st.get("ano_ref"):
         raise ValueError("Escopo incompleto — salve ano, cargo, UF e candidato antes do motor")
 
     try:
-        conn.execute("SET LOCAL statement_timeout = '45000'")
+        conn.execute("SET LOCAL statement_timeout = '60000'")
     except Exception:
         pass
 
@@ -816,16 +728,38 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         meta=elei,
     )
 
-    perfil = _bloco_perfil(st, traj, urna_cand, mapa, pref, elei, conc, fichas)
-    memoria.upsert_bloco(
-        conn, campanha_id,
-        tipo="perfil_eleitor",
-        titulo=f"Perfil de eleitor — {st.get('nm_urna') or nm}",
-        corpo=perfil,
-        fonte="motor Gestão (urna anterior + território + fichas)",
-        nivel="indicio",
-        meta={"motor": "s2v2"},
+    perfil_doc = _safe(
+        "perfil_eleitor",
+        conn,
+        lambda: montar_perfil_eleitor(
+            conn,
+            uf=uf or "",
+            cd_cargo=cd,
+            cargo_label=st.get("cargo_label") or _cargo_label(cd),
+        ),
+        None,
+        avisos,
     )
+    if perfil_doc:
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="perfil_eleitor",
+            titulo=perfil_doc["titulo"],
+            corpo=perfil_doc["corpo"],
+            fonte=perfil_doc["fonte"],
+            nivel=perfil_doc.get("nivel") or "fato",
+            meta=perfil_doc.get("meta") or {"motor": "perfil_v2"},
+        )
+    else:
+        memoria.upsert_bloco(
+            conn, campanha_id,
+            tipo="perfil_eleitor",
+            titulo=f"Perfil eleitoral — {uf or '—'}",
+            corpo="Perfil eleitoral indisponível (UF ausente ou falha no motor). Sem estimativa.",
+            fonte="motor Gestão",
+            nivel="fato",
+            meta={"motor": "perfil_v2", "ok": False},
+        )
 
     try:
         conn.execute(
@@ -853,7 +787,8 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         "mapa_cargo": len(mapa.get("linhas") or []),
         "fichas": len(fichas),
         "redes": len(redes),
-        "tem_perfil": True,
+        "tem_perfil": bool(perfil_doc),
+        "perfil_meta": (perfil_doc or {}).get("meta"),
         "avisos": avisos,
         "status": get_status(conn, campanha_id),
     }
