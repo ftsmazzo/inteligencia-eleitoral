@@ -166,16 +166,72 @@
     }
     .modo-narrativa input { width: auto; margin: 0; accent-color: var(--brand); }
     .modo-narrativa label { margin: 0; font-weight: 500; cursor: pointer; }
-    .nav-views { display: flex; gap: 6px; padding: 0 16px 12px; }
+    .nav-views { display: flex; gap: 6px; padding: 0 16px 12px; flex-wrap: wrap; }
     .nav-views button {
-      flex: 1; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+      flex: 1; min-width: 70px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
       background: var(--bg); font-weight: 600; font-size: 0.8rem; cursor: pointer; color: var(--muted);
     }
     .nav-views button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
-    #radar-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
-    #radar-view.on { display: flex; }
+    #radar-view, #gestao-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+    #radar-view.on, #gestao-view.on { display: flex; }
     #chat-view { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
     #chat-view.off { display: none; }
+    .ambiente-banner {
+      display: none; margin: 0 24px 12px; padding: 10px 14px; border-radius: 12px;
+      background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; font-size: 0.85rem;
+    }
+    .ambiente-banner.on { display: block; }
+    .ambiente-banner a { color: var(--brand); font-weight: 700; cursor: pointer; }
+    .gestao-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 40px; }
+    .gestao-hero h3 { font-family: Fraunces, serif; font-size: 1.6rem; color: var(--brand); margin-bottom: 6px; }
+    .gestao-hero p { color: var(--muted); max-width: 560px; line-height: 1.5; margin-bottom: 20px; }
+    .gestao-steps { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .gestao-steps span {
+      font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--line); color: var(--muted); background: #fff;
+    }
+    .gestao-steps span.on { background: var(--brand-light); color: var(--brand); border-color: #9ec5c0; }
+    .gestao-steps span.done { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+    .gestao-card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+      padding: 22px; max-width: 720px; box-shadow: var(--shadow);
+    }
+    .gestao-card h4 { font-size: 1.05rem; margin-bottom: 8px; }
+    .gestao-card .hint { font-size: 0.85rem; color: var(--muted); margin-bottom: 16px; line-height: 1.45; }
+    .cargo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    .cargo-grid button, .ano-grid button {
+      padding: 16px 12px; border-radius: 14px; border: 1px solid var(--line); background: #fff;
+      font-weight: 700; cursor: pointer; color: var(--ink); text-align: left;
+    }
+    .cargo-grid button:hover, .ano-grid button:hover { border-color: var(--brand); background: var(--brand-light); }
+    .cargo-grid button.on, .ano-grid button.on { border-color: var(--brand); background: var(--brand); color: #fff; }
+    .ano-grid { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .cand-list { max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 12px; }
+    .cand-item {
+      display: block; width: 100%; text-align: left; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line);
+      background: #fff; cursor: pointer; font: inherit;
+    }
+    .cand-item:hover, .cand-item.on { background: var(--brand-light); }
+    .cand-item:last-child { border-bottom: 0; }
+    .cand-item b { display: block; color: var(--ink); }
+    .cand-item span { font-size: 0.8rem; color: var(--muted); }
+    .gestao-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+    .gestao-actions button {
+      padding: 12px 18px; border-radius: 12px; border: none; font-weight: 700; cursor: pointer; font-size: 0.9rem;
+    }
+    .gestao-actions .primary { background: var(--brand); color: #fff; }
+    .gestao-actions .secondary { background: var(--bg); color: var(--brand); border: 1px solid var(--line); }
+    .gestao-resumo { display: grid; gap: 8px; margin: 12px 0; }
+    .gestao-resumo div {
+      display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px;
+      background: var(--bg); border-radius: 10px; font-size: 0.9rem;
+    }
+    .gestao-resumo span { color: var(--muted); }
+    .gestao-err { color: #b91c1c; font-size: 0.85rem; min-height: 1.2em; margin-top: 8px; }
+    .gestao-status-pill {
+      display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+      background: var(--brand-light); color: var(--brand); margin-bottom: 12px; text-transform: uppercase;
+    }
     .radar-head { padding: 14px 20px 8px; border-bottom: 1px solid var(--line); background: var(--surface); }
     .radar-head h3 { font-family: Fraunces, serif; font-size: 1.15rem; color: var(--brand); }
     .radar-head .sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
@@ -408,6 +464,7 @@
       </div>
       <button type="button" class="btn-new" id="btn-nova">+ Nova conversa</button>
       <div class="nav-views">
+        <button type="button" id="btn-view-gestao">Gestão</button>
         <button type="button" class="on" id="btn-view-chat">Chat</button>
         <button type="button" id="btn-view-radar">Radar</button>
       </div>
@@ -437,6 +494,7 @@
         <a href="/" target="_blank" rel="noopener">Produto</a>
         <a href="/guia" target="_blank" rel="noopener">Guia · Token MCP</a>
       </header>
+      <div class="ambiente-banner" id="banner-chat">Ambiente em configuração — complete a <a data-goto-gestao>Gestão</a>.</div>
       <div class="messages" id="messages"></div>
       <div class="composer" id="composer">
         <p class="app-err" id="app-err"></p>
@@ -455,6 +513,7 @@
       </div>
 
       <div id="radar-view">
+        <div class="ambiente-banner" id="banner-radar" style="margin:16px 20px 0">Ambiente em configuração — complete a <a data-goto-gestao>Gestão</a>.</div>
         <div class="radar-head">
           <h3>Radar · PULSO</h3>
           <div class="sub" id="radar-campanha">Clima + Termômetro · nível indício</div>
@@ -565,6 +624,26 @@
               <button type="submit">Salvar configuração</button>
             </form>
           </div>
+        </div>
+      </div>
+
+      <div id="gestao-view">
+        <div class="gestao-wrap">
+          <div class="gestao-hero">
+            <span class="gestao-status-pill" id="gestao-status-pill">legado</span>
+            <h3>Gestão da campanha</h3>
+            <p>Defina o recorte oficial (ano, cargo, UF e candidato). Isso ancora o ambiente para Radar e Apura. Dossiê e Perfil entram nos próximos sprints.</p>
+          </div>
+          <div class="gestao-steps" id="gestao-steps">
+            <span data-step="0">Início</span>
+            <span data-step="1">Ano</span>
+            <span data-step="2">Cargo</span>
+            <span data-step="3">UF</span>
+            <span data-step="4">Candidato</span>
+            <span data-step="5">Resumo</span>
+          </div>
+          <div class="gestao-card" id="gestao-card"></div>
+          <p class="gestao-err" id="gestao-err"></p>
         </div>
       </div>
     </div>
@@ -718,6 +797,10 @@
         atualizarQuota(eu.quota);
         const list = await carregarSessoes();
         await carregarSkills();
+        try {
+          gestaoStatus = await api('/gestao/status');
+          syncAmbienteBanner();
+        } catch (_) { /* gestão opcional no boot */ }
         const alvo = escolherSessao(list);
         if (alvo) {
           await abrirSessao(alvo.id, alvo.titulo, false);
@@ -1270,21 +1353,268 @@
       a.click();
     }
 
+    // ——— Gestão + views ———
+    let gestaoStatus = null;
+    let gestaoStep = 0;
+    let draft = { ano: 2026, cd_cargo: null, cargo_label: '', sg_uf: '', candidato: null };
+    let candCache = [];
+
+    function setView(wh) {
+      const chat = wh === 'chat';
+      const radar = wh === 'radar';
+      const gestao = wh === 'gestao';
+      $('btn-view-chat').classList.toggle('on', chat);
+      $('btn-view-radar').classList.toggle('on', radar);
+      $('btn-view-gestao').classList.toggle('on', gestao);
+      $('chat-view').classList.toggle('off', !chat);
+      $('radar-view').classList.toggle('on', radar);
+      $('gestao-view').classList.toggle('on', gestao);
+      if (radar) loadRadarMeta().then(() => showRadarTab(radarTab));
+      if (gestao) loadGestao();
+    }
+    $('btn-view-chat').addEventListener('click', () => setView('chat'));
+    $('btn-view-radar').addEventListener('click', () => setView('radar'));
+    $('btn-view-gestao').addEventListener('click', () => setView('gestao'));
+    document.querySelectorAll('[data-goto-gestao]').forEach(a => {
+      a.addEventListener('click', (e) => { e.preventDefault(); setView('gestao'); });
+    });
+
+    function syncAmbienteBanner() {
+      const st = gestaoStatus && gestaoStatus.ambiente_status;
+      const show = st === 'rascunho' || st === 'configurando';
+      $('banner-chat').classList.toggle('on', !!show);
+      $('banner-radar').classList.toggle('on', !!show);
+    }
+
+    async function loadGestao() {
+      $('gestao-err').textContent = '';
+      try {
+        gestaoStatus = await api('/gestao/status');
+        $('gestao-status-pill').textContent = gestaoStatus.ambiente_status || 'legado';
+        if (gestaoStatus.sq_candidato) {
+          draft.ano = gestaoStatus.ano_ref || 2026;
+          draft.cd_cargo = gestaoStatus.cd_cargo;
+          draft.cargo_label = gestaoStatus.cargo_label || '';
+          draft.sg_uf = gestaoStatus.sg_uf || '';
+          draft.candidato = {
+            sq_candidato: gestaoStatus.sq_candidato,
+            nm_candidato: gestaoStatus.nm_candidato,
+            nm_urna: gestaoStatus.nm_urna,
+            sg_partido: gestaoStatus.sg_partido,
+            nr_candidato: gestaoStatus.nr_candidato,
+          };
+          gestaoStep = 5;
+        } else if (gestaoStatus.ambiente_status === 'legado') {
+          gestaoStep = 0;
+        } else if (!draft.cd_cargo) {
+          gestaoStep = Math.max(gestaoStep, 1);
+        }
+        syncAmbienteBanner();
+        renderGestaoStep();
+      } catch (e) {
+        $('gestao-err').textContent = e.message;
+      }
+    }
+
+    function markSteps() {
+      document.querySelectorAll('#gestao-steps span').forEach(el => {
+        const n = parseInt(el.getAttribute('data-step'), 10);
+        el.classList.toggle('on', n === gestaoStep);
+        el.classList.toggle('done', n < gestaoStep);
+      });
+    }
+
+    function renderGestaoStep() {
+      markSteps();
+      const card = $('gestao-card');
+      const ufs = (gestaoStatus && gestaoStatus.ufs) || [];
+      const cargos = (gestaoStatus && gestaoStatus.cargos) || [];
+
+      if (gestaoStep === 0) {
+        card.innerHTML = '<h4>Iniciar campanha</h4>' +
+          '<p class="hint">Começa o ambiente de Gestão nesta campanha. Campanhas antigas ficam em modo legado até você iniciar.</p>' +
+          '<div class="gestao-actions"><button type="button" class="primary" id="g-iniciar">Iniciar campanha</button></div>';
+        $('g-iniciar').onclick = async () => {
+          try {
+            gestaoStatus = await api('/gestao/iniciar', { method: 'POST', body: '{}' });
+            $('gestao-status-pill').textContent = gestaoStatus.ambiente_status;
+            syncAmbienteBanner();
+            gestaoStep = 1;
+            renderGestaoStep();
+          } catch (e) { $('gestao-err').textContent = e.message; }
+        };
+        return;
+      }
+
+      if (gestaoStep === 1) {
+        card.innerHTML = '<h4>Ano de referência</h4><p class="hint">Sprint 1: apenas a camada viva 2026 (candidatura).</p>' +
+          '<div class="ano-grid"><button type="button" class="on" data-ano="2026">2026</button></div>' +
+          '<div class="gestao-actions"><button type="button" class="secondary" id="g-back">Voltar</button>' +
+          '<button type="button" class="primary" id="g-next">Continuar</button></div>';
+        $('g-back').onclick = () => { gestaoStep = 0; renderGestaoStep(); };
+        $('g-next').onclick = () => { draft.ano = 2026; gestaoStep = 2; renderGestaoStep(); };
+        return;
+      }
+
+      if (gestaoStep === 2) {
+        card.innerHTML = '<h4>Qual cargo?</h4><p class="hint">Escolha o cargo da disputa que esta campanha acompanha.</p>' +
+          '<div class="cargo-grid">' + cargos.map(c =>
+            '<button type="button" data-cd="' + c.cd_cargo + '" data-label="' + esc(c.label) + '"' +
+            (draft.cd_cargo === c.cd_cargo ? ' class="on"' : '') + '>' + esc(c.label) + '</button>'
+          ).join('') + '</div>' +
+          '<div class="gestao-actions"><button type="button" class="secondary" id="g-back">Voltar</button></div>';
+        $('g-back').onclick = () => { gestaoStep = 1; renderGestaoStep(); };
+        card.querySelectorAll('[data-cd]').forEach(btn => {
+          btn.onclick = () => {
+            draft.cd_cargo = parseInt(btn.getAttribute('data-cd'), 10);
+            draft.cargo_label = btn.getAttribute('data-label');
+            draft.candidato = null;
+            gestaoStep = 3;
+            renderGestaoStep();
+          };
+        });
+        return;
+      }
+
+      if (gestaoStep === 3) {
+        const opts = ufs.map(u => '<option value="' + u + '"' + (draft.sg_uf === u ? ' selected' : '') + '>' + u + '</option>').join('');
+        card.innerHTML = '<h4>Qual UF?</h4><p class="hint">Território da disputa (exceto Presidente, use BR/qualquer UF da nominata estadual quando aplicável).</p>' +
+          '<label>UF</label><select id="g-uf" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);margin-bottom:8px">' +
+          '<option value="">Selecione</option>' + opts + '</select>' +
+          '<div class="gestao-actions"><button type="button" class="secondary" id="g-back">Voltar</button>' +
+          '<button type="button" class="primary" id="g-next">Continuar</button></div>';
+        if (draft.cd_cargo === 1) {
+          // presidente: UF opcional na prática; forçamos BR via sem UF filter - use SP as placeholder? Better allow null UF for president
+        }
+        $('g-back').onclick = () => { gestaoStep = 2; renderGestaoStep(); };
+        $('g-next').onclick = () => {
+          const uf = $('g-uf').value;
+          if (!uf && draft.cd_cargo !== 1) { $('gestao-err').textContent = 'Selecione a UF'; return; }
+          draft.sg_uf = uf || 'BR';
+          draft.candidato = null;
+          gestaoStep = 4;
+          renderGestaoStep();
+        };
+        return;
+      }
+
+      if (gestaoStep === 4) {
+        card.innerHTML = '<h4>Qual candidato?</h4><p class="hint">Nominata oficial 2026. Busque pelo nome de urna.</p>' +
+          '<label>Busca</label><input id="g-q" placeholder="nome de urna…" value="" />' +
+          '<div class="gestao-actions" style="margin-top:8px"><button type="button" class="secondary" id="g-buscar">Buscar</button></div>' +
+          '<div class="cand-list" id="g-cands" style="margin-top:12px"></div>' +
+          '<div class="gestao-actions"><button type="button" class="secondary" id="g-back">Voltar</button></div>';
+        $('g-back').onclick = () => { gestaoStep = 3; renderGestaoStep(); };
+        const loadCands = async () => {
+          $('gestao-err').textContent = '';
+          try {
+            const cargoKey = (cargos.find(c => c.cd_cargo === draft.cd_cargo) || {}).key || 'governador';
+            const ufParam = draft.cd_cargo === 1 ? '' : ('&uf=' + encodeURIComponent(draft.sg_uf));
+            const q = ($('g-q').value || '').trim();
+            const qs = '/gestao/candidatos?ano=' + draft.ano + '&cargo=' + encodeURIComponent(cargoKey) +
+              ufParam + (q ? '&q=' + encodeURIComponent(q) : '') + '&limite=200';
+            // presidente: api needs uf null - our endpoint requires uf default AP. Fix: pass uf= for BR
+            const url = draft.cd_cargo === 1
+              ? '/gestao/candidatos?ano=2026&cargo=presidente&uf=BR&limite=50' + (q ? '&q=' + encodeURIComponent(q) : '')
+              : qs;
+            const d = await api(url);
+            candCache = d.linhas || [];
+            const box = $('g-cands');
+            if (!candCache.length) {
+              box.innerHTML = '<p style="padding:12px;color:var(--muted)">Nenhum candidato neste filtro.</p>';
+              return;
+            }
+            box.innerHTML = candCache.map((c, i) =>
+              '<button type="button" class="cand-item" data-i="' + i + '"><b>' + esc(c.nm_urna || c.nm_candidato) +
+              '</b><span>' + esc([c.sg_partido, c.nr_candidato, c.sg_uf, c.ds_situacao].filter(Boolean).join(' · ')) +
+              '</span></button>'
+            ).join('');
+            box.querySelectorAll('.cand-item').forEach(btn => {
+              btn.onclick = () => {
+                draft.candidato = candCache[parseInt(btn.getAttribute('data-i'), 10)];
+                gestaoStep = 5;
+                renderGestaoStep();
+              };
+            });
+          } catch (e) { $('gestao-err').textContent = e.message; }
+        };
+        $('g-buscar').onclick = loadCands;
+        loadCands();
+        return;
+      }
+
+      // step 5 resumo
+      const c = draft.candidato || {};
+      card.innerHTML = '<h4>Resumo do escopo</h4><p class="hint">Confirme e grave. Depois você poderá marcar o ambiente como pronto.</p>' +
+        '<div class="gestao-resumo">' +
+        '<div><span>Ano</span><b>' + esc(draft.ano) + '</b></div>' +
+        '<div><span>Cargo</span><b>' + esc(draft.cargo_label || draft.cd_cargo) + '</b></div>' +
+        '<div><span>UF</span><b>' + esc(draft.sg_uf) + '</b></div>' +
+        '<div><span>Candidato</span><b>' + esc(c.nm_urna || c.nm_candidato || gestaoStatus.nm_urna) + '</b></div>' +
+        '<div><span>Partido</span><b>' + esc(c.sg_partido || gestaoStatus.sg_partido || '—') + '</b></div>' +
+        '</div>' +
+        '<p class="hint">Próximos sprints: Base de Verdade, Perfil de Eleitor e upload de dossiê.</p>' +
+        '<div class="gestao-actions">' +
+        '<button type="button" class="secondary" id="g-back">Voltar</button>' +
+        '<button type="button" class="primary" id="g-save">Salvar escopo</button>' +
+        '<button type="button" class="secondary" id="g-pronto">Marcar ambiente pronto</button>' +
+        '</div>';
+      $('g-back').onclick = () => { gestaoStep = 4; renderGestaoStep(); };
+      $('g-save').onclick = async () => {
+        $('gestao-err').textContent = '';
+        try {
+          const cand = draft.candidato || {
+            sq_candidato: gestaoStatus.sq_candidato,
+            nm_candidato: gestaoStatus.nm_candidato,
+            nm_urna: gestaoStatus.nm_urna,
+            sg_partido: gestaoStatus.sg_partido,
+            nr_candidato: gestaoStatus.nr_candidato,
+          };
+          const ufSave = (draft.cd_cargo === 1 || draft.sg_uf === 'BR') ? null : draft.sg_uf;
+          gestaoStatus = await api('/gestao/escopo', {
+            method: 'POST',
+            body: JSON.stringify({
+              ano_ref: draft.ano,
+              cd_cargo: draft.cd_cargo || gestaoStatus.cd_cargo,
+              sg_uf: ufSave,
+              sq_candidato: cand.sq_candidato,
+              nm_candidato: cand.nm_candidato || cand.nm_urna,
+              nm_urna: cand.nm_urna || cand.nm_candidato,
+              sg_partido: cand.sg_partido,
+              nr_candidato: cand.nr_candidato,
+            }),
+          });
+          $('gestao-status-pill').textContent = gestaoStatus.ambiente_status;
+          syncAmbienteBanner();
+          $('gestao-err').textContent = 'Escopo salvo.';
+          return true;
+        } catch (e) { $('gestao-err').textContent = e.message; return false; }
+      };
+      $('g-pronto').onclick = async () => {
+        try {
+          if (draft.candidato && draft.candidato.sq_candidato) {
+            const ok = await $('g-save').onclick();
+            if (ok === false) return;
+          }
+          if (!gestaoStatus.sq_candidato) {
+            $('gestao-err').textContent = 'Salve o escopo antes de marcar pronto.';
+            return;
+          }
+          gestaoStatus = await api('/gestao/ambiente', {
+            method: 'POST',
+            body: JSON.stringify({ status: 'pronto' }),
+          });
+          $('gestao-status-pill').textContent = gestaoStatus.ambiente_status;
+          syncAmbienteBanner();
+          $('gestao-err').textContent = 'Ambiente marcado como pronto.';
+        } catch (e) { $('gestao-err').textContent = e.message; }
+      };
+    }
+
     // ——— Radar ———
     let radarPage = 1;
     let radarPages = 1;
     let radarTab = 'vivo';
-
-    function setView(wh) {
-      const chat = wh === 'chat';
-      $('btn-view-chat').classList.toggle('on', chat);
-      $('btn-view-radar').classList.toggle('on', !chat);
-      $('chat-view').classList.toggle('off', !chat);
-      $('radar-view').classList.toggle('on', !chat);
-      if (!chat) loadRadarMeta().then(() => showRadarTab(radarTab));
-    }
-    $('btn-view-chat').addEventListener('click', () => setView('chat'));
-    $('btn-view-radar').addEventListener('click', () => setView('radar'));
 
     document.querySelectorAll('[data-radar-tab]').forEach(btn => {
       btn.addEventListener('click', () => showRadarTab(btn.getAttribute('data-radar-tab')));

@@ -4,9 +4,11 @@ COPY mcp/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY mcp/app.py /app/app.py
 COPY mcp/apura /app/apura
+COPY mcp/gestao /app/gestao
 COPY mcp/static /app/static
 COPY sql/patch_mcp_tokens.sql /app/sql/patch_mcp_tokens.sql
 COPY sql/patch_apura.sql /app/sql/patch_apura.sql
+COPY sql/patch_gestao.sql /app/sql/patch_gestao.sql
 COPY sql/patch_partido_linha.sql /app/sql/patch_partido_linha.sql
 COPY sql/patch_acervo.sql /app/sql/patch_acervo.sql
 COPY sql/patch_analitico.sql /app/sql/patch_analitico.sql

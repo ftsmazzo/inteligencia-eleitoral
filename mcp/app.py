@@ -19,10 +19,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
 from apura.routes import pagina_apura, pagina_cadastro, router as apura_router
+from gestao.routes import router as gestao_router
 from radar.routes import router as radar_router
 
 app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
 app.include_router(apura_router)
+app.include_router(gestao_router)
 app.include_router(radar_router)
 
 

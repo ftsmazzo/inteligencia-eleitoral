@@ -43,7 +43,8 @@ if not (_SQL / "patch_apura.sql").exists():
     _SQL = Path(__file__).resolve().parents[2] / "sql"
 _PATCH = _SQL / "patch_apura.sql"
 _PATCH_TOKENS = _SQL / "patch_mcp_tokens.sql"
-_SCHEMA_VER = 7
+_PATCH_GESTAO = _SQL / "patch_gestao.sql"
+_SCHEMA_VER = 8
 _READY_VER = 0
 
 
@@ -69,6 +70,8 @@ def _ensure_schema() -> None:
             if _PATCH_TOKENS.exists():
                 conn.execute(_PATCH_TOKENS.read_text(encoding="utf-8"))
             conn.execute(_PATCH.read_text(encoding="utf-8"))
+            if _PATCH_GESTAO.exists():
+                conn.execute(_PATCH_GESTAO.read_text(encoding="utf-8"))
     except psycopg.Error as exc:
         raise HTTPException(503, f"Falha ao preparar banco Apura ({exc.pgcode or 'erro'})") from exc
     _READY_VER = _SCHEMA_VER
