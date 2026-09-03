@@ -223,6 +223,17 @@ def seed_radar_ep(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, A
             raise HTTPException(400, str(exc)) from exc
 
 
+@router.post("/reset")
+def reset_gestao(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    """Limpa memória, radar e escopo da campanha — recomeço."""
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        st = store.resetar_gestao(conn, cid)
+        st["papel"] = store.papel_usuario(conn, user[0])
+        st["reset"] = True
+        return st
+
+
 @router.post("/liberar")
 def liberar(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     cid, _ = _campanha(user)

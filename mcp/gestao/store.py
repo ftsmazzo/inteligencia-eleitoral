@@ -167,6 +167,8 @@ def salvar_escopo(
     nr_candidato: int | None,
     escopo_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from gestao import documento
+
     uf = (sg_uf or "").strip().upper()
     if cd_cargo == 1:
         uf = uf if uf in UFS else None
@@ -176,7 +178,30 @@ def salvar_escopo(
         raise ValueError("Cargo fora do recorte Gestão")
     if ano_ref != 2026:
         raise ValueError("Gestão Sprint 1: apenas ano 2026")
-    extra = escopo_json or {}
+
+    # Documento canônico no banco — não confiar só no texto digitado na UI
+    doc = documento.por_sq(conn, ano=ano_ref, sq_candidato=int(sq_candidato))
+    if not doc:
+        raise ValueError("Candidato inexistente na nominata deste ano/sq — selecione de novo na lista")
+    if int(doc["cd_cargo"]) != int(cd_cargo):
+        raise ValueError("sq não corresponde ao cargo escolhido")
+    if uf and doc.get("sg_uf") and doc["sg_uf"] != uf and cd_cargo != 1:
+        raise ValueError("sq não corresponde à UF escolhida")
+
+    nm_candidato = doc["nm_candidato"] or nm_candidato
+    nm_urna = doc["nm_urna"] or nm_urna
+    sg_partido = doc["sg_partido"] or sg_partido
+    nr_candidato = doc["nr_candidato"] if doc["nr_candidato"] is not None else nr_candidato
+
+    extra = dict(escopo_json or {})
+    extra["documento"] = {
+        "sq_candidato": doc["sq_candidato"],
+        "nm_urna": doc["nm_urna"],
+        "nm_candidato": doc["nm_candidato"],
+        "sg_partido": doc["sg_partido"],
+        "nr_candidato": doc["nr_candidato"],
+        "fonte": "eleicao.candidatura",
+    }
     conn.execute(
         """
         UPDATE ctl.campanha
@@ -208,6 +233,39 @@ def salvar_escopo(
             json.dumps(extra, ensure_ascii=False),
             campanha_id,
         ),
+    )
+    return get_status(conn, campanha_id)
+
+
+def resetar_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
+    """Apaga memória/radar da campanha e zera escopo — recomeço limpo."""
+    conn.execute("DELETE FROM ctl.campanha_memoria WHERE campanha_id = %s::uuid", (campanha_id,))
+    try:
+        conn.execute("DELETE FROM ctl.radar_alvo WHERE campanha_id = %s::uuid", (campanha_id,))
+    except Exception:
+        pass
+    try:
+        conn.execute("DELETE FROM ctl.radar_config WHERE campanha_id = %s::uuid", (campanha_id,))
+    except Exception:
+        pass
+    conn.execute(
+        """
+        UPDATE ctl.campanha
+        SET ano_ref = NULL,
+            cd_cargo = NULL,
+            sg_uf = NULL,
+            sq_candidato = NULL,
+            nm_candidato = NULL,
+            nm_urna = NULL,
+            sg_partido = NULL,
+            nr_candidato = NULL,
+            escopo_json = '{}'::jsonb,
+            ambiente_status = 'rascunho',
+            equipe_liberada = FALSE,
+            atualizado_em = now()
+        WHERE id = %s::uuid
+        """,
+        (campanha_id,),
     )
     return get_status(conn, campanha_id)
 

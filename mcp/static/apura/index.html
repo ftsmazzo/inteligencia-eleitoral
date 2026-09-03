@@ -214,7 +214,7 @@
     .cand-item:hover, .cand-item.on { background: var(--brand-light); }
     .cand-item:last-child { border-bottom: 0; }
     .cand-item b { display: block; color: var(--ink); }
-    .cand-item span { font-size: 0.8rem; color: var(--muted); }
+    .cand-item span { display: block; font-size: 0.8rem; color: var(--muted); line-height: 1.35; margin-top: 2px; }
     .gestao-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
     .gestao-actions button {
       padding: 12px 18px; border-radius: 12px; border: none; font-weight: 700; cursor: pointer; font-size: 0.9rem;
@@ -1502,8 +1502,8 @@
       }
 
       if (gestaoStep === 4) {
-        card.innerHTML = '<h4>Qual candidato?</h4><p class="hint">Nominata oficial 2026. Busque pelo nome de urna.</p>' +
-          '<label>Busca</label><input id="g-q" placeholder="nome de urna…" value="" />' +
+        card.innerHTML = '<h4>Qual candidato?</h4><p class="hint">Documento TSE (sq). Nome de urna parecido ≠ mesma pessoa — confira nome completo e partido.</p>' +
+          '<label>Busca</label><input id="g-q" placeholder="nome de urna ou civil…" value="" />' +
           '<div class="gestao-actions" style="margin-top:8px"><button type="button" class="secondary" id="g-buscar">Buscar</button></div>' +
           '<div class="cand-list" id="g-cands" style="margin-top:12px"></div>' +
           '<div class="gestao-actions"><button type="button" class="secondary" id="g-back">Voltar</button></div>';
@@ -1516,7 +1516,6 @@
             const q = ($('g-q').value || '').trim();
             const qs = '/gestao/candidatos?ano=' + draft.ano + '&cargo=' + encodeURIComponent(cargoKey) +
               ufParam + (q ? '&q=' + encodeURIComponent(q) : '') + '&limite=200';
-            // presidente: api needs uf null - our endpoint requires uf default AP. Fix: pass uf= for BR
             const url = draft.cd_cargo === 1
               ? '/gestao/candidatos?ano=2026&cargo=presidente&uf=BR&limite=50' + (q ? '&q=' + encodeURIComponent(q) : '')
               : qs;
@@ -1527,11 +1526,14 @@
               box.innerHTML = '<p style="padding:12px;color:var(--muted)">Nenhum candidato neste filtro.</p>';
               return;
             }
-            box.innerHTML = candCache.map((c, i) =>
-              '<button type="button" class="cand-item" data-i="' + i + '"><b>' + esc(c.nm_urna || c.nm_candidato) +
-              '</b><span>' + esc([c.sg_partido, c.nr_candidato, c.sg_uf, c.ds_situacao].filter(Boolean).join(' · ')) +
-              '</span></button>'
-            ).join('');
+            box.innerHTML = candCache.map((c, i) => {
+              const hist = (c.historico_resumo || []).slice(0, 3).join(' · ');
+              return '<button type="button" class="cand-item" data-i="' + i + '"><b>' + esc(c.nm_urna || c.nm_candidato) +
+                '</b><span>' + esc(c.nm_candidato || '') + '</span>' +
+                '<span>' + esc([c.sg_partido, c.nr_candidato != null ? 'nº ' + c.nr_candidato : '', c.ds_situacao].filter(Boolean).join(' · ')) +
+                '</span>' + (hist ? '<span style="opacity:.75">' + esc(hist) + '</span>' : '') +
+                '</button>';
+            }).join('');
             box.querySelectorAll('.cand-item').forEach(btn => {
               btn.onclick = () => {
                 draft.candidato = candCache[parseInt(btn.getAttribute('data-i'), 10)];
@@ -1555,7 +1557,11 @@
         '<div><span>Cargo</span><b>' + esc(draft.cargo_label || gestaoStatus.cargo_label || draft.cd_cargo) + '</b></div>' +
         '<div><span>UF</span><b>' + esc(draft.sg_uf || gestaoStatus.sg_uf || '—') + '</b></div>' +
         '<div><span>Candidato</span><b>' + esc(c.nm_urna || c.nm_candidato || gestaoStatus.nm_urna) + '</b></div>' +
-        '<div><span>Partido</span><b>' + esc(c.sg_partido || gestaoStatus.sg_partido || '—') + '</b></div>' +
+        '<div><span>Nome civil</span><b>' + esc(c.nm_candidato || gestaoStatus.nm_candidato || '—') + '</b></div>' +
+        '<div><span>Partido</span><b>' + esc(c.sg_partido || gestaoStatus.sg_partido || '—') +
+        (c.nr_candidato != null || gestaoStatus.nr_candidato != null ? ' · nº ' + esc(c.nr_candidato || gestaoStatus.nr_candidato) : '') +
+        '</b></div>' +
+        '<div><span>sq TSE</span><b>' + esc(c.sq_candidato || gestaoStatus.sq_candidato || '—') + '</b></div>' +
         '<div><span>Memória</span><b>' + memN + ' blocos · perfil ' + (gestaoStatus.tem_perfil ? 'ok' : 'pendente') +
         ' · dossiê ' + (gestaoStatus.tem_dossie ? 'ok' : 'pendente') + '</b></div>' +
         '<div><span>Equipe</span><b>' + (gestaoStatus.equipe_liberada ? 'liberada' : 'ainda fechada') + '</b></div>' +
@@ -1572,9 +1578,23 @@
         '<button type="button" class="secondary" id="g-mem">Ver memória</button>' +
         '<button type="button" class="secondary" id="g-seed">Seed Radar</button>' +
         '<button type="button" class="primary" id="g-liberar">Liberar equipe (pronto)</button>' +
+        '<button type="button" class="secondary" id="g-reset" style="border-color:#c44;color:#c44">Limpar e recomeçar</button>' +
         '</div>' +
         '<div id="g-mem-box" style="margin-top:12px;font-size:0.85rem;color:var(--muted)"></div>';
       $('g-back').onclick = () => { gestaoStep = 4; renderGestaoStep(); };
+      $('g-reset').onclick = async () => {
+        if (!confirm('Apaga memória, radar e escopo desta campanha. Continuar?')) return;
+        $('gestao-err').textContent = 'Limpando…';
+        try {
+          gestaoStatus = await api('/gestao/reset', { method: 'POST', body: '{}' });
+          draft = { ano: 2026, cd_cargo: null, cargo_label: '', sg_uf: '', candidato: null };
+          gestaoStep = 1;
+          $('gestao-status-pill').textContent = gestaoStatus.ambiente_status || 'rascunho';
+          syncAmbienteBanner();
+          $('gestao-err').textContent = 'Campanha limpa. Escolha de novo o candidato certo (nome civil + partido).';
+          renderGestaoStep();
+        } catch (e) { $('gestao-err').textContent = e.message; }
+      };
       $('g-save').onclick = async () => {
         $('gestao-err').textContent = '';
         try {

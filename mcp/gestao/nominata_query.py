@@ -1,10 +1,11 @@
-"""Lista candidatos via api.nominata (sem HTTP externo)."""
+"""Lista candidatos via api.nominata + documento canônico (sq)."""
 from __future__ import annotations
 
 from typing import Any
 
 import psycopg
 
+from gestao import documento
 from gestao.store import CARGOS
 
 
@@ -13,6 +14,22 @@ def _cargo_key(cd_cargo: int) -> str | None:
         if c["cd_cargo"] == cd_cargo:
             return c["key"]
     return None
+
+
+def _rank(q: str | None, ln: dict[str, Any]) -> tuple:
+    """Prioriza bate-exato de urna / início do nome — evita Cley no lugar de Clécio."""
+    qq = (q or "").strip().upper()
+    urna = (ln.get("nm_urna") or "").upper()
+    civil = (ln.get("nm_candidato") or "").upper()
+    if not qq:
+        return (1, urna)
+    if urna == qq or civil == qq:
+        return (0, urna)
+    if urna.startswith(qq) or civil.startswith(qq):
+        return (0, urna)
+    if qq in urna or qq in civil:
+        return (1, urna)
+    return (2, urna)
 
 
 def listar_candidatos(
@@ -34,7 +51,6 @@ def listar_candidatos(
         cargo_txt = str(cargo).strip().lower().replace(" ", "_")
         cd = next((c["cd_cargo"] for c in CARGOS if c["key"] == cargo_txt or c["label"].lower() == cargo_txt), None)
         if cd is None:
-            # aceitar nomes TSE comuns
             aliases = {
                 "governador": "governador",
                 "senador": "senador",
@@ -69,22 +85,26 @@ def listar_candidatos(
     for ln in linhas:
         if not isinstance(ln, dict):
             continue
-        out.append(
-            {
-                "ano": ln.get("ano"),
-                "cd_cargo": ln.get("cd_cargo"),
-                "sg_uf": ln.get("sg_uf"),
-                "sq_candidato": ln.get("sq_candidato"),
-                "nr_candidato": ln.get("nr_candidato"),
-                "nm_urna": ln.get("nm_urna"),
-                "nm_candidato": ln.get("nm_candidato"),
-                "sg_partido": ln.get("sg_partido"),
-                "ds_situacao": ln.get("ds_situacao"),
-            }
-        )
+        base = {
+            "ano": ln.get("ano"),
+            "cd_cargo": ln.get("cd_cargo"),
+            "sg_uf": ln.get("sg_uf"),
+            "sq_candidato": ln.get("sq_candidato"),
+            "nr_candidato": ln.get("nr_candidato"),
+            "nm_urna": ln.get("nm_urna"),
+            "nm_candidato": ln.get("nm_candidato"),
+            "sg_partido": ln.get("sg_partido"),
+            "ds_situacao": ln.get("ds_situacao"),
+        }
+        try:
+            out.append(documento.enriquecer_linha(conn, base, ano=ano))
+        except Exception:
+            out.append(base)
+    out.sort(key=lambda ln: _rank(nm, ln))
     return {
         "status": data.get("status") or ("ok" if out else "vazio"),
         "mensagem": data.get("mensagem"),
         "linhas": out,
         "total": len(out),
+        "nota": "Cada linha é o documento TSE (sq). Nome de urna parecido ≠ mesma pessoa — confira nome completo e partido.",
     }
