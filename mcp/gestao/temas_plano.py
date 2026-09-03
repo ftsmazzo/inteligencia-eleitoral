@@ -1,6 +1,8 @@
-"""Extrai temas e palavras-chave de planos de governo (acervo) e dossiê.
+"""Extrai temas e palavras-chave do plano de governo (acervo) por sq_candidato exato.
 
-Nível indicio — heurística léxica, sem inventar cifra. Alimenta seed do Radar.
+Nível indício — heurística léxica sobre texto oficial do plano. Nunca casa por nome
+solto (ILIKE) para evitar colar tema do adversário errado no candidato do escopo.
+Sem sq_candidato confirmado, não gera tema — ausência é inexistente, não zero.
 """
 from __future__ import annotations
 
@@ -10,8 +12,6 @@ from collections import Counter
 from typing import Any
 
 import psycopg
-
-from gestao import memoria
 
 # tema_label → (eixo_mix, keywords)
 _LEXICO: list[tuple[str, str, list[str]]] = [
@@ -27,11 +27,6 @@ _LEXICO: list[tuple[str, str, list[str]]] = [
     ("Mobilização", "Mobilizacao", ["voto", "urna", "campanha", "afiliacao", "mobilizacao"]),
 ]
 
-_STOP = {
-    "para", "com", "por", "uma", "que", "dos", "das", "nao", "mais", "como",
-    "este", "esta", "pelo", "pela", "ser", "seu", "sua", "tem", "foi", "sao",
-}
-
 
 def _norm(s: str) -> str:
     t = unicodedata.normalize("NFKD", (s or "").lower())
@@ -39,41 +34,27 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9\s]", " ", t)
 
 
-def _textos_plano(
+def _textos_plano_por_sq(
     conn: psycopg.Connection,
     *,
-    uf: str | None,
-    sq_candidato: str | None,
-    nm: str | None,
+    sq_candidato: str | int,
     limite_chunks: int = 60,
 ) -> list[str]:
+    """Só casa por sq_candidato exato no meta do documento — sem ILIKE de nome."""
     texts: list[str] = []
     try:
-        params: list[Any] = []
-        wheres = ["d.ativo IS TRUE", "d.tipo = 'plano_governo'"]
-        if uf:
-            wheres.append("d.sg_uf = %s")
-            params.append(uf.upper())
-        if sq_candidato:
-            wheres.append("d.meta->>'sq_candidato' = %s")
-            params.append(str(sq_candidato))
-        elif nm:
-            wheres.append("(d.nm_candidato ILIKE %s OR d.titulo ILIKE %s)")
-            like = f"%{(nm or '').strip()[:40]}%"
-            params.extend([like, like])
-        else:
-            return []
-        params.append(max(10, min(limite_chunks, 120)))
         rows = conn.execute(
-            f"""
+            """
             SELECT COALESCE(c.secao, '') || ' ' || left(COALESCE(c.texto, ''), 2500)
             FROM acervo.documento d
             JOIN acervo.chunk c ON c.documento_id = d.id
-            WHERE {' AND '.join(wheres)}
+            WHERE d.ativo IS TRUE
+              AND d.tipo = 'plano_governo'
+              AND d.meta->>'sq_candidato' = %s
             ORDER BY c.ord
             LIMIT %s
             """,
-            params,
+            (str(sq_candidato), max(10, min(limite_chunks, 120))),
         ).fetchall()
         for r in rows:
             if r and r[0]:
@@ -111,29 +92,6 @@ def extrair_de_textos(textos: list[str]) -> dict[str, Any]:
     return {"temas": temas[:12], "keywords_eixos": eixos_kw, "chars": len(blob)}
 
 
-def extrair_dossie(conn: psycopg.Connection, campanha_id: str) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    blocos = memoria.listar(conn, campanha_id, limite=40)
-    for b in blocos:
-        tipo = (b.get("tipo") or "")
-        if not (tipo.startswith("dossie") or tipo in ("perfil_eleitor", "base_trajetoria")):
-            continue
-        titulo = (b.get("titulo") or "").strip()
-        if len(titulo) < 4 or titulo.lower().startswith("dossiê parte"):
-            continue
-        corpo = _norm(b.get("corpo") or "")
-        # títulos curtos de seção viram tema; corpo gera query
-        tokens = [t for t in re.findall(r"[a-z]{4,}", corpo) if t not in _STOP][:6]
-        out.append(
-            {
-                "nome": titulo[:80],
-                "query_news": ", ".join(tokens) if tokens else titulo,
-                "fonte": tipo,
-            }
-        )
-    return out[:10]
-
-
 def extrair_campanha(
     conn: psycopg.Connection,
     *,
@@ -141,14 +99,26 @@ def extrair_campanha(
     uf: str | None,
     sq_candidato: str | None,
     nm_candidato: str | None,
-    adversarios: list[str] | None = None,
+    adversarios: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Combina plano do candidato + adversários + títulos do dossiê."""
-    textos = _textos_plano(conn, uf=uf, sq_candidato=sq_candidato, nm=nm_candidato)
-    proprio = extrair_de_textos(textos) if textos else {"temas": [], "keywords_eixos": {}, "chars": 0}
+    """Temas do plano do candidato do escopo (sq exato) + adversários com sq conhecido.
+
+    `adversarios` deve trazer {"nome": ..., "sq_candidato": ...} — vem da nominata/base_redes,
+    não de string solta. Adversário sem sq não gera tema (evita casar plano errado).
+    """
+    proprio: dict[str, Any] = {"temas": [], "keywords_eixos": {}, "chars": 0}
+    if sq_candidato:
+        textos = _textos_plano_por_sq(conn, sq_candidato=sq_candidato)
+        if textos:
+            proprio = extrair_de_textos(textos)
+
     adv_temas: list[dict[str, Any]] = []
-    for adv in (adversarios or [])[:6]:
-        t_adv = _textos_plano(conn, uf=uf, sq_candidato=None, nm=adv, limite_chunks=30)
+    for adv in (adversarios or [])[:8]:
+        sq_adv = adv.get("sq_candidato")
+        nome_adv = (adv.get("nome") or "").strip()
+        if not sq_adv or not nome_adv:
+            continue
+        t_adv = _textos_plano_por_sq(conn, sq_candidato=sq_adv, limite_chunks=30)
         if not t_adv:
             continue
         ex = extrair_de_textos(t_adv)
@@ -156,16 +126,15 @@ def extrair_campanha(
             adv_temas.append(
                 {
                     **tm,
-                    "nome": f"{tm['nome']} ({adv})",
-                    "query_news": f"{adv} {tm.get('query_news') or ''}".strip(),
+                    "nome": f"{tm['nome']} (adversário: {nome_adv})",
+                    "query_news": f"{nome_adv} {tm.get('query_news') or ''}".strip(),
                     "papel": "adversario",
                 }
             )
-    dossie = extrair_dossie(conn, campanha_id)
+
     return {
         "temas_proprio": proprio.get("temas") or [],
         "temas_adversario": adv_temas[:8],
-        "temas_dossie": dossie,
         "keywords_eixos": proprio.get("keywords_eixos") or {},
         "plano_chars": proprio.get("chars") or 0,
     }

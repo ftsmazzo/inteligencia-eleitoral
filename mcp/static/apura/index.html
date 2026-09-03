@@ -273,7 +273,8 @@
     .radar-item p { font-size: 0.85rem; color: var(--ink); line-height: 1.4; }
     .radar-pager { display: flex; gap: 10px; align-items: center; margin-top: 8px; font-size: 0.85rem; color: var(--muted); }
     .radar-panel { display: none; }
-    .radar-panel.on { display: block; }
+    .radar-panel.on { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+    .radar-panel.on > .radar-body { flex: 1; min-height: 0; overflow-y: auto; }
     .radar-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
     .radar-actions button, .radar-filters button {
       padding: 8px 12px; border-radius: 10px; border: none; background: var(--brand);
@@ -311,20 +312,15 @@
       width: 100%; margin-bottom: 0 !important; padding: 10px 12px; border-radius: 10px;
       border: 1px solid var(--line); font: inherit; background: #fff; color: var(--ink);
     }
-    .alvo-card .btn-add,
-    .alvo-toolbar .btn-add,
-    .alvo-toolbar .btn-wipe {
+    .btn-add, .btn-wipe {
       display: inline-flex; align-items: center; justify-content: center;
       padding: 10px 16px; border-radius: 10px; font-weight: 600; font-size: 0.85rem;
       cursor: pointer; white-space: nowrap; border: none; font-family: inherit;
     }
-    .alvo-card .btn-add, .alvo-toolbar .btn-add {
-      background: var(--brand); color: #fff;
-    }
-    .alvo-card .btn-add:hover, .alvo-toolbar .btn-add:hover { background: #0a3d39; }
-    .alvo-toolbar .btn-wipe {
-      background: #fff; color: #b91c1c; border: 1px solid #f0c4c4;
-    }
+    .btn-add { background: var(--brand); color: #fff; }
+    .btn-add:hover { background: #0a3d39; }
+    .btn-wipe { background: #fff; color: #b91c1c; border: 1px solid #f0c4c4; }
+    .btn-wipe:hover { background: #fff5f5; }
     .alvo-check {
       display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 500;
       padding: 0 4px 8px 0; color: var(--ink); margin: 0;
@@ -337,6 +333,8 @@
       border-radius: 999px; background: var(--brand-light); border: 1px solid #c5ddd9;
       font-size: 0.8rem; max-width: 100%;
     }
+    .alvo-chip.own { background: #fff7e0; border-color: #f0d98a; }
+    .alvo-chip .star { color: #b8860b; font-weight: 700; }
     .alvo-chip b { color: var(--brand); font-weight: 600; }
     .alvo-chip span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
     .alvo-chip button {
@@ -634,13 +632,13 @@
           <div class="radar-body">
             <div class="alvo-stack">
               <div class="alvo-toolbar">
-                <button type="button" class="btn-add" id="btn-seed-radar">Restaurar seed da Gestão</button>
+                <button type="button" class="btn-add" id="btn-seed-radar">Preencher da Gestão</button>
                 <button type="button" class="btn-wipe" id="btn-reset-radar">Limpar Radar</button>
                 <span id="sync-nota" style="font-size:0.8rem;color:var(--muted)"></span>
               </div>
               <p class="hint" style="margin:0 0 4px;font-size:0.82rem;color:var(--muted)">
-                <b>Restaurar seed</b> limpa alvos/stream e preenche de novo com a Gestão (Clécio, adversários, IGs, temas).
-                Pessoas/temas alimentam notícias; Instagram oficial vai ao Mix.
+                <b>Preencher da Gestão</b> só adiciona (candidato do escopo, adversários, temas do plano oficial) — nunca apaga o que você cadastrou à mão, inclusive Instagram.
+                <b>Limpar Radar</b> apaga tudo (alvos + stream) e não reseedeia sozinho.
               </p>
 
               <section class="alvo-card">
@@ -737,7 +735,7 @@
               <div><label>UF</label><input id="cfg-uf" maxlength="2" placeholder="AP" style="text-transform:uppercase" /></div>
               <div><label>Cargo</label><input id="cfg-cargo" placeholder="governador, senador…" /></div>
               <div><label>Notas</label><textarea id="cfg-notas" rows="3" placeholder="Contexto interno da campanha"></textarea></div>
-              <button type="submit">Salvar configuração</button>
+              <button type="submit" class="btn-add" style="justify-self:start">Salvar configuração</button>
             </form>
           </div>
         </div>
@@ -1916,8 +1914,13 @@
       if (!rows || !rows.length) return '<p class="alvo-empty">Nenhum item ainda.</p>';
       return '<div class="alvo-chip-row">' + rows.map(a => {
         const tip = a.handle_ig ? ('@' + a.handle_ig) : (a.query_news || '');
-        const tag = a.kind === 'perfil' ? (a.is_own ? 'oficial' : 'ig') : a.kind;
-        return '<span class="alvo-chip"><b>' + esc(a.nome) + '</b>' +
+        const own = a.is_own || a.papel === 'proprio';
+        const tag = a.kind === 'perfil'
+          ? (a.is_own ? 'oficial · Mix' : 'ig')
+          : (own ? 'próprio (monitorado)' : a.kind);
+        return '<span class="alvo-chip' + (own ? ' own' : '') + '">' +
+          (own ? '<span class="star">★</span>' : '') +
+          '<b>' + esc(a.nome) + '</b>' +
           (tip ? '<span>' + esc(tip) + '</span>' : '') +
           '<span>' + esc(tag) + '</span>' +
           '<button type="button" data-del-alvo="' + a.id + '" title="Remover">×</button></span>';
@@ -2060,17 +2063,17 @@
     });
 
     $('btn-seed-radar').addEventListener('click', async () => {
-      if (!confirm('Limpa alvos/stream e restaura o seed da Gestão (candidato, adversários, IGs, temas). Continuar?')) return;
-      $('sync-nota').textContent = 'Restaurando…';
+      $('sync-nota').textContent = 'Preenchendo…';
       $('radar-err').textContent = '';
       try {
-        const r = await api('/radar/reset?reseeds=true', { method: 'POST', body: '{}' });
-        const st = (r.seed && r.seed.stats) || {};
-        $('sync-nota').textContent = 'Restaurado · ' + (r.n_alvos || 0) + ' alvos' +
-          (r.seed && r.seed.added != null ? ' (+' + r.seed.added + ')' : '') +
-          (st.tema ? ' · temas ' + st.tema : '');
-        if (r.seed && r.seed.erro) {
-          $('radar-err').textContent = 'Seed parcial: ' + r.seed.erro;
+        const r = await api('/gestao/seed-radar', { method: 'POST', body: '{}' });
+        const st = r.stats || {};
+        const semPlano = !r.plano_proprio_encontrado;
+        $('sync-nota').textContent = '+' + (r.added || 0) + ' novo(s) · pessoa ' + (st.pessoa || 0) +
+          ' · adversário ' + (st.adversario || 0) + ' · IG ' + (st.perfil || 0) +
+          ' · tema ' + (st.tema || 0);
+        if (semPlano) {
+          $('radar-err').textContent = 'Plano de governo do candidato do escopo não encontrado no acervo — sem temas próprios (nada foi inventado). Cadastre Instagram e temas à mão se precisar.';
         }
         await loadRadarMeta();
         loadAlvos();
@@ -2079,7 +2082,7 @@
     });
 
     $('btn-reset-radar').addEventListener('click', async () => {
-      if (!confirm('Apaga alvos, stream e coletas. NÃO reseedeia. Continuar?')) return;
+      if (!confirm('Apaga TODOS os alvos, stream e coletas deste Radar (inclusive os cadastrados à mão). NÃO reseedeia sozinho. Continuar?')) return;
       $('radar-err').textContent = 'Limpando Radar…';
       try {
         const r = await api('/radar/reset?reseeds=false', { method: 'POST', body: '{}' });

@@ -1,4 +1,4 @@
-"""Seed Radar a partir do escopo Gestão + memória + planos/dossiê (sem botão TSE)."""
+"""Seed Radar a partir do escopo Gestão + memória + planos (sq exato). Aditivo — nunca apaga."""
 from __future__ import annotations
 
 from typing import Any
@@ -71,6 +71,8 @@ def _existe(
 
 
 def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
+    """Preenche Alvos a partir da Gestão. Sempre ADITIVO — nunca apaga o que já existe
+    (inclusive alvos cadastrados à mão, como Instagram oficial validado manualmente)."""
     st = get_status(conn, campanha_id)
     if not st.get("nm_urna") and not st.get("nm_candidato"):
         raise ValueError("Escopo sem candidato")
@@ -101,10 +103,8 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
     added = 0
     stats = {"pessoa": 0, "adversario": 0, "perfil": 0, "tema": 0, "eixos_kw": 0}
 
-    if not any(
-        a["nome"] == nome and a["kind"] == "pessoa"
-        for a in radar_store.list_alvos(conn, campanha_id, ativo_only=False)
-    ):
+    existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
+    if not _existe(existentes, nome=nome):
         radar_store.upsert_alvo(
             conn,
             campanha_id,
@@ -115,7 +115,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
             is_own=False,
             papel="proprio",
             prioridade=1,
-            notas=f"{partido or ''} · seed gestão".strip(" ·"),
+            notas=f"{partido or ''} · monitorado (candidato do escopo)".strip(" ·"),
         )
         added += 1
         stats["pessoa"] += 1
@@ -126,15 +126,20 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
         meta = b.get("meta") or {}
         pessoas.extend(meta.get("pessoas") or [])
 
-    nomes_adv: list[str] = []
+    # adversários com sq_candidato (para casar plano de governo com precisão)
+    adversarios_sq: list[dict[str, Any]] = []
 
-    if pessoas:
-        for p in pessoas:
-            papel = p.get("papel") or "adversario"
-            nm = (p.get("nm_urna") or "").strip()
-            igs = _igs_limpos(p.get("ig"))
+    for p in pessoas:
+        papel = p.get("papel") or "adversario"
+        nm = (p.get("nm_urna") or "").strip()
+        sq_p = p.get("sq_candidato")
+        igs = _igs_limpos(p.get("ig"))
+        proprio = papel == "proprio"
+
+        if not proprio and nm and nm != nome:
+            adversarios_sq.append({"nome": nm, "sq_candidato": sq_p})
             existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
-            if papel == "adversario" and nm and nm != nome and not _existe(existentes, nome=nm):
+            if not _existe(existentes, nome=nm):
                 radar_store.upsert_alvo(
                     conn,
                     campanha_id,
@@ -149,32 +154,8 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 )
                 added += 1
                 stats["adversario"] += 1
-                nomes_adv.append(nm)
-            elif papel == "adversario" and nm and nm != nome:
-                nomes_adv.append(nm)
-            for h in igs:
-                existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
-                if _existe(existentes, handle=h):
-                    continue
-                proprio = papel == "proprio"
-                radar_store.upsert_alvo(
-                    conn,
-                    campanha_id,
-                    kind="perfil",
-                    nome=f"{'@' + h}",
-                    query_news="" if proprio else f"{nm} {uf or ''}".strip(),
-                    handle_ig=h,
-                    is_own=proprio,
-                    papel="proprio" if proprio else "adversario",
-                    prioridade=1 if proprio else 2,
-                )
-                added += 1
-                stats["perfil"] += 1
-    else:
-        handles = _igs_limpos(
-            [h for b in blocos for h in ((b.get("meta") or {}).get("ig") or [])]
-        )
-        for h in handles:
+
+        for h in igs:
             existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
             if _existe(existentes, handle=h):
                 continue
@@ -182,15 +163,18 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 conn,
                 campanha_id,
                 kind="perfil",
-                nome=f"@{h}",
-                query_news="",
+                nome=f"@{h}" + (" (oficial)" if proprio else f" ({nm})" if nm else ""),
+                query_news="" if proprio else f"{nm} {uf or ''}".strip(),
                 handle_ig=h,
-                is_own=True,
-                papel="proprio",
-                prioridade=1,
+                is_own=proprio,
+                papel="proprio" if proprio else "adversario",
+                prioridade=1 if proprio else 2,
             )
             added += 1
             stats["perfil"] += 1
+
+    # fallback: adversários citados na nominata mesmo sem IG na base_redes
+    if not adversarios_sq:
         conc = memoria.listar(conn, campanha_id, tipo="base_concorrentes", limite=1)
         if conc:
             linhas = [
@@ -202,7 +186,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 nome_adv = ln.split("·")[0].strip()
                 if not nome_adv or nome_adv == nome:
                     continue
-                nomes_adv.append(nome_adv)
+                adversarios_sq.append({"nome": nome_adv, "sq_candidato": None})
                 existentes = radar_store.list_alvos(conn, campanha_id, ativo_only=False)
                 if _existe(existentes, nome=nome_adv):
                     continue
@@ -220,11 +204,10 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 added += 1
                 stats["adversario"] += 1
 
-    # Temas + keywords a partir de planos (acervo) e dossiê
+    # Temas + keywords a partir do plano de governo (só sq exato — sem cruzar nome).
     extracao: dict[str, Any] = {
         "temas_proprio": [],
         "temas_adversario": [],
-        "temas_dossie": [],
         "keywords_eixos": {},
         "plano_chars": 0,
     }
@@ -235,7 +218,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
             uf=uf,
             sq_candidato=str(sq) if sq else None,
             nm_candidato=nome,
-            adversarios=list(dict.fromkeys(nomes_adv)),
+            adversarios=adversarios_sq,
         )
     except Exception:
         pass
@@ -246,10 +229,8 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
     except Exception:
         stats["eixos_kw"] = 0
 
-    for tm in (
-        list(extracao.get("temas_proprio") or [])
-        + list(extracao.get("temas_adversario") or [])
-        + list(extracao.get("temas_dossie") or [])
+    for tm in list(extracao.get("temas_proprio") or []) + list(
+        extracao.get("temas_adversario") or []
     ):
         nm_t = (tm.get("nome") or "").strip()
         if not nm_t:
@@ -268,7 +249,7 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
                 is_own=False,
                 papel=tm.get("papel") or "tema",
                 prioridade=4,
-                notas=(tm.get("eixo") or tm.get("fonte") or "")[:200],
+                notas=(tm.get("eixo") or "")[:200],
             )
             added += 1
             stats["tema"] += 1
@@ -283,4 +264,5 @@ def seed_radar_da_gestao(conn: psycopg.Connection, campanha_id: str) -> dict[str
         "uf": uf,
         "stats": stats,
         "plano_chars": extracao.get("plano_chars") or 0,
+        "plano_proprio_encontrado": bool(extracao.get("plano_chars")),
     }
