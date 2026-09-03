@@ -4,6 +4,7 @@ Sempre retorna nivel=indicio. Cifra no texto é pista, não fato.
 """
 from __future__ import annotations
 
+import asyncio
 import html as html_module
 import os
 import re
@@ -194,7 +195,7 @@ def _consultar_store(
     import psycopg
 
     from radar import store
-from radar.schema import ensure_schema
+    from radar.schema import ensure_schema
 
     url = os.environ.get("DATABASE_URL") or os.environ.get("AGENTE_DATABASE_URL")
     if not url:
@@ -216,8 +217,8 @@ from radar.schema import ensure_schema
             )
             conn.commit()
         return data
-    except Exception:
-        return None
+    except Exception as exc:
+        return {"status": "vazio", "itens": [], "aviso_store": f"{type(exc).__name__}: {exc}"}
 
 
 async def consultar_clima(
@@ -270,13 +271,11 @@ async def consultar_clima(
 
     # 0) Store interno (ctl.radar_*) — caminho feliz por campanha Apura
     if campanha_id:
-        import asyncio
-
         stored = await asyncio.to_thread(
             _consultar_store,
             campanha_id,
             q=q,
-            canal=canal_l,
+            canal=canal_l if canal_l != "instagram" else "instagram",
             origem=origem.strip().lower() if origem else None,
             tipo=tipo.strip().lower() if tipo else None,
             urgencia=urgencia.strip().lower() if urgencia else None,
@@ -284,8 +283,17 @@ async def consultar_clima(
             page=max(1, page),
             limite=lim,
         )
-        if stored and stored.get("itens"):
-            itens = [_normalizar_item_json(x) for x in stored["itens"] if isinstance(x, dict)]
+        if stored and stored.get("aviso_store"):
+            avisos.append("radar_store: " + str(stored.get("aviso_store")))
+        store_itens = [
+            _normalizar_item_json(x)
+            for x in ((stored or {}).get("itens") or [])
+            if isinstance(x, dict)
+        ]
+        # Instagram: NÃO devolver cedo. Store pode ter notícia que só bateu o handle
+        # no título e aí o Apify nunca rodava — exatamente o "erro ao buscar redes".
+        if canal_l != "instagram" and store_itens:
+            itens = store_itens
             motores.append("radar_store")
             modo = "radar_store"
             nota = (
@@ -301,15 +309,17 @@ async def consultar_clima(
                 "filtro": params,
                 "janela_horas": horas,
                 "campanha_id": campanha_id,
-                "total": stored.get("total"),
-                "page": stored.get("page"),
-                "pages": stored.get("pages"),
+                "total": stored.get("total") if stored else len(itens),
+                "page": stored.get("page") if stored else 1,
+                "pages": stored.get("pages") if stored else 1,
                 "itens": itens,
             }
-        if stored is not None:
+        if canal_l == "instagram" and store_itens:
+            itens.extend([x for x in store_itens if str(x.get("canal") or "").lower() == "instagram"])
+            if itens:
+                motores.append("radar_store")
+        elif stored is not None and not store_itens:
             avisos.append("radar_store vazio nesta janela/filtro")
-
-    import asyncio
 
     quer_news = canal_l in (None, "", "news", "noticia", "notícia") and bool(q)
     if quer_news and canal_l != "instagram":

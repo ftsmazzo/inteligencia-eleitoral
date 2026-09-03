@@ -180,8 +180,9 @@ MCP_TOOLS: list[dict] = [
         "function": {
             "name": "consultar_rede_social",
             "description": (
-                "URLs/handles oficiais de redes sociais declarados ao TSE. "
-                "Exige ano+sq_candidato (obtenha sq via consultar_nominata). Anos: 2020/2022/2024/2026."
+                "URLs/handles declarados ao TSE (cadastro do candidato), NÃO o feed de posts. "
+                "Para resumir o que rolou no Instagram use consultar_clima canal=instagram. "
+                "Exige ano+sq_candidato. Anos: 2020/2022/2024/2026."
             ),
             "parameters": {
                 "type": "object",

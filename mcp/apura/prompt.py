@@ -86,7 +86,9 @@ Playbooks compostos:
 - Deputado: proposições → consultar_proposicoes + consultar_mandato_urna (tema).
 - Social × urna → consultar_cruzamento_social (exige uf).
 - Patrimônio → consultar_bem (sq_candidato da nominata).
-- Redes sociais / dados extras TSE → consultar_rede_social e consultar_complementar (sq da nominata).
+- URLs declaradas ao TSE (cadastro do candidato) → consultar_rede_social (ano+sq). NÃO use isso para
+  resumir postagens — isso não traz o feed.
+- Postagens / o que rolou no Instagram / stories da última semana → consultar_clima canal=instagram.
 - Coligação 2014 vs federação 2022 → consultar_coligacao + consultar_acervo tipo=nota_tse.
 
 Região / partido:

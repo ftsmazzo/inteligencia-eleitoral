@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from apura.auth import decodificar_jwt, usuario_por_id
-from gestao import dossie, memoria, motor, nominata_query, seed_radar, store
+from gestao import dossie, equipe, memoria, motor, nominata_query, paineis, seed_radar, store
 from gestao.schema import ensure_schema
 
 router = APIRouter(prefix="/apura/api/gestao", tags=["gestao"])
@@ -90,12 +90,40 @@ class DossieIn(BaseModel):
     nome_arquivo: str = Field(default="dossie.html", max_length=200)
 
 
+class EquipeIn(BaseModel):
+    email: str = Field(min_length=5, max_length=160)
+    nome: str = Field(default="", max_length=120)
+    papel: str = Field(default="equipe", max_length=20)
+    senha: str | None = Field(default=None, max_length=80)
+
+
+def _exige_coordenador(conn, user: tuple[str, str, str]) -> None:
+    papel = store.papel_usuario(conn, user[0])
+    if papel != "coordenador":
+        raise HTTPException(403, "Só o coordenador gera e gerencia usuários da equipe.")
+
+
 @router.get("/status")
 def status(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     cid, _ = _campanha(user)
     with _db() as conn:
         st = store.get_status(conn, cid)
+        try:
+            conn.execute(
+                "UPDATE ctl.apura_usuario SET papel = 'coordenador' WHERE id = %s::uuid AND COALESCE(papel,'equipe') <> 'coordenador'",
+                (user[0],),
+            )
+        except Exception:
+            pass
         st["papel"] = store.papel_usuario(conn, user[0])
+        try:
+            boot = equipe.garantir_bootstrap(conn, cid)
+            st["bootstrap_equipe"] = {
+                "email": boot.get("email") if boot else None,
+                "criado": bool(boot and boot.get("criado")),
+            }
+        except Exception:
+            st["bootstrap_equipe"] = {"ok": False}
         return st
 
 
@@ -252,5 +280,98 @@ def liberar(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
             st = store.liberar_equipe(conn, cid)
             st["papel"] = "coordenador"
             return st
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/equipe")
+def listar_equipe(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        try:
+            equipe.garantir_bootstrap(conn, cid)
+        except Exception:
+            pass
+        itens = equipe.listar(conn, cid)
+        papel = store.papel_usuario(conn, user[0])
+        return {"itens": itens, "papel": papel, "pode_gerenciar": papel == "coordenador"}
+
+
+@router.post("/equipe")
+def criar_equipe(body: EquipeIn, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        _exige_coordenador(conn, user)
+        try:
+            return equipe.criar(
+                conn, cid, email=body.email, nome=body.nome, papel=body.papel, senha=body.senha
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/equipe/{usuario_id}/senha")
+def reset_senha_equipe(usuario_id: str, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        _exige_coordenador(conn, user)
+        try:
+            return equipe.redefinir_senha(conn, cid, usuario_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+class EquipeAtivoIn(BaseModel):
+    ativo: bool = True
+
+
+@router.post("/equipe/{usuario_id}/ativo")
+def ativo_equipe(
+    usuario_id: str, body: EquipeAtivoIn, user: tuple[str, str, str] = Depends(_usuario)
+) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        _exige_coordenador(conn, user)
+        try:
+            return equipe.set_ativo(conn, cid, usuario_id, body.ativo)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/paineis")
+def listar_paineis(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        return paineis.catalogo(store.get_status(conn, cid))
+
+
+@router.get("/paineis/mapa-forca")
+def painel_mapa(
+    ano_eleitorado: int = 2022, user: tuple[str, str, str] = Depends(_usuario)
+) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        try:
+            return paineis.mapa_forca(conn, cid, ano_eleitorado=ano_eleitorado)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/paineis/perfil-eleitorado")
+def painel_perfil(ano: int = 2022, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        try:
+            return paineis.perfil_eleitorado(conn, cid, ano=ano)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/paineis/socio-voto")
+def painel_socio(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        try:
+            return paineis.socio_voto(conn, cid)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc

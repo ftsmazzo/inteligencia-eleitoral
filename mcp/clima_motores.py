@@ -30,6 +30,10 @@ _IG_ALIASES: dict[str, str] = {
     "ronaldocaiado": "ronaldocaiado",
     "zema": "romeuzema",
     "romeuzema": "romeuzema",
+    "clecio": "clecioluis_",
+    "clécio": "clecioluis_",
+    "clecioluis": "clecioluis_",
+    "clecioluis_": "clecioluis_",
 }
 
 
@@ -226,7 +230,16 @@ def buscar_instagram_apify(
         "onlyPostsNewerThan": since_s,
     }
     r = httpx.post(api, json=payload, timeout=180.0)
-    r.raise_for_status()
+    if r.status_code >= 400:
+        detalhe = (r.text or "")[:400]
+        # Retry sem recorte de data — alguns actors Apify rejeitam onlyPostsNewerThan.
+        if "onlyPostsNewerThan" in detalhe or r.status_code in (400, 422):
+            payload.pop("onlyPostsNewerThan", None)
+            r = httpx.post(api, json=payload, timeout=180.0)
+        if r.status_code >= 400:
+            raise RuntimeError(
+                f"Apify HTTP {r.status_code} actor={actor} @{handle}: {detalhe or r.reason_phrase}"
+            )
     data = r.json()
     rows = data if isinstance(data, list) else []
     posts = _ig_expand(rows)

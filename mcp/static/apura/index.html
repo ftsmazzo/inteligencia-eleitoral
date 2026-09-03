@@ -215,8 +215,6 @@
     .nav-views button svg { width: 14px; height: 14px; flex-shrink: 0; }
     .nav-views button:hover { color: var(--brand); background: var(--brand-light); }
     .nav-views button.on { background: var(--brand); color: #fff; border-color: var(--brand); box-shadow: var(--shadow-sm); }
-    #radar-view, #gestao-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
-    #radar-view.on, #gestao-view.on { display: flex; }
     #chat-view { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
     #chat-view.off { display: none; }
     .ambiente-banner {
@@ -278,6 +276,53 @@
       display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
       background: var(--brand-light); color: var(--brand); margin-bottom: 12px; text-transform: uppercase;
     }
+    #radar-view, #gestao-view, #paineis-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+    #radar-view.on, #gestao-view.on, #paineis-view.on { display: flex; }
+    .equipe-box { max-width: 920px; margin-top: 18px; }
+    .equipe-form { display: grid; grid-template-columns: 1.4fr 1fr 120px auto; gap: 8px; align-items: end; margin: 12px 0; }
+    @media (max-width: 900px) { .equipe-form { grid-template-columns: 1fr; } }
+    .equipe-form input, .equipe-form select { margin: 0; }
+    .senha-flash {
+      background: var(--accent-light); border: 1px solid #f0d98a; color: #8a5a10;
+      padding: 10px 12px; border-radius: 10px; font-size: 0.85rem; margin: 8px 0;
+    }
+    .paineis-head { padding: 16px 20px 10px; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .paineis-head h3 { font-family: Fraunces, serif; font-size: 1.2rem; color: var(--brand); }
+    .paineis-head .sub { font-size: 0.82rem; color: var(--muted); margin-top: 4px; max-width: 720px; line-height: 1.45; }
+    .paineis-tabs { display: flex; gap: 6px; padding: 12px 20px 0; flex-wrap: wrap; }
+    .paineis-tabs button {
+      padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff;
+      font-size: 0.8rem; font-weight: 650; cursor: pointer; color: var(--muted); transition: .15s var(--ease);
+    }
+    .paineis-tabs button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .paineis-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 40px; }
+    .p-kpis { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 14px; }
+    .p-kpi {
+      background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 120px;
+      box-shadow: var(--shadow-sm);
+    }
+    .p-kpi b { display: block; font-family: Fraunces, serif; font-size: 1.2rem; color: var(--brand); }
+    .p-kpi span { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; font-weight: 650; }
+    .p-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 12px; }
+    .p-filters label { margin: 0; font-size: 0.75rem; }
+    .p-filters input, .p-filters select { margin: 0; padding: 8px 10px; max-width: 220px; }
+    .p-nota { font-size: 0.78rem; color: var(--muted); margin: 0 0 12px; line-height: 1.45; max-width: 860px; }
+    table.p-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; background: #fff; border-radius: 12px; overflow: hidden; }
+    table.p-table th, table.p-table td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    table.p-table th { font-size: 0.68rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); background: var(--surface-2); cursor: pointer; }
+    table.p-table tbody tr:hover td { background: var(--surface-2); }
+    .p-bar { display: inline-block; width: 72px; height: 7px; background: var(--line); border-radius: 99px; overflow: hidden; vertical-align: middle; margin-right: 6px; }
+    .p-bar i { display: block; height: 100%; background: var(--brand); }
+    .prio { display: inline-block; font-size: 0.68rem; font-weight: 800; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; }
+    .prio-disputar { background: var(--danger-light); color: var(--danger); }
+    .prio-defender { background: var(--ok-light); color: var(--ok); }
+    .prio-virada { background: var(--accent-light); color: #8a5a10; }
+    .prio-manter { background: var(--surface-2); color: var(--muted); }
+    .prio-alta { background: var(--danger-light); color: var(--danger); }
+    .prio-media { background: var(--accent-light); color: #8a5a10; }
+    .prio-defender_pauta { background: var(--ok-light); color: var(--ok); }
+    .prio-outra_pauta { background: var(--brand-light); color: var(--brand); }
+    .acao-cell { color: var(--muted); font-size: 0.76rem; max-width: 280px; line-height: 1.35; }
     .radar-head { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
     .radar-head h3 { font-family: Fraunces, serif; font-size: 1.2rem; color: var(--brand); }
     .radar-head .sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
@@ -672,6 +717,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M12 12v9"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
           Radar
         </button>
+        <button type="button" id="btn-view-paineis">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          Painéis
+        </button>
       </div>
       <div class="sess-list" id="sess-list"></div>
       <div class="sidebar-actions">
@@ -903,8 +952,22 @@
             <span data-step="5">Resumo</span>
           </div>
           <div class="gestao-card" id="gestao-card"></div>
+          <div class="gestao-card equipe-box" id="box-equipe"></div>
           <p class="gestao-err" id="gestao-err"></p>
         </div>
+      </div>
+
+      <div id="paineis-view">
+        <div class="paineis-head">
+          <h3>Painéis de decisão</h3>
+          <div class="sub" id="paineis-sub">Trilha A · urna + CadÚnico/Bolsa da UF da campanha. Sem estimativa.</div>
+        </div>
+        <div class="paineis-tabs">
+          <button type="button" class="on" data-painel="mapa">Mapa de força</button>
+          <button type="button" data-painel="perfil">Perfil do eleitorado</button>
+          <button type="button" data-painel="socio">Socioeconômico × voto</button>
+        </div>
+        <div class="paineis-body" id="paineis-body"><p class="hint">Carregando…</p></div>
       </div>
     </div>
   </div>
@@ -1626,18 +1689,23 @@
       const chat = wh === 'chat';
       const radar = wh === 'radar';
       const gestao = wh === 'gestao';
+      const paineis = wh === 'paineis';
       $('btn-view-chat').classList.toggle('on', chat);
       $('btn-view-radar').classList.toggle('on', radar);
       $('btn-view-gestao').classList.toggle('on', gestao);
+      $('btn-view-paineis').classList.toggle('on', paineis);
       $('chat-view').classList.toggle('off', !chat);
       $('radar-view').classList.toggle('on', radar);
       $('gestao-view').classList.toggle('on', gestao);
+      $('paineis-view').classList.toggle('on', paineis);
       if (radar) loadRadarMeta().then(() => showRadarTab(radarTab));
       if (gestao) loadGestao();
+      if (paineis) loadPainel(painelTab);
     }
     $('btn-view-chat').addEventListener('click', () => setView('chat'));
     $('btn-view-radar').addEventListener('click', () => setView('radar'));
     $('btn-view-gestao').addEventListener('click', () => setView('gestao'));
+    $('btn-view-paineis').addEventListener('click', () => setView('paineis'));
     document.querySelectorAll('[data-goto-gestao]').forEach(a => {
       a.addEventListener('click', (e) => { e.preventDefault(); setView('gestao'); });
     });
@@ -1677,6 +1745,7 @@
         }
         syncAmbienteBanner();
         renderGestaoStep();
+        loadEquipe();
       } catch (e) {
         $('gestao-err').textContent = e.message;
       }
@@ -2484,6 +2553,270 @@
         loadRadarMeta();
       } catch (e) { $('radar-err').textContent = e.message; }
     });
+
+    function fmtN(n) {
+      if (n == null || n === '') return '—';
+      return Number(n).toLocaleString('pt-BR');
+    }
+    function fmtPct(n) {
+      if (n == null || n === '') return '—';
+      return String(n).replace('.', ',') + '%';
+    }
+    function barPct(n) {
+      if (n == null) return '';
+      const p = Math.max(0, Math.min(100, Number(n)));
+      return '<span class="p-bar"><i style="width:' + p + '%"></i></span>';
+    }
+    function prioBadge(k) {
+      return '<span class="prio prio-' + esc(k || '') + '">' + esc(k || '—') + '</span>';
+    }
+
+    let equipeCache = { itens: [], pode_gerenciar: false };
+    async function loadEquipe() {
+      const box = $('box-equipe');
+      if (!box) return;
+      try {
+        equipeCache = await api('/gestao/equipe');
+      } catch (e) {
+        box.innerHTML = '<p class="hint">Equipe: ' + esc(e.message) + '</p>';
+        return;
+      }
+      const pode = !!equipeCache.pode_gerenciar;
+      const rows = (equipeCache.itens || []).map(u => {
+        const acoes = pode
+          ? ('<button type="button" class="link-btn" data-eq-senha="' + u.id + '">nova senha</button>' +
+             '<button type="button" class="link-btn danger" data-eq-ativo="' + u.id + '" data-on="' + (u.ativo ? '0' : '1') + '">' +
+             (u.ativo ? 'desativar' : 'ativar') + '</button>')
+          : '—';
+        return '<tr><td>' + esc(u.nome || '—') + '</td><td>' + esc(u.email) + '</td>' +
+          '<td>' + esc(u.papel) + '</td><td>' + (u.ativo ? 'ativo' : 'inativo') + '</td>' +
+          '<td>' + (u.quota_ilimitada ? 'ilimitada' : fmtN(u.quota_max)) + '</td>' +
+          '<td class="row-actions">' + acoes + '</td></tr>';
+      }).join('');
+      box.innerHTML = '<h4>Usuários da equipe</h4>' +
+        '<p class="hint">O coordenador gera logins da campanha. Senha aparece só na criação/reset — anote e envie no privado.</p>' +
+        (pode
+          ? ('<div class="equipe-form">' +
+             '<div><label>E-mail</label><input id="eq-email" type="email" placeholder="pessoa@campanha.com" /></div>' +
+             '<div><label>Nome</label><input id="eq-nome" placeholder="Nome" /></div>' +
+             '<div><label>Papel</label><select id="eq-papel"><option value="equipe">equipe</option><option value="coordenador">coordenador</option></select></div>' +
+             '<button type="button" class="btn-add" id="eq-criar">Gerar usuário</button></div>')
+          : '<p class="hint">Só o coordenador cria usuários.</p>') +
+        '<div id="eq-flash"></div>' +
+        '<table class="alvo-table"><thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Status</th><th>Cota</th><th></th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="6">Nenhum usuário nesta campanha.</td></tr>') +
+        '</tbody></table>';
+      if ($('eq-criar')) {
+        $('eq-criar').onclick = async () => {
+          try {
+            const r = await api('/gestao/equipe', {
+              method: 'POST',
+              body: JSON.stringify({
+                email: $('eq-email').value.trim(),
+                nome: $('eq-nome').value.trim(),
+                papel: $('eq-papel').value,
+              }),
+            });
+            $('eq-flash').innerHTML = '<div class="senha-flash"><b>' + esc(r.email) + '</b> criado. Senha temporária: <code>' +
+              esc(r.senha_temporaria) + '</code> — ' + esc(r.aviso || '') + '</div>';
+            loadEquipe();
+          } catch (e) { $('eq-flash').innerHTML = '<p class="gestao-err">' + esc(e.message) + '</p>'; }
+        };
+      }
+      box.querySelectorAll('[data-eq-senha]').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('Gerar nova senha para este usuário?')) return;
+          try {
+            const r = await api('/gestao/equipe/' + btn.getAttribute('data-eq-senha') + '/senha', { method: 'POST', body: '{}' });
+            $('eq-flash').innerHTML = '<div class="senha-flash">Nova senha de <b>' + esc(r.email) + '</b>: <code>' + esc(r.senha_temporaria) + '</code></div>';
+          } catch (e) { $('eq-flash').innerHTML = '<p class="gestao-err">' + esc(e.message) + '</p>'; }
+        };
+      });
+      box.querySelectorAll('[data-eq-ativo]').forEach(btn => {
+        btn.onclick = async () => {
+          try {
+            await api('/gestao/equipe/' + btn.getAttribute('data-eq-ativo') + '/ativo', {
+              method: 'POST',
+              body: JSON.stringify({ ativo: btn.getAttribute('data-on') === '1' }),
+            });
+            loadEquipe();
+          } catch (e) { $('eq-flash').innerHTML = '<p class="gestao-err">' + esc(e.message) + '</p>'; }
+        };
+      });
+    }
+
+    let painelTab = 'mapa';
+    let painelSort = { key: 'eleitores', dir: -1 };
+    document.querySelectorAll('[data-painel]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        painelTab = btn.getAttribute('data-painel');
+        document.querySelectorAll('[data-painel]').forEach(b => b.classList.toggle('on', b === btn));
+        loadPainel(painelTab);
+      });
+    });
+
+    function filterRows(rows, q) {
+      const s = (q || '').trim().toLowerCase();
+      if (!s) return rows;
+      return rows.filter(r => String(r.municipio || '').toLowerCase().includes(s) || String(r.regiao || '').includes(s));
+    }
+    function sortRows(rows, key, dir) {
+      return rows.slice().sort((a, b) => {
+        const va = a[key], vb = b[key];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+        return String(va).localeCompare(String(vb), 'pt') * dir;
+      });
+    }
+    function bindSort(keyDefault) {
+      document.querySelectorAll('#paineis-body th[data-sort]').forEach(th => {
+        th.onclick = () => {
+          const k = th.getAttribute('data-sort');
+          if (painelSort.key === k) painelSort.dir *= -1;
+          else { painelSort.key = k; painelSort.dir = -1; }
+          loadPainel(painelTab);
+        };
+      });
+    }
+
+    async function loadPainel(tab) {
+      const box = $('paineis-body');
+      box.innerHTML = '<p class="hint">Consultando a base oficial…</p>';
+      try {
+        if (tab === 'mapa') await renderMapaForca(box);
+        else if (tab === 'perfil') await renderPerfil(box);
+        else await renderSocio(box);
+      } catch (e) {
+        box.innerHTML = '<p class="gestao-err">' + esc(e.message) + '</p>';
+      }
+    }
+
+    async function renderMapaForca(box) {
+      const ano = ($('p-ano-el') && $('p-ano-el').value) || '2022';
+      const q = ($('p-q') && $('p-q').value) || '';
+      const pri = ($('p-pri') && $('p-pri').value) || '';
+      const d = await api('/gestao/paineis/mapa-forca?ano_eleitorado=' + encodeURIComponent(ano));
+      if (d.status === 'vazio') { box.innerHTML = '<p class="hint">' + esc(d.mensagem || 'Sem dados') + '</p>'; return; }
+      $('paineis-sub').textContent = (d.candidato || '') + ' · ' + (d.cargo || '') + ' · ' + (d.uf || '') + ' · ' + (d.fonte || '');
+      let rows = filterRows(d.linhas || [], q);
+      if (pri) rows = rows.filter(r => r.prioridade === pri);
+      rows = sortRows(rows, painelSort.key || 'eleitores', painelSort.dir);
+      const k = d.kpis || {};
+      box.innerHTML =
+        '<p class="p-nota">' + esc(d.nota || '') + ' Decisão: <b>disputar</b> = muito eleitor + vitória adversária em 2022; <b>defender</b> = base grande nossa.</p>' +
+        '<div class="p-kpis">' +
+        '<div class="p-kpi"><b>' + fmtN(k.municipios) + '</b><span>Municípios</span></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.eleitorado_total) + '</b><span>Eleitorado ' + esc(String(d.ano_eleitorado)) + '</span></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.metro_eleitores) + '</b><span>Macapá+Santana</span></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.disputar) + '</b><span>Disputar</span></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.defender) + '</b><span>Defender</span></div></div>' +
+        '<div class="p-filters">' +
+        '<div><label>Buscar município</label><input id="p-q" value="' + esc(q) + '" placeholder="Macapá, interior…" /></div>' +
+        '<div><label>Eleitorado</label><select id="p-ano-el"><option value="2022">2022</option><option value="2024">2024</option><option value="2018">2018</option></select></div>' +
+        '<div><label>Prioridade</label><select id="p-pri"><option value="">todas</option><option value="disputar">disputar</option><option value="defender">defender</option><option value="virada">virada</option><option value="manter">manter</option></select></div>' +
+        '</div>' +
+        '<table class="p-table"><thead><tr>' +
+        '<th data-sort="municipio">Município</th><th data-sort="regiao">Região</th>' +
+        '<th data-sort="eleitores">Eleitores</th><th data-sort="peso_eleitorado_pct">Peso</th>' +
+        '<th>Gov 2018</th><th>Gov 2022</th><th data-sort="nosso_2022_pct">Nosso 2022</th>' +
+        '<th data-sort="prioridade">Prioridade</th><th>O que fazer</th></tr></thead><tbody>' +
+        rows.map(r => {
+          const g18 = r.gov_2018 || {}; const g22 = r.gov_2022 || {};
+          return '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + esc(r.regiao) + '</td>' +
+            '<td>' + fmtN(r.eleitores) + '</td><td>' + barPct(r.peso_eleitorado_pct) + fmtPct(r.peso_eleitorado_pct) + '</td>' +
+            '<td>' + esc(g18.nome || '—') + (g18.pct != null ? ' · ' + fmtPct(g18.pct) : '') + '</td>' +
+            '<td>' + esc(g22.nome || '—') + (g22.pct != null ? ' · ' + fmtPct(g22.pct) : '') + '</td>' +
+            '<td>' + (r.nosso_2022_pct != null ? barPct(r.nosso_2022_pct) + fmtPct(r.nosso_2022_pct) : '—') + '</td>' +
+            '<td>' + prioBadge(r.prioridade) + '</td><td class="acao-cell">' + esc(r.acao) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+      $('p-ano-el').value = String(d.ano_eleitorado || '2022');
+      $('p-pri').value = pri;
+      $('p-q').addEventListener('change', () => loadPainel('mapa'));
+      $('p-ano-el').addEventListener('change', () => loadPainel('mapa'));
+      $('p-pri').addEventListener('change', () => loadPainel('mapa'));
+      bindSort();
+    }
+
+    async function renderPerfil(box) {
+      const ano = ($('p-ano-el') && $('p-ano-el').value) || '2022';
+      const q = ($('p-q') && $('p-q').value) || '';
+      const d = await api('/gestao/paineis/perfil-eleitorado?ano=' + encodeURIComponent(ano));
+      if (d.status === 'vazio') { box.innerHTML = '<p class="hint">' + esc(d.mensagem || 'Sem dados') + '</p>'; return; }
+      $('paineis-sub').textContent = (d.uf || '') + ' · eleitorado ' + d.ano + ' · ' + (d.fonte || '');
+      let rows = filterRows(d.linhas || [], q);
+      rows = sortRows(rows, painelSort.key || 'eleitores', painelSort.dir);
+      const k = d.kpis || {};
+      box.innerHTML =
+        '<p class="p-nota">' + esc(d.nota || '') + ' Use isso para tom de peça: interior com baixa escolaridade ≠ tom de Macapá.</p>' +
+        '<div class="p-kpis">' +
+        '<div class="p-kpi"><b>' + fmtPct(k.pct_feminino_uf) + '</b><span>Mulheres (UF)</span></div>' +
+        '<div class="p-kpi"><b>' + fmtPct(k.pct_ate_29_uf) + '</b><span>Até 29 anos</span></div>' +
+        '<div class="p-kpi"><b>' + fmtPct(k.pct_baixa_esc_metro) + '</b><span>Baixa esc. metro</span></div>' +
+        '<div class="p-kpi"><b>' + fmtPct(k.pct_baixa_esc_interior) + '</b><span>Baixa esc. interior</span></div></div>' +
+        '<div class="p-filters">' +
+        '<div><label>Buscar</label><input id="p-q" value="' + esc(q) + '" /></div>' +
+        '<div><label>Ano do perfil</label><select id="p-ano-el"><option value="2022">2022</option><option value="2024">2024</option><option value="2018">2018</option></select></div>' +
+        '</div>' +
+        '<table class="p-table"><thead><tr>' +
+        '<th data-sort="municipio">Município</th><th data-sort="regiao">Região</th><th data-sort="eleitores">Eleitores</th>' +
+        '<th data-sort="pct_feminino">Mulheres</th><th data-sort="pct_ate_29">Até 29</th><th data-sort="pct_60_mais">60+</th>' +
+        '<th data-sort="pct_baixa_escolaridade">Baixa esc.</th><th data-sort="pct_superior_completo">Superior</th><th>Mensagem</th></tr></thead><tbody>' +
+        rows.map(r => '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + esc(r.regiao) + '</td><td>' + fmtN(r.eleitores) + '</td>' +
+          '<td>' + barPct(r.pct_feminino) + fmtPct(r.pct_feminino) + '</td>' +
+          '<td>' + barPct(r.pct_ate_29) + fmtPct(r.pct_ate_29) + '</td>' +
+          '<td>' + barPct(r.pct_60_mais) + fmtPct(r.pct_60_mais) + '</td>' +
+          '<td>' + barPct(r.pct_baixa_escolaridade) + fmtPct(r.pct_baixa_escolaridade) + '</td>' +
+          '<td>' + barPct(r.pct_superior_completo) + fmtPct(r.pct_superior_completo) + '</td>' +
+          '<td class="acao-cell">' + esc(r.mensagem) + '</td></tr>').join('') +
+        '</tbody></table>';
+      $('p-ano-el').value = String(d.ano || '2022');
+      $('p-q').addEventListener('change', () => loadPainel('perfil'));
+      $('p-ano-el').addEventListener('change', () => loadPainel('perfil'));
+      bindSort();
+    }
+
+    async function renderSocio(box) {
+      const q = ($('p-q') && $('p-q').value) || '';
+      const opp = ($('p-opp') && $('p-opp').value) || '';
+      const d = await api('/gestao/paineis/socio-voto');
+      if (d.status === 'vazio') { box.innerHTML = '<p class="hint">' + esc(d.mensagem || 'Sem dados') + '</p>'; return; }
+      $('paineis-sub').textContent = (d.candidato || '') + ' · ' + (d.uf || '') + ' · CadÚnico ' + (d.anomes_cadunico || '—') + ' · Bolsa ' + (d.anomes_bolsa || '—');
+      let rows = filterRows(d.linhas || [], q);
+      if (opp) rows = rows.filter(r => r.oportunidade === opp);
+      rows = sortRows(rows, painelSort.key || 'taxa_extrema_pct', painelSort.dir);
+      const k = d.kpis || {};
+      box.innerHTML =
+        '<p class="p-nota">' + esc(d.nota || '') + '</p>' +
+        '<div class="p-kpis">' +
+        '<div class="p-kpi"><b>' + fmtN(k.familias_cadunico) + '</b><span>Famílias CadÚnico</span></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.familias_bolsa) + '</b><span>Famílias Bolsa</span></div>' +
+        '<div class="p-kpi"><b>' + fmtN(k.oportunidade_alta) + '</b><span>Oportunidade alta</span></div>' +
+        '<div class="p-kpi"><b>inexistente</b><span>Desemprego municipal</span></div></div>' +
+        '<div class="p-filters">' +
+        '<div><label>Buscar</label><input id="p-q" value="' + esc(q) + '" /></div>' +
+        '<div><label>Oportunidade</label><select id="p-opp"><option value="">todas</option><option value="alta">alta</option><option value="defender_pauta">defender pauta</option><option value="media">média</option><option value="outra_pauta">outra pauta</option></select></div>' +
+        '</div>' +
+        '<table class="p-table"><thead><tr>' +
+        '<th data-sort="municipio">Município</th><th data-sort="regiao">Região</th>' +
+        '<th data-sort="cadunico_familias">CadÚnico</th><th data-sort="taxa_extrema_pct">Extrema pobreza</th>' +
+        '<th data-sort="bolsa_familias">Bolsa fam.</th><th data-sort="bolsa_repassado">Repasse R$</th>' +
+        '<th>Vencedor 2022</th><th data-sort="nosso_2022_pct">Nosso %</th><th>Leitura</th></tr></thead><tbody>' +
+        rows.map(r => '<tr><td><b>' + esc(r.municipio) + '</b></td><td>' + esc(r.regiao) + '</td>' +
+          '<td>' + fmtN(r.cadunico_familias) + '</td>' +
+          '<td>' + barPct(r.taxa_extrema_pct) + fmtPct(r.taxa_extrema_pct) + '</td>' +
+          '<td>' + fmtN(r.bolsa_familias) + '</td>' +
+          '<td>' + (r.bolsa_repassado != null ? fmtN(Math.round(r.bolsa_repassado)) : '—') + '</td>' +
+          '<td>' + esc(r.vencedor_2022 || '—') + (r.vencedor_pct != null ? ' · ' + fmtPct(r.vencedor_pct) : '') + '</td>' +
+          '<td>' + (r.nosso_2022_pct != null ? fmtPct(r.nosso_2022_pct) : '—') + '</td>' +
+          '<td class="acao-cell">' + prioBadge(r.oportunidade || '') + ' ' + esc(r.leitura) + '</td></tr>').join('') +
+        '</tbody></table>';
+      $('p-opp').value = opp;
+      $('p-q').addEventListener('change', () => loadPainel('socio'));
+      $('p-opp').addEventListener('change', () => loadPainel('socio'));
+      bindSort();
+    }
 
     if (jwt) {
       api('/auth/eu').then(u => {
