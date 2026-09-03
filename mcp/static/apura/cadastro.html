@@ -9,8 +9,10 @@
   <style>
     :root {
       --bg: #eef1f6; --surface: #fff; --ink: #0c1222; --muted: #5c6478;
-      --line: #dde3ec; --brand: #0d4f4a; --brand-light: #e6f4f2;
-      --ok: #15803d; --shadow: 0 8px 32px rgba(12,18,34,.08);
+      --line: #dde3ec; --brand: #0d4f4a; --brand-dark: #093a36; --brand-light: #e6f4f2;
+      --danger: #b91c1c; --danger-light: #fef2f2; --danger-line: #fbd0d0;
+      --ok: #15803d; --shadow-sm: 0 2px 8px rgba(12,18,34,.07); --shadow: 0 8px 32px rgba(12,18,34,.08);
+      --shadow-lg: 0 24px 64px rgba(12,18,34,.18); --ring: 0 0 0 3px rgba(13,79,74,.16); --ease: cubic-bezier(.2,.7,.3,1);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -21,29 +23,32 @@
     .wrap { max-width: 480px; margin: 0 auto; }
     .card {
       background: var(--surface); border-radius: 20px; padding: 36px;
-      box-shadow: var(--shadow); border: 1px solid var(--line);
+      box-shadow: var(--shadow-lg); border: 1px solid var(--line);
+      animation: cardIn .4s var(--ease);
     }
+    @keyframes cardIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
     h1 { font-family: Fraunces, serif; font-size: 1.85rem; color: var(--brand); margin-bottom: 6px; }
     .sub { color: var(--muted); margin-bottom: 28px; font-size: 0.95rem; line-height: 1.5; }
     label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
     input, select {
       width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px;
-      font: inherit; margin-bottom: 14px;
+      font: inherit; margin-bottom: 14px; background: #fff; color: var(--ink); transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
     }
-    input:focus, select:focus { outline: 2px solid var(--brand); border-color: transparent; }
+    input:focus, select:focus { outline: none; border-color: var(--brand); box-shadow: var(--ring); }
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 12px 20px; border: none; border-radius: 12px; font-weight: 600; font-size: 0.95rem;
-      cursor: pointer; transition: .15s; text-decoration: none;
+      padding: 12px 20px; border: none; border-radius: 12px; font-weight: 650; font-size: 0.95rem;
+      cursor: pointer; transition: transform .12s var(--ease), box-shadow .15s var(--ease), background .15s; text-decoration: none;
     }
-    .btn-primary { background: var(--brand); color: #fff; width: 100%; }
-    .btn-primary:hover { background: #0a3d39; }
-    .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+    .btn:active { transform: translateY(1px) scale(.99); }
+    .btn-primary { background: var(--brand); color: #fff; width: 100%; box-shadow: var(--shadow-sm); }
+    .btn-primary:hover { background: var(--brand-dark); box-shadow: var(--shadow); transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; transform: none; box-shadow: none; }
     .btn-secondary { background: var(--surface); color: var(--brand); border: 1px solid var(--line); }
-    .btn-secondary:hover { border-color: var(--brand); }
-    .err { color: #b91c1c; font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
+    .btn-secondary:hover { border-color: var(--brand); background: var(--brand-light); }
+    .err { color: var(--danger); font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
     .hidden { display: none !important; }
-    .success { text-align: center; }
+    .success { text-align: center; animation: cardIn .35s var(--ease); }
     .token-box {
       margin: 20px 0; padding: 16px; background: var(--brand-light); border-radius: 12px;
       border: 1px dashed #9ec5c0; word-break: break-all; font-family: Consolas, Monaco, monospace;
@@ -52,6 +57,7 @@
     .actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
     .back { display: block; text-align: center; margin-top: 20px; font-size: 0.85rem; color: var(--muted); }
     .back a { color: var(--brand); font-weight: 600; text-decoration: none; }
+    .back a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
