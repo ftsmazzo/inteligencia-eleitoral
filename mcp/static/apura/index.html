@@ -916,7 +916,7 @@
       <div class="nav-views">
         <button type="button" id="btn-view-gestao">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          Gestão
+          <span class="nav-label">Gestão</span>
         </button>
         <button type="button" class="on" id="btn-view-chat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -1579,7 +1579,21 @@
       }
       syncCampanhaChip();
       syncWorkspaceLock();
+      syncSuperNav();
       return platCtx;
+    }
+
+    function syncSuperNav() {
+      const btn = $('btn-view-gestao');
+      if (!btn) return;
+      const lab = btn.querySelector('.nav-label');
+      if (platCtx && platCtx.is_super_gestor) {
+        if (lab) lab.textContent = 'Campanhas';
+        btn.title = 'Frota de campanhas (super gestor)';
+      } else {
+        if (lab) lab.textContent = 'Gestão';
+        btn.title = 'Gestão da campanha';
+      }
     }
 
     function showSeletor(vinculos) {
@@ -1665,31 +1679,33 @@
         const vinculos = platCtx.vinculos || [];
         const superG = !!platCtx.is_super_gestor;
 
-        if (!superG && vinculos.length === 0) {
+        if (superG) {
+          // Super gestor: home = frota de campanhas (nunca cair direto no Chat/Amapá legado)
+          $('app-screen').classList.remove('hidden');
+          gestaoUiMode = 'plataforma';
+          await initAppWorkspace();
+          syncSuperNav();
+          setView('gestao');
+          return;
+        }
+
+        if (vinculos.length === 0) {
           $('app-screen').classList.remove('hidden');
           await initAppWorkspace();
           setView('gestao');
           if ($('gestao-err')) $('gestao-err').textContent = 'Você ainda não está vinculado a nenhuma campanha. Peça a um gestor.';
           return;
         }
-        if (!superG && vinculos.length > 1 && !platCtx.campanha_ativa_id) {
+        if (vinculos.length > 1 && !platCtx.campanha_ativa_id) {
           showSeletor(vinculos);
           return;
         }
-        if (!superG && vinculos.length === 1 && platCtx.campanha_ativa_id !== vinculos[0].campanha_id) {
+        if (vinculos.length === 1 && platCtx.campanha_ativa_id !== vinculos[0].campanha_id) {
           await entrarCampanhaUi(vinculos[0].campanha_id);
           return;
         }
-        if (!superG && vinculos.length === 1 && !platCtx.campanha_ativa_id) {
+        if (vinculos.length === 1 && !platCtx.campanha_ativa_id) {
           await entrarCampanhaUi(vinculos[0].campanha_id);
-          return;
-        }
-
-        if (superG && !platCtx.campanha_ativa_id) {
-          $('app-screen').classList.remove('hidden');
-          gestaoUiMode = 'plataforma';
-          await initAppWorkspace();
-          setView('gestao');
           return;
         }
 
@@ -2275,7 +2291,8 @@
     $('btn-view-chat').addEventListener('click', () => setView('chat'));
     $('btn-view-radar').addEventListener('click', () => setView('radar'));
     $('btn-view-gestao').addEventListener('click', () => {
-      if (platCtx && platCtx.is_super_gestor && !temCampanhaAtiva()) gestaoUiMode = 'plataforma';
+      // Super: Gestão = sempre a frota (criar/listar/entrar). Wizard só depois de Entrar.
+      if (platCtx && platCtx.is_super_gestor) gestaoUiMode = 'plataforma';
       setView('gestao');
     });
     $('btn-view-paineis').addEventListener('click', () => setView('paineis'));
@@ -2664,7 +2681,12 @@
     async function loadGestao() {
       if ($('gestao-err')) $('gestao-err').textContent = '';
       await refreshPlatCtx();
-      if (gestaoUiMode === 'plataforma' || (platCtx.is_super_gestor && !temCampanhaAtiva())) {
+      syncSuperNav();
+      // Super gestor: aba Gestão sempre abre a frota (exceto se acabou de Entrar nesta sessão)
+      if (platCtx && platCtx.is_super_gestor && gestaoUiMode !== 'campanha') {
+        gestaoUiMode = 'plataforma';
+      }
+      if (gestaoUiMode === 'plataforma' || (platCtx && platCtx.is_super_gestor && !temCampanhaAtiva())) {
         gestaoUiMode = 'plataforma';
         await loadPlataformaFrota();
         return;
