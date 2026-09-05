@@ -859,6 +859,20 @@
     .kpi-grid b { font-size: 1.25rem; color: var(--ink); }
     .conv-msg { padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
     .conv-msg .papel { font-weight: 600; color: var(--brand); margin-right: 6px; }
+    .ops-bar {
+      margin: 0 0 16px; padding: 14px 16px; border-radius: 12px;
+      border: 1px solid var(--brand); background: var(--brand-light, rgba(20,120,110,.12));
+    }
+    .ops-bar-head { font-weight: 700; color: var(--ink); margin-bottom: 10px; font-size: 0.95rem; }
+    .ops-bar-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+    .ops-bar-btns button {
+      padding: 12px 18px; border-radius: 10px; font: inherit; font-weight: 600; cursor: pointer;
+      border: 0; background: var(--brand); color: #fff; min-width: 160px;
+    }
+    .ops-bar-btns button.ops-secondary {
+      background: var(--surface, #fff); color: var(--ink); border: 1px solid var(--line);
+    }
+    .ops-bar-btns .ops-meta { display: block; font-weight: 400; font-size: 0.75rem; opacity: 0.9; margin-top: 2px; }
     .workspace-lock {
       display: none; margin: 16px 20px; padding: 14px 16px; border-radius: 12px;
       background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 0.9rem; line-height: 1.45;
@@ -981,7 +995,7 @@
         <span id="user-email"></span><br />
         <span id="campanha-chip" class="workspace-only"></span>
         <span id="user-quota" class="quota-pill workspace-only"></span>
-        <button type="button" class="secondary workspace-only" id="btn-voltar-plataforma-ws" style="margin:8px 0;width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;cursor:pointer">← Voltar à plataforma</button>
+        <button type="button" class="secondary workspace-only" id="btn-voltar-plataforma-ws" style="margin:8px 0;width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;cursor:pointer">Painel plataforma</button>
         <div class="sidebar-foot-actions">
           <button type="button" class="theme-toggle" id="btn-theme" title="Alternar tema">Tema escuro</button>
           <button type="button" class="btn-conta" id="btn-senha">Alterar senha</button>
@@ -1192,7 +1206,12 @@
             <div class="gestao-hero">
               <span class="gestao-status-pill">plataforma</span>
               <h3>Gestão da plataforma</h3>
-              <p>Painel do super gestor: frota, quotas, conversas e eventos. Tools (Chat, Radar, Skills) só no workspace — use <b>Operar</b> para entrar numa campanha.</p>
+              <p><b>Operação:</b> use os botões abaixo para entrar no Amapá ou na campanha do vice (Chat/Radar). O restante das abas é painel — não atrasa o dia a dia.</p>
+            </div>
+            <div class="ops-bar" id="ops-bar">
+              <div class="ops-bar-head">Campanhas em operação</div>
+              <div class="ops-bar-btns" id="ops-bar-btns"><p class="hint">Carregando…</p></div>
+              <p class="gestao-err" id="ops-bar-err"></p>
             </div>
             <div class="shell-filter-bar hidden" id="shell-admin-filter">
               <span>Administrando: <strong id="shell-admin-nome">—</strong></span>
@@ -1282,7 +1301,7 @@
               <h3 id="gestao-campanha-titulo">Gestão da campanha</h3>
               <p id="gestao-campanha-sub">Defina o recorte oficial (ano, cargo, UF e candidato). Isso ancora o ambiente para Radar e Apura.</p>
               <div class="gestao-actions" id="gestao-nav-frota" style="display:none;margin-top:8px">
-                <button type="button" class="secondary" id="btn-voltar-frota">← Voltar à frota</button>
+                <button type="button" class="secondary" id="btn-voltar-frota">Painel plataforma</button>
                 <button type="button" class="secondary" id="btn-trocar-campanha">Trocar campanha</button>
               </div>
             </div>
@@ -1701,13 +1720,16 @@
       $('seletor-screen').classList.remove('hidden');
     }
 
-    async function entrarCampanhaUi(campanhaId) {
+    async function entrarCampanhaUi(campanhaId, opts) {
+      opts = opts || {};
+      const destino = opts.destino || 'chat';
       $('seletor-err').textContent = '';
       try {
         platCtx = await api('/gestao/plataforma/entrar', {
           method: 'POST',
           body: JSON.stringify({ campanha_id: campanhaId }),
         });
+        try { localStorage.setItem('apura_last_ops_cid', campanhaId); } catch (_) {}
         $('seletor-screen').classList.add('hidden');
         $('app-screen').classList.remove('hidden');
         shellMode = 'workspace';
@@ -1716,15 +1738,72 @@
         syncWorkspaceLock();
         applyShellMode();
         await initAppWorkspace();
-        setView(platCtx.is_super_gestor ? 'gestao' : 'chat');
+        setView(destino);
       } catch (e) {
         $('seletor-err').textContent = e.message;
         if ($('plat-err')) $('plat-err').textContent = e.message;
+        if ($('ops-bar-err')) $('ops-bar-err').textContent = e.message;
       }
     }
 
     async function operarCampanha(campanhaId) {
-      await entrarCampanhaUi(campanhaId);
+      // Operação do dia a dia = Chat (não o wizard de Gestão)
+      await entrarCampanhaUi(campanhaId, { destino: 'chat' });
+    }
+
+    /** Campanhas prioritárias da operação A (Amapá + vice). */
+    function isCampanhaOperacao(nome) {
+      const n = (nome || '').toLowerCase();
+      return n.includes('amapa') || n.includes('amapá') || n.includes('alfredo') || n.includes('gaspar') || n.includes('vice');
+    }
+
+    function rotuloOps(nome) {
+      const n = (nome || '').toLowerCase();
+      if (n.includes('amapa') || n.includes('amapá')) return 'Operar Amapá';
+      if (n.includes('alfredo') || n.includes('gaspar')) return 'Operar vice / Alfredo';
+      return 'Operar ' + (nome || 'campanha');
+    }
+
+    async function renderOpsBar() {
+      const box = $('ops-bar-btns');
+      if (!box || !platCtx || !platCtx.is_super_gestor) return;
+      if ($('ops-bar-err')) $('ops-bar-err').textContent = '';
+      try {
+        const d = await api('/gestao/plataforma/campanhas');
+        const itens = d.itens || [];
+        let lastId = null;
+        try { lastId = localStorage.getItem('apura_last_ops_cid'); } catch (_) {}
+        const ops = itens.filter(c => isCampanhaOperacao(c.nome));
+        const last = lastId ? itens.find(c => c.campanha_id === lastId) : null;
+        const parts = [];
+        if (last) {
+          parts.push(
+            '<button type="button" data-cid="' + esc(last.campanha_id) + '">' +
+            'Continuar em ' + esc(last.nome) +
+            '<span class="ops-meta">última operação neste navegador</span></button>'
+          );
+        }
+        ops.forEach(c => {
+          if (last && c.campanha_id === last.campanha_id) return;
+          parts.push(
+            '<button type="button" data-cid="' + esc(c.campanha_id) + '">' +
+            esc(rotuloOps(c.nome)) +
+            '<span class="ops-meta">' + esc(c.ambiente_status || '') +
+            (c.sg_uf ? ' · ' + esc(c.sg_uf) : '') + '</span></button>'
+          );
+        });
+        if (!parts.length) {
+          box.innerHTML = '<p class="hint">Nenhuma campanha de operação (Amapá/vice) encontrada. Use a Frota.</p>';
+          return;
+        }
+        box.innerHTML = parts.join('');
+        box.querySelectorAll('button[data-cid]').forEach(btn => {
+          btn.onclick = () => operarCampanha(btn.getAttribute('data-cid'));
+        });
+      } catch (e) {
+        if ($('ops-bar-err')) $('ops-bar-err').textContent = e.message;
+        box.innerHTML = '<p class="hint">Não foi possível carregar atalhos.</p>';
+      }
     }
 
     function administrarCampanha(campanhaId, nome) {
@@ -2595,6 +2674,7 @@
       if ($('plat-criar-wrap')) $('plat-criar-wrap').style.display = (platCtx && platCtx.is_super_gestor) ? '' : 'none';
       if ($('plat-tabs')) $('plat-tabs').style.display = (platCtx && platCtx.is_super_gestor) ? 'flex' : 'none';
       syncAdminFilterBar();
+      await renderOpsBar();
       const tab = document.querySelector('#plat-tabs button.on')?.getAttribute('data-plat-tab') || 'visao';
       await setPlatTab(tab);
     }
