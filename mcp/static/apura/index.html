@@ -4645,11 +4645,18 @@
       if (mapaModo === 'calor') {
         const row = mapaCalorByIbge[m.cod_ibge];
         if (row && row.pct != null) {
-          mapaSetErr(m.nome + ': ' + row.pct + '% · ' +
+          let msg = m.nome + ': ' + row.pct + '% · ' +
             Number(row.votos_candidato).toLocaleString('pt-BR') + ' / ' +
-            Number(row.votos_total).toLocaleString('pt-BR') + ' votos');
+            Number(row.votos_total).toLocaleString('pt-BR') + ' votos (todas as zonas do município)';
+          const zs = row.zonas || [];
+          if (zs.length) {
+            msg += ' · ' + zs.map(z =>
+              'Z' + z.nr_zona + ' ' + Number(z.votos_candidato).toLocaleString('pt-BR')
+            ).join(', ');
+          }
+          mapaSetErr(msg);
         } else {
-          mapaSetErr(m.nome + ': votação inexistente neste recorte (não é zero).');
+          mapaSetErr(m.nome + ': votação do candidato inexistente neste recorte (não é zero).');
         }
       }
       mapaRefreshStyles();

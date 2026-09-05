@@ -215,6 +215,40 @@ ZONA_AP_COMPOSICAO: dict[int, str] = {
 }
 
 
+def _norm_nome(s: str | None) -> str:
+    import re
+    import unicodedata
+
+    if not s:
+        return ""
+    t = unicodedata.normalize("NFKD", str(s))
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
+    t = re.sub(r"[^A-Z0-9 ]+", " ", t.upper())
+    return " ".join(t.split())
+
+
+def _nomes_compativeis(a: str | None, b: str | None) -> bool:
+    """Exige identidade onomástica — nº de urna sozinho não basta."""
+    na, nb = _norm_nome(a), _norm_nome(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    # tokens significativos (ignora DE/DA/DO)
+    skip = {"DE", "DA", "DO", "DAS", "DOS", "E"}
+    ta = {x for x in na.split() if len(x) >= 3 and x not in skip}
+    tb = {x for x in nb.split() if len(x) >= 3 and x not in skip}
+    if not ta or not tb:
+        return False
+    # overlap forte: pelo menos 2 tokens ou um nome completo contido
+    inter = ta & tb
+    if len(inter) >= 2:
+        return True
+    if na in nb or nb in na:
+        return True
+    return False
+
+
 def _resolver_sq_na_urna(
     conn: psycopg.Connection,
     *,
@@ -225,16 +259,17 @@ def _resolver_sq_na_urna(
     sq_campanha: int,
     nr_candidato: int | None,
     nm_urna: str | None,
+    nm_candidato: str | None,
     sg_partido: str | None,
 ) -> dict[str, Any]:
-    """sq da campanha (ex.: 2026) pode não existir na urna histórica.
+    """Resolve sq na urna do ano com identidade do candidato.
 
-    Ordem: votos com sq da campanha → mesmo nr_candidato → mesmo nm_urna
-    (+ partido se houver). Sem match = inexistente (não zerar como se fosse 0).
+    Nunca casa só por nr_candidato (nº 16 PSTU ≠ outro nº 16 de outro ano/pessoa).
+    Ordem: sq campanha → nm_urna/nm_candidato na votação → candidatura → nr+nome.
     """
     hit = conn.execute(
         """
-        SELECT COALESCE(SUM(qt_votos), 0)::bigint
+        SELECT COALESCE(SUM(qt_votos), 0)::bigint, MAX(nm_urna), MAX(sg_partido)
         FROM eleicao.votacao
         WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s AND nr_turno = %s
           AND sq_candidato = %s
@@ -245,10 +280,81 @@ def _resolver_sq_na_urna(
         return {
             "sq_candidato": int(sq_campanha),
             "match": "sq_campanha",
+            "nm_urna_urna": hit[1],
+            "sg_partido_urna": hit[2],
             "votos_uf": int(hit[0]),
         }
 
-    if nr_candidato is not None:
+    nomes = [n for n in (nm_urna, nm_candidato) if n and str(n).strip()]
+
+    # 2) Nome na própria votação do ano/turno/cargo
+    for nome in nomes:
+        rows = conn.execute(
+            """
+            SELECT sq_candidato, MAX(nm_urna), MAX(sg_partido), SUM(qt_votos)::bigint AS vt
+            FROM eleicao.votacao
+            WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s AND nr_turno = %s
+              AND (
+                UPPER(TRIM(nm_urna)) = UPPER(TRIM(%s))
+                OR UPPER(TRIM(nm_urna)) LIKE '%%' || UPPER(TRIM(%s)) || '%%'
+              )
+            GROUP BY sq_candidato
+            ORDER BY vt DESC
+            """,
+            (ano, uf, cargo, turno, str(nome).strip(), str(nome).strip()),
+        ).fetchall()
+        rows = [r for r in rows if _nomes_compativeis(r[1], nome)]
+        if rows:
+            return {
+                "sq_candidato": int(rows[0][0]),
+                "match": "nm_urna",
+                "nm_urna_urna": rows[0][1],
+                "sg_partido_urna": rows[0][2],
+                "votos_uf": int(rows[0][3] or 0),
+            }
+
+    # 3) Candidatura do ano (mesmo cargo/UF) pelo nome → sq → votos
+    for nome in nomes:
+        cands = conn.execute(
+            """
+            SELECT sq_candidato, nm_urna, sg_partido, nr_candidato, nm_candidato
+            FROM eleicao.candidatura
+            WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s
+              AND (
+                UPPER(TRIM(nm_urna)) = UPPER(TRIM(%s))
+                OR UPPER(TRIM(COALESCE(nm_candidato,''))) = UPPER(TRIM(%s))
+              )
+            """,
+            (ano, uf, cargo, str(nome).strip(), str(nome).strip()),
+        ).fetchall()
+        cands = [
+            r
+            for r in cands
+            if _nomes_compativeis(r[1], nome) or _nomes_compativeis(r[4], nome)
+        ]
+        for r in cands:
+            sq_i = int(r[0])
+            vt = conn.execute(
+                """
+                SELECT COALESCE(SUM(qt_votos), 0)::bigint
+                FROM eleicao.votacao
+                WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s AND nr_turno = %s
+                  AND sq_candidato = %s
+                """,
+                (ano, uf, cargo, turno, sq_i),
+            ).fetchone()
+            votos = int(vt[0] or 0) if vt else 0
+            if votos > 0:
+                return {
+                    "sq_candidato": sq_i,
+                    "match": "candidatura",
+                    "nm_urna_urna": r[1],
+                    "sg_partido_urna": r[2],
+                    "votos_uf": votos,
+                }
+
+    # 4) nr_candidato só se o nome na urna for compatível com o da campanha
+    if nr_candidato is not None and nomes:
         rows = conn.execute(
             """
             SELECT sq_candidato, MAX(nm_urna), MAX(sg_partido), SUM(qt_votos)::bigint AS vt
@@ -260,39 +366,21 @@ def _resolver_sq_na_urna(
             """,
             (ano, uf, cargo, turno, int(nr_candidato)),
         ).fetchall()
-        if sg_partido:
-            part = str(sg_partido).upper()
-            prefer = [r for r in rows if (r[2] or "").upper() == part]
-            if prefer:
-                rows = prefer
-        if rows:
+        ok = []
+        for r in rows:
+            if any(_nomes_compativeis(r[1], n) for n in nomes):
+                ok.append(r)
+            elif sg_partido and (r[2] or "").upper() == str(sg_partido).upper():
+                # partido igual + mesmo número ainda exige ao menos 1 token do nome
+                if any(_nomes_compativeis(r[1], n) for n in nomes):
+                    ok.append(r)
+        if ok:
             return {
-                "sq_candidato": int(rows[0][0]),
-                "match": "nr_candidato",
-                "nm_urna_urna": rows[0][1],
-                "sg_partido_urna": rows[0][2],
-                "votos_uf": int(rows[0][3] or 0),
-            }
-
-    if nm_urna and str(nm_urna).strip():
-        rows = conn.execute(
-            """
-            SELECT sq_candidato, MAX(nm_urna), MAX(sg_partido), SUM(qt_votos)::bigint AS vt
-            FROM eleicao.votacao
-            WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s AND nr_turno = %s
-              AND UPPER(TRIM(nm_urna)) = UPPER(TRIM(%s))
-            GROUP BY sq_candidato
-            ORDER BY vt DESC
-            """,
-            (ano, uf, cargo, turno, str(nm_urna).strip()),
-        ).fetchall()
-        if rows:
-            return {
-                "sq_candidato": int(rows[0][0]),
-                "match": "nm_urna",
-                "nm_urna_urna": rows[0][1],
-                "sg_partido_urna": rows[0][2],
-                "votos_uf": int(rows[0][3] or 0),
+                "sq_candidato": int(ok[0][0]),
+                "match": "nr_e_nome",
+                "nm_urna_urna": ok[0][1],
+                "sg_partido_urna": ok[0][2],
+                "votos_uf": int(ok[0][3] or 0),
             }
 
     return {
@@ -300,10 +388,10 @@ def _resolver_sq_na_urna(
         "match": "nenhum",
         "votos_uf": 0,
         "mensagem": (
-            f"Candidato da campanha (sq {sq_campanha}"
+            f"Candidato da campanha ({nm_urna or nm_candidato or sq_campanha}"
             + (f", nº {nr_candidato}" if nr_candidato is not None else "")
-            + (f", {nm_urna}" if nm_urna else "")
-            + f") não aparece na urna {ano} T{turno} — ausência, não zero."
+            + f") não aparece na urna {ano} T{turno} deste cargo — ausência, não zero. "
+            "Não usamos outro candidato só porque o número de urna coincidiu."
         ),
     }
 
@@ -343,23 +431,55 @@ def calor_urna(
         }
 
     if turno is None or int(turno) <= 0:
-        row_t = conn.execute(
-            """
-            SELECT MAX(nr_turno)::int
-            FROM eleicao.votacao
-            WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s
-            """,
-            (ano, uf, int(cargo)),
-        ).fetchone()
-        if not row_t or row_t[0] is None:
-            return {
-                "status": "vazio",
-                "mensagem": f"Votação inexistente para {uf} cargo={cargo} ano={ano}.",
-                "municipios": [],
-                "zonas": [],
-                "fonte": "eleicao.votacao",
-            }
-        turno = int(row_t[0])
+        # Majoritário: 1º turno é a âncora (igual motor/perfil). 2º só se pedido.
+        if int(cargo) in (1, 3, 11):
+            row_t = conn.execute(
+                """
+                SELECT 1
+                FROM eleicao.votacao
+                WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s AND nr_turno = 1
+                LIMIT 1
+                """,
+                (ano, uf, int(cargo)),
+            ).fetchone()
+            if row_t:
+                turno = 1
+            else:
+                row_t = conn.execute(
+                    """
+                    SELECT MAX(nr_turno)::int
+                    FROM eleicao.votacao
+                    WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s
+                    """,
+                    (ano, uf, int(cargo)),
+                ).fetchone()
+                if not row_t or row_t[0] is None:
+                    return {
+                        "status": "vazio",
+                        "mensagem": f"Votação inexistente para {uf} cargo={cargo} ano={ano}.",
+                        "municipios": [],
+                        "zonas": [],
+                        "fonte": "eleicao.votacao",
+                    }
+                turno = int(row_t[0])
+        else:
+            row_t = conn.execute(
+                """
+                SELECT MAX(nr_turno)::int
+                FROM eleicao.votacao
+                WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s
+                """,
+                (ano, uf, int(cargo)),
+            ).fetchone()
+            if not row_t or row_t[0] is None:
+                return {
+                    "status": "vazio",
+                    "mensagem": f"Votação inexistente para {uf} cargo={cargo} ano={ano}.",
+                    "municipios": [],
+                    "zonas": [],
+                    "fonte": "eleicao.votacao",
+                }
+            turno = int(row_t[0])
     else:
         turno = int(turno)
 
@@ -371,7 +491,8 @@ def calor_urna(
         turno=turno,
         sq_campanha=int(sq_camp),
         nr_candidato=st.get("nr_candidato"),
-        nm_urna=st.get("nm_urna") or st.get("nm_candidato"),
+        nm_urna=st.get("nm_urna"),
+        nm_candidato=st.get("nm_candidato"),
         sg_partido=st.get("sg_partido"),
     )
     sq = resolvido.get("sq_candidato")
@@ -485,6 +606,39 @@ def calor_urna(
                 "pct": pct,
             }
         )
+
+    # Detalhe zona × município (Macapá tem várias zonas no mesmo IBGE)
+    zona_mun_rows = conn.execute(
+        """
+        SELECT m.cod_ibge, v.nr_zona,
+               COALESCE(SUM(v.qt_votos) FILTER (WHERE v.sq_candidato = %s), 0)::bigint,
+               COALESCE(SUM(v.qt_votos), 0)::bigint
+        FROM eleicao.votacao v
+        JOIN ref.municipio m
+          ON m.cd_municipio_tse = v.cd_municipio_tse AND m.sg_uf = v.sg_uf
+        WHERE v.ano = %s AND v.sg_uf = %s AND v.cd_cargo = %s AND v.nr_turno = %s
+        GROUP BY m.cod_ibge, v.nr_zona
+        ORDER BY m.cod_ibge, v.nr_zona
+        """,
+        (int(sq), ano, uf, int(cargo), turno),
+    ).fetchall()
+    zonas_por_ibge: dict[int, list[dict[str, Any]]] = {}
+    for ibge, nz, nosso, total in zona_mun_rows:
+        nosso_i = int(nosso or 0)
+        total_i = int(total or 0)
+        if total_i <= 0:
+            continue
+        zonas_por_ibge.setdefault(int(ibge), []).append(
+            {
+                "nr_zona": int(nz),
+                "composicao": ZONA_AP_COMPOSICAO.get(int(nz)),
+                "votos_candidato": nosso_i,
+                "votos_total": total_i,
+                "pct": round(100.0 * nosso_i / total_i, 2),
+            }
+        )
+    for m in municipios:
+        m["zonas"] = zonas_por_ibge.get(int(m["cod_ibge"]), [])
 
     pcts = [m["pct"] for m in municipios if m["pct"] is not None]
     nm_exib = resolvido.get("nm_urna_urna") or st.get("nm_urna") or st.get("nm_candidato")
