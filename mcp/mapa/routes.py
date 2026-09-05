@@ -170,6 +170,31 @@ def delete_nota(
     return {"status": "ok"}
 
 
+class RotaPreviewIn(BaseModel):
+    pontos: list[PontoIn] = Field(default_factory=list)
+
+
+@router.post("/rota-preview")
+async def rota_preview(
+    body: RotaPreviewIn,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    """Prévia de rota rodoviária (OSRM) sem gravar caravana."""
+    _campanha(user)
+    pontos = [p.model_dump() for p in body.pontos]
+    if len(pontos) < 2:
+        return {"status": "vazio", "mensagem": "informe ao menos 2 pontos"}
+    rota = await _rota_osrm(pontos)
+    if not rota:
+        return {
+            "status": "ok",
+            "rota_geojson": None,
+            "fallback": "linha_reta",
+            "mensagem": "OSRM indisponível — prévia em linha reta no cliente",
+        }
+    return {"status": "ok", "rota_geojson": rota, "fallback": None}
+
+
 @router.get("/caravanas")
 def caravanas(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
     camp = _campanha(user)

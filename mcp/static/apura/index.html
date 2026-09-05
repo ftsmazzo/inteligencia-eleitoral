@@ -320,7 +320,17 @@
       text-shadow: 0 1px 3px rgba(0,0,0,.85), 0 0 6px rgba(0,0,0,.5);
     }
     .mapa-muni-label.selected { color: #0d4f4a; font-size: 12px; }
-    html[data-theme="dark"] .mapa-muni-label.selected { color: #7dcec6; }
+    .mapa-waypoint-icon {
+      background: #0d4f4a;
+      color: #fff;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      width: 26px; height: 26px;
+      display: flex; align-items: center; justify-content: center;
+      font: 700 12px/1 'DM Sans', system-ui, sans-serif;
+      box-shadow: 0 2px 8px rgba(0,0,0,.35);
+    }
+    html[data-theme="dark"] .mapa-waypoint-icon { border-color: #1a2330; }
     #mapa-view .mapa-side {
       width: 320px; max-width: 42vw; border-left: 1px solid var(--line);
       background: var(--surface); display: flex; flex-direction: column; min-height: 0;
@@ -1442,13 +1452,13 @@
           <div class="mapa-canvas"><div id="mapa-canvas"></div></div>
           <aside class="mapa-side">
             <h3>Mapa · Amapá</h3>
-            <div class="sub" id="mapa-sel">Clique em uma cidade para notas. Modo carreata: adicione pontos na ordem.</div>
+            <div class="sub" id="mapa-sel">Mapa de ruas do Amapá · clique no município para anotar.</div>
             <div class="mapa-toolbar">
               <button type="button" class="on" id="mapa-modo-nota">Notas</button>
               <button type="button" id="mapa-modo-caravana">Carreata</button>
-              <button type="button" id="mapa-add-ponto" class="hidden">+ Ponto</button>
               <button type="button" id="mapa-salvar-caravana" class="hidden">Salvar rota</button>
               <button type="button" id="mapa-limpar-pontos" class="hidden">Limpar pontos</button>
+              <button type="button" id="mapa-desfazer-ponto" class="hidden">Desfazer</button>
             </div>
             <p class="mapa-err" id="mapa-err"></p>
             <div class="mapa-nota-box" id="mapa-nota-panel">
@@ -4304,12 +4314,16 @@
     let mapaPolys = null;
     let mapaLabels = [];
     let mapaLayerRota = null;
+    let mapaWaypointsLayer = null;
+    let mapaTiles = null;
     let mapaMunis = [];
     let mapaMuniByIbge = {};
     let mapaNotas = {};
     let mapaModo = 'nota';
     let mapaSel = null;
     let mapaPontosDraft = [];
+    let mapaRotaTimer = null;
+    let mapaGeoCache = null;
 
     function mapaSetErr(msg) {
       const el = $('mapa-err');
@@ -4321,27 +4335,36 @@
       const temNota = !!(mapaNotas[cod] && (mapaNotas[cod].texto || '').trim());
       const sel = mapaSel && mapaSel.cod_ibge === cod;
       const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+      // Em carreata: contorno leve para ver as ruas
+      if (mapaModo === 'caravana') {
+        return {
+          color: dark ? '#6aa8a0' : '#0d4f4a',
+          weight: 1.2,
+          fillColor: dark ? '#0d4f4a' : '#0d4f4a',
+          fillOpacity: 0.06,
+        };
+      }
       if (sel) {
         return {
           color: '#c98a1c',
           weight: 2.5,
           fillColor: dark ? '#8a5a12' : '#f0c56a',
-          fillOpacity: 0.85,
+          fillOpacity: 0.55,
         };
       }
       if (temNota) {
         return {
           color: dark ? '#5fbfb5' : '#0d4f4a',
           weight: 1.4,
-          fillColor: dark ? '#1e4a46' : '#9fd0cb',
-          fillOpacity: 0.82,
+          fillColor: dark ? '#1e4a46' : '#4f9e96',
+          fillOpacity: 0.35,
         };
       }
       return {
-        color: dark ? '#4a5d72' : '#5a738a',
+        color: dark ? '#5a738a' : '#3d5a6c',
         weight: 1.1,
-        fillColor: dark ? '#243041' : '#d7e3ee',
-        fillOpacity: 0.9,
+        fillColor: dark ? '#243041' : '#2f6f6a',
+        fillOpacity: 0.18,
       };
     }
 
@@ -4350,9 +4373,13 @@
       mapaLabels.forEach(lab => {
         const el = lab.getElement && lab.getElement();
         if (!el) return;
-        const cod = lab._codIbge;
-        el.classList.toggle('selected', !!(mapaSel && mapaSel.cod_ibge === cod));
+        el.classList.toggle('selected', !!(mapaSel && mapaSel.cod_ibge === lab._codIbge));
+        el.style.display = mapaModo === 'caravana' ? 'none' : '';
       });
+      if (mapaLeaflet) {
+        const el = mapaLeaflet.getContainer();
+        if (el) el.style.cursor = mapaModo === 'caravana' ? 'crosshair' : '';
+      }
     }
 
     function mapaSyncModoUi() {
@@ -4361,25 +4388,29 @@
       if ($('mapa-modo-caravana')) $('mapa-modo-caravana').classList.toggle('on', !nota);
       if ($('mapa-nota-panel')) $('mapa-nota-panel').classList.toggle('hidden', !nota);
       if ($('mapa-caravana-panel')) $('mapa-caravana-panel').classList.toggle('hidden', nota);
-      ['mapa-add-ponto', 'mapa-salvar-caravana', 'mapa-limpar-pontos'].forEach(id => {
+      ['mapa-salvar-caravana', 'mapa-limpar-pontos', 'mapa-desfazer-ponto'].forEach(id => {
         if ($(id)) $(id).classList.toggle('hidden', nota);
       });
       if ($('mapa-sel')) {
         $('mapa-sel').textContent = nota
-          ? 'Só Amapá · clique no município (nome no mapa) para anotar.'
-          : 'Só Amapá · clique nos municípios na ordem da carreata, depois Salvar rota.';
+          ? 'Mapa de ruas · clique no município para anotar.'
+          : 'Carreata · clique nas ruas/pontos do mapa na ordem. A rota segue a via (OSRM).';
       }
+      mapaRefreshStyles();
+      mapaDesenharDraft();
     }
 
     function mapaRenderPontosLive() {
       const box = $('mapa-pontos-live');
       if (!box) return;
       if (!mapaPontosDraft.length) {
-        box.innerHTML = '<p class="hint">Nenhum ponto ainda.</p>';
+        box.innerHTML = '<p class="hint">Clique no mapa para marcar a 1ª parada (rua, praça, bairro…).</p>';
         return;
       }
-      box.innerHTML = '<b>Rota em montagem</b>' + mapaPontosDraft.map((p, i) =>
-        '<div class="item"><span>' + (i + 1) + '. ' + esc(p.nome || p.cod_ibge) + '</span></div>'
+      box.innerHTML = '<b>Paradas (' + mapaPontosDraft.length + ')</b>' + mapaPontosDraft.map((p, i) =>
+        '<div class="item"><span>' + (i + 1) + '. ' + esc(p.nome || ('Ponto ' + (i + 1))) +
+        '</span><em style="opacity:.7;font-size:.75rem">' +
+        Number(p.lat).toFixed(4) + ', ' + Number(p.lng).toFixed(4) + '</em></div>'
       ).join('');
     }
 
@@ -4396,7 +4427,9 @@
         box.innerHTML = '<b style="display:block;margin:8px 0">Salvas</b>' + itens.map(c =>
           '<div class="item" data-cid="' + esc(c.id) + '">' +
           '<span>' + esc(c.nome) + ' · ' + ((c.pontos || []).length) + ' pts</span>' +
-          '<button type="button" data-del="' + esc(c.id) + '">Apagar</button></div>'
+          '<span>' +
+          '<button type="button" data-show="' + esc(c.id) + '">Ver</button> ' +
+          '<button type="button" data-del="' + esc(c.id) + '">Apagar</button></span></div>'
         ).join('');
         box.querySelectorAll('[data-del]').forEach(btn => {
           btn.addEventListener('click', async () => {
@@ -4406,43 +4439,102 @@
             } catch (e) { mapaSetErr(e.message); }
           });
         });
+        box.querySelectorAll('[data-show]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const c = itens.find(x => x.id === btn.getAttribute('data-show'));
+            if (!c || !mapaLeaflet) return;
+            if (mapaLayerRota) { mapaLeaflet.removeLayer(mapaLayerRota); mapaLayerRota = null; }
+            if (c.rota_geojson) {
+              mapaLayerRota = L.geoJSON(c.rota_geojson, { style: { color: '#0d4f4a', weight: 5 } }).addTo(mapaLeaflet);
+              try { mapaLeaflet.fitBounds(mapaLayerRota.getBounds(), { padding: [30, 30] }); } catch (_) {}
+            }
+          });
+        });
       } catch (e) {
         box.innerHTML = '<p class="hint">' + esc(e.message) + '</p>';
       }
     }
 
     function mapaAbrirCidade(m) {
+      if (mapaModo === 'caravana') return; // clique em polígono não marca; usa clique livre no mapa
       mapaSel = m;
       if ($('mapa-cidade-nome')) $('mapa-cidade-nome').textContent = m.nome + ' · IBGE ' + m.cod_ibge;
       const nota = mapaNotas[m.cod_ibge];
       if ($('mapa-nota-texto')) $('mapa-nota-texto').value = nota ? (nota.texto || '') : '';
       mapaRefreshStyles();
-      if (mapaModo === 'caravana') {
-        const exists = mapaPontosDraft.some(p => p.cod_ibge === m.cod_ibge);
-        if (!exists) {
-          mapaPontosDraft.push({
-            cod_ibge: m.cod_ibge,
-            nome: m.nome,
-            lat: m.lat,
-            lng: m.lng,
-            ordem: mapaPontosDraft.length,
-          });
-          mapaRenderPontosLive();
-          mapaDesenharDraft();
-        }
-      }
     }
 
-    function mapaDesenharDraft() {
+    function mapaNearestMuniName(lat, lng) {
+      let best = null, bestD = Infinity;
+      mapaMunis.forEach(m => {
+        const d = Math.hypot(m.lat - lat, m.lng - lng);
+        if (d < bestD) { bestD = d; best = m; }
+      });
+      return best ? best.nome : null;
+    }
+
+    function mapaAddWaypoint(lat, lng) {
+      const mun = mapaNearestMuniName(lat, lng);
+      const n = mapaPontosDraft.length + 1;
+      mapaPontosDraft.push({
+        lat, lng,
+        ordem: mapaPontosDraft.length,
+        nome: mun ? ('Parada ' + n + ' · ' + mun) : ('Parada ' + n),
+        cod_ibge: null,
+      });
+      mapaRenderPontosLive();
+      mapaDesenharDraft();
+    }
+
+    async function mapaDesenharDraft() {
       if (!mapaLeaflet) return;
       if (mapaLayerRota) {
         mapaLeaflet.removeLayer(mapaLayerRota);
         mapaLayerRota = null;
       }
-      if (mapaPontosDraft.length >= 2) {
-        const latlngs = mapaPontosDraft.map(p => [p.lat, p.lng]);
-        mapaLayerRota = L.polyline(latlngs, { color: '#c98a1c', weight: 4, dashArray: '6 8' }).addTo(mapaLeaflet);
+      if (mapaWaypointsLayer) {
+        mapaLeaflet.removeLayer(mapaWaypointsLayer);
+        mapaWaypointsLayer = null;
       }
+      mapaWaypointsLayer = L.layerGroup().addTo(mapaLeaflet);
+      mapaPontosDraft.forEach((p, i) => {
+        const icon = L.divIcon({
+          className: '',
+          html: '<div class="mapa-waypoint-icon">' + (i + 1) + '</div>',
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        });
+        L.marker([p.lat, p.lng], { icon }).addTo(mapaWaypointsLayer);
+      });
+      if (mapaPontosDraft.length < 2) return;
+
+      clearTimeout(mapaRotaTimer);
+      mapaRotaTimer = setTimeout(async () => {
+        try {
+          const d = await api('/mapa/rota-preview', {
+            method: 'POST',
+            body: JSON.stringify({ pontos: mapaPontosDraft }),
+          });
+          if (d.rota_geojson) {
+            mapaLayerRota = L.geoJSON(d.rota_geojson, {
+              style: { color: '#c98a1c', weight: 5, opacity: 0.95 },
+            }).addTo(mapaLeaflet);
+            const props = (d.rota_geojson.properties) || {};
+            if (props.distance_m) {
+              const km = (props.distance_m / 1000).toFixed(1);
+              const min = props.duration_s ? Math.round(props.duration_s / 60) : null;
+              mapaSetErr('Prévia: ' + km + ' km' + (min != null ? (' · ~' + min + ' min') : '') + ' (vias)');
+            }
+          } else {
+            const latlngs = mapaPontosDraft.map(p => [p.lat, p.lng]);
+            mapaLayerRota = L.polyline(latlngs, { color: '#c98a1c', weight: 4, dashArray: '6 8' }).addTo(mapaLeaflet);
+            mapaSetErr('OSRM indisponível — prévia em linha reta.');
+          }
+        } catch (e) {
+          const latlngs = mapaPontosDraft.map(p => [p.lat, p.lng]);
+          mapaLayerRota = L.polyline(latlngs, { color: '#c98a1c', weight: 4, dashArray: '6 8' }).addTo(mapaLeaflet);
+        }
+      }, 280);
     }
 
     async function loadMapa() {
@@ -4455,18 +4547,20 @@
         const [mun, notas, geoRes] = await Promise.all([
           api('/mapa/municipios?uf=AP'),
           api('/mapa/notas'),
-          fetch('/apura/assets/ap-municipios.geojson').then(r => {
-            if (!r.ok) throw new Error('Malha do Amapá indisponível');
-            return r.json();
-          }),
+          mapaGeoCache
+            ? Promise.resolve(mapaGeoCache)
+            : fetch('/apura/assets/ap-municipios.geojson').then(r => {
+                if (!r.ok) throw new Error('Malha do Amapá indisponível');
+                return r.json();
+              }),
         ]);
+        mapaGeoCache = geoRes;
         mapaMunis = mun.linhas || [];
         mapaMuniByIbge = {};
         mapaMunis.forEach(m => { mapaMuniByIbge[m.cod_ibge] = m; });
         mapaNotas = {};
         (notas.linhas || []).forEach(n => { mapaNotas[n.cod_ibge] = n; });
 
-        // Recria o mapa limpo (sem tiles / sem máscara / sem API key)
         if (mapaLeaflet) {
           try { mapaLeaflet.remove(); } catch (_) {}
           mapaLeaflet = null;
@@ -4474,19 +4568,27 @@
           mapaLabels = [];
           mapaMarkers = [];
           mapaLayerRota = null;
+          mapaWaypointsLayer = null;
+          mapaTiles = null;
         }
 
         mapaLeaflet = L.map('mapa-canvas', {
           zoomControl: true,
           attributionControl: true,
-          minZoom: 6,
-          maxZoom: 11,
+          minZoom: 7,
+          maxZoom: 17,
           preferCanvas: true,
         });
         if (mapaLeaflet.attributionControl) {
           mapaLeaflet.attributionControl.setPrefix(false);
-          mapaLeaflet.attributionControl.addAttribution('Malha IBGE · municípios AP');
+          mapaLeaflet.attributionControl.addAttribution('Ruínas/vias OSM · malha IBGE');
         }
+
+        // Mapa rodoviário sem API key (Esri World Street Map)
+        mapaTiles = L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom: 17, attribution: 'Esri, OpenStreetMap' }
+        ).addTo(mapaLeaflet);
 
         mapaPolys = L.geoJSON(geoRes, {
           style: f => mapaStyleFeature(f),
@@ -4500,17 +4602,18 @@
               lng: center.lng,
             };
             const temNota = !!(mapaNotas[cod] && (mapaNotas[cod].texto || '').trim());
-            layer.bindTooltip(
-              base.nome + (temNota ? ' · com nota' : ''),
-              { sticky: true, opacity: 0.95 }
-            );
-            layer.on('click', () => mapaAbrirCidade(base));
+            layer.bindTooltip(base.nome + (temNota ? ' · com nota' : ''), { sticky: true, opacity: 0.95 });
+            layer.on('click', (ev) => {
+              if (mapaModo === 'caravana') {
+                L.DomEvent.stopPropagation(ev);
+                mapaAddWaypoint(ev.latlng.lat, ev.latlng.lng);
+                return;
+              }
+              mapaAbrirCidade(base);
+            });
             layer.on('mouseover', () => {
-              if (!(mapaSel && mapaSel.cod_ibge === cod)) {
-                layer.setStyle({ weight: 2.4, fillOpacity: 0.95 });
-                if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-                  layer.bringToFront();
-                }
+              if (mapaModo === 'nota' && !(mapaSel && mapaSel.cod_ibge === cod)) {
+                layer.setStyle({ weight: 2.4, fillOpacity: 0.4 });
               }
             });
             layer.on('mouseout', () => mapaRefreshStyles());
@@ -4519,7 +4622,7 @@
               interactive: false,
               keyboard: false,
               icon: L.divIcon({
-                className: 'mapa-muni-label' + ((mapaSel && mapaSel.cod_ibge === cod) ? ' selected' : ''),
+                className: 'mapa-muni-label',
                 html: esc(base.nome),
                 iconSize: [0, 0],
               }),
@@ -4530,10 +4633,15 @@
           },
         }).addTo(mapaLeaflet);
 
+        // Clique livre no mapa (ruas) para carreata
+        mapaLeaflet.on('click', (ev) => {
+          if (mapaModo !== 'caravana') return;
+          mapaAddWaypoint(ev.latlng.lat, ev.latlng.lng);
+        });
+
         const b = mapaPolys.getBounds();
-        mapaLeaflet.fitBounds(b, { padding: [28, 28], maxZoom: 9 });
-        mapaLeaflet.setMaxBounds(b.pad(0.08));
-        mapaLeaflet.setMinZoom(mapaLeaflet.getBoundsZoom(b.pad(0.12)));
+        mapaLeaflet.fitBounds(b, { padding: [24, 24], maxZoom: 9 });
+        mapaLeaflet.setMaxBounds(b.pad(0.15));
         setTimeout(() => mapaLeaflet.invalidateSize(), 60);
         mapaSyncModoUi();
         mapaRenderPontosLive();
@@ -4577,6 +4685,14 @@
     if ($('mapa-limpar-pontos')) {
       $('mapa-limpar-pontos').addEventListener('click', () => {
         mapaPontosDraft = [];
+        mapaSetErr('');
+        mapaRenderPontosLive();
+        mapaDesenharDraft();
+      });
+    }
+    if ($('mapa-desfazer-ponto')) {
+      $('mapa-desfazer-ponto').addEventListener('click', () => {
+        mapaPontosDraft.pop();
         mapaRenderPontosLive();
         mapaDesenharDraft();
       });
@@ -4584,7 +4700,7 @@
     if ($('mapa-salvar-caravana')) {
       $('mapa-salvar-caravana').addEventListener('click', async () => {
         if (mapaPontosDraft.length < 2) {
-          mapaSetErr('Precisa de pelo menos 2 pontos.');
+          mapaSetErr('Precisa de pelo menos 2 pontos no mapa.');
           return;
         }
         try {
@@ -4602,7 +4718,7 @@
           mapaPontosDraft = [];
           mapaRenderPontosLive();
           await mapaLoadCaravanas();
-          mapaSetErr('');
+          mapaSetErr('Carreata salva com rota pelas vias.');
         } catch (e) { mapaSetErr(e.message); }
       });
     }
