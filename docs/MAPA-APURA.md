@@ -10,9 +10,11 @@ Status: fatia 1+2 (cidades + notas + carreata). Calor por zona = depois.
 
 ## Uso
 
-1. Operar Amapá → **Mapa**
-2. Clique na cidade → edite nota → **Salvar nota**
-3. Modo **Carreata** → clique cidades na ordem → **Salvar rota** (OSRM se disponível; senão linha reta)
+1. Operar Amapá → **Mapa** (visão travada no estado; polígonos IBGE + nomes)
+2. Clique no município → edite nota → **Salvar nota** (município com nota fica destacado)
+3. Modo **Carreata** → clique municípios na ordem → **Salvar rota**
+
+Malha: `mcp/static/apura/assets/ap-municipios.geojson` (16 municípios).
 
 ## Dados
 
