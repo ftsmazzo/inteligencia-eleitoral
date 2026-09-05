@@ -4585,9 +4585,13 @@
         if ($('mapa-calor-meta')) {
           const nm = d.nm_urna || 'candidato';
           const part = d.sg_partido ? (' · ' + d.sg_partido) : '';
+          const match = d.match_urna ? (' · match ' + d.match_urna) : '';
+          const vt = d.votos_uf_candidato != null
+            ? (' · ' + Number(d.votos_uf_candidato).toLocaleString('pt-BR') + ' votos UF')
+            : '';
           $('mapa-calor-meta').textContent =
             (d.status === 'ok'
-              ? (nm + part + ' · ' + d.ano + ' T' + d.turno + ' · ' + (d.cargo_label || ''))
+              ? (nm + part + ' · ' + d.ano + ' T' + d.turno + ' · ' + (d.cargo_label || '') + match + vt)
               : (d.mensagem || 'Sem dados')) +
             ' · fonte ' + (d.fonte || 'urna');
         }
@@ -4607,16 +4611,22 @@
           if (!zs.length) {
             box.innerHTML = '<p class="hint">' + esc(d.mensagem || 'Zonas inexistentes neste recorte.') + '</p>';
           } else {
-            box.innerHTML = '<b>Por zona eleitoral</b>' + zs.map(z =>
-              '<div class="item"><span><b>Zona ' + z.nr_zona + '</b> · ' +
-              esc(z.composicao || z.municipio_exemplo || '—') +
-              '</span><em>' +
-              (z.pct != null ? (z.pct + '% · ' + Number(z.votos_candidato).toLocaleString('pt-BR') + ' votos') : '—') +
-              '</em></div>'
-            ).join('');
+            box.innerHTML = '<b>Por zona eleitoral</b>' + zs.map(z => {
+              let det = '—';
+              if (z.pct != null && z.votos_candidato != null) {
+                det = z.pct + '% · ' + Number(z.votos_candidato).toLocaleString('pt-BR') +
+                  ' / ' + Number(z.votos_total || 0).toLocaleString('pt-BR');
+              } else if (z.votos_total != null) {
+                det = 'candidato inexistente · total zona ' + Number(z.votos_total).toLocaleString('pt-BR');
+              }
+              return '<div class="item"><span><b>Zona ' + z.nr_zona + '</b> · ' +
+                esc(z.composicao || z.municipio_exemplo || '—') +
+                '</span><em>' + det + '</em></div>';
+            }).join('');
           }
         }
-        mapaSetErr(d.status === 'ok' ? '' : (d.mensagem || ''));
+        if (d.status === 'ok') mapaSetErr('');
+        else mapaSetErr(d.mensagem || 'Calor sem candidato nesta urna.');
         mapaRefreshStyles();
         if (mapaLeaflet && mapaPolys) {
           try { mapaLeaflet.fitBounds(mapaPolys.getBounds(), { padding: [24, 24], maxZoom: 9 }); } catch (_) {}
