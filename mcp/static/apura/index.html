@@ -4421,7 +4421,7 @@
       if ($('mapa-sel')) {
         $('mapa-sel').textContent = nota
           ? 'Mapa de ruas · clique no município para anotar.'
-          : 'Carreata · cole CEPs (recomendado) ou dê zoom e clique nas ruas. Camada Ruas/Satélite no canto.';
+          : 'Carreata · cole CEPs (recomendado) ou dê zoom e clique nas ruas. Camadas Ruas/OSM/Satélite no canto.';
       }
       if (!nota && mapaLeaflet && mapaLeaflet.getZoom() < 12) {
         // Macapá centro aproximado — zoom de rua para ver vias
@@ -4612,21 +4612,24 @@
         });
         if (mapaLeaflet.attributionControl) {
           mapaLeaflet.attributionControl.setPrefix(false);
-          mapaLeaflet.attributionControl.addAttribution('OSM · Carto · Esri · IBGE');
+          mapaLeaflet.attributionControl.addAttribution('OSM · Esri · IBGE');
         }
 
-        // Ruas legíveis (estilo tipo Google) + satélite — sem API key
+        // Ruas sem API key: Esri Street + OSM + satélite
         const tilesRuas = L.tileLayer(
-          'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
           {
-            maxZoom: 20,
-            subdomains: 'abcd',
-            attribution: '&copy; OSM &copy; CARTO',
+            maxZoom: 19,
+            attribution: 'Esri · OSM',
           }
         );
         const tilesOsm = L.tileLayer(
           'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           { maxZoom: 19, attribution: '&copy; OpenStreetMap' }
+        );
+        const tilesTopo = L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom: 19, attribution: 'Esri' }
         );
         const tilesSat = L.tileLayer(
           'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -4635,7 +4638,12 @@
         tilesRuas.addTo(mapaLeaflet);
         mapaTiles = tilesRuas;
         L.control.layers(
-          { 'Ruas (claro)': tilesRuas, 'OpenStreetMap': tilesOsm, 'Satélite': tilesSat },
+          {
+            'Ruas': tilesRuas,
+            'OpenStreetMap': tilesOsm,
+            'Topográfico': tilesTopo,
+            'Satélite': tilesSat,
+          },
           null,
           { position: 'topright', collapsed: true }
         ).addTo(mapaLeaflet);

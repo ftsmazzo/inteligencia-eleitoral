@@ -16,7 +16,7 @@ Status: fatia 1+2 (cidades + notas + carreata). Calor por zona = depois.
 4. **Carreata (mapa):** alterne camada Ruas/OSM/Satélite → dê zoom → clique nas vias
 
 Malha: `mcp/static/apura/assets/ap-municipios.geojson` (16 municípios).  
-Tiles: Carto Voyager + OSM + Esri Imagery (sem API key).  
+Tiles: Esri World Street / Topo / Imagery + OSM (sem API key).  
 Geocode: BrasilAPI CEP (+ Nominatim fallback) em `/mapa/geocode-ceps`.  
 Rota: OSRM (`/mapa/rota-preview`).
 
