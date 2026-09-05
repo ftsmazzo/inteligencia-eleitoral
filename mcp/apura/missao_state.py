@@ -12,6 +12,7 @@ from typing import Any
 
 class EtapaAiry(str, Enum):
     INATIVO = "inativo"
+    ARY_ATIVO = "ary_ativo"  # modo pleno — sem briefing
     BRIEFING_OBJETIVO = "briefing_objetivo"
     BRIEFING_ESTILO = "briefing_estilo"
     BRIEFING_PAPEL = "briefing_papel"
@@ -41,6 +42,10 @@ _CMD_ENVIADO = re.compile(r"^\s*enviado\s*[.!]*\s*$", re.I)
 _CMD_CONCLUIDO = re.compile(r"^\s*conclu[ií]do\s*[.!]*\s*$", re.I)
 _CMD_ATIVAR = re.compile(
     r"ativar\s+(?:protocolo\s+)?ar[iy](?:\s+eleitoral)?",
+    re.I,
+)
+_CMD_DESATIVAR = re.compile(
+    r"desativar\s+(?:protocolo\s+)?ar[iy]",
     re.I,
 )
 _CMD_ADD_MATRIZ = re.compile(r"adicionar\s+a\s+matriz", re.I)
@@ -129,6 +134,8 @@ def detectar_comando(mensagem: str) -> str | None:
         return None
     if _CMD_LEMBRETE.search(t):
         return "lembrete"
+    if _CMD_DESATIVAR.search(t):
+        return "desativar"
     if _CMD_CRIACAO.search(t):
         return "ativar_criacao"
     if _CMD_ATIVAR.search(t):
@@ -156,24 +163,33 @@ _ORDEM_BRIEFING = [
 
 
 def aplicar_comando(state: MissaoState, comando: str | None, mensagem: str) -> MissaoState:
-    """Avança a máquina de estados Airy. Só age se perfil estrategista."""
+    """Atualiza estado Ary. Só age se perfil estrategista."""
     if state.perfil != PerfilComportamento.ESTRATEGISTA.value:
         return state
 
     if comando == "ativar":
+        # Modo pleno: modelo robusto + agentes — SEM briefing
         state.protocolo_ativo = True
         state.pack_criacao = False
-        state.etapa = EtapaAiry.BRIEFING_OBJETIVO.value
+        state.etapa = EtapaAiry.ARY_ATIVO.value
         state.aguardando_ok = False
-        state.ultima_atualizacao = "protocolo_ativado"
+        state.ultima_atualizacao = "ary_ativado"
         return state
 
     if comando == "ativar_criacao":
         state.protocolo_ativo = True
         state.pack_criacao = True
-        state.etapa = EtapaAiry.BRIEFING_OBJETIVO.value
+        state.etapa = EtapaAiry.ARY_ATIVO.value
         state.aguardando_ok = False
-        state.ultima_atualizacao = "pack_criacao"
+        state.ultima_atualizacao = "ary_criacao"
+        return state
+
+    if comando == "desativar":
+        state.protocolo_ativo = False
+        state.pack_criacao = False
+        state.etapa = EtapaAiry.INATIVO.value
+        state.aguardando_ok = False
+        state.ultima_atualizacao = "ary_desativado"
         return state
 
     if comando == "lembrete":
@@ -183,7 +199,10 @@ def aplicar_comando(state: MissaoState, comando: str | None, mensagem: str) -> M
     if not state.protocolo_ativo:
         return state
 
+    # A partir daqui: só se alguém ainda estiver em etapa legada de briefing/matriz
     etapa = EtapaAiry(state.etapa) if state.etapa in EtapaAiry._value2member_map_ else EtapaAiry.INATIVO
+    if etapa == EtapaAiry.ARY_ATIVO:
+        return state
 
     if comando == "ok" and state.aguardando_ok:
         state.aguardando_ok = False
@@ -197,8 +216,7 @@ def aplicar_comando(state: MissaoState, comando: str | None, mensagem: str) -> M
             state.etapa = EtapaAiry.TOPICO.value
             state.topico_idx = 0
         elif etapa == EtapaAiry.COMPILACAO:
-            state.etapa = EtapaAiry.INATIVO.value
-            state.protocolo_ativo = False
+            state.etapa = EtapaAiry.ARY_ATIVO.value
         state.ultima_atualizacao = f"ok→{state.etapa}"
         return state
 
@@ -228,7 +246,6 @@ def aplicar_comando(state: MissaoState, comando: str | None, mensagem: str) -> M
         state.ultima_atualizacao = "add_matriz"
         return state
 
-    # Conteúdo livre: preenche campos do briefing e pede OK
     if etapa == EtapaAiry.BRIEFING_OBJETIVO and not comando:
         state.objetivo = mensagem.strip()[:4000]
         state.aguardando_ok = True
@@ -244,7 +261,6 @@ def aplicar_comando(state: MissaoState, comando: str | None, mensagem: str) -> M
     elif etapa == EtapaAiry.BRIEFING_REFS and not comando:
         state.referencias.append(mensagem.strip()[:2000])
     elif etapa == EtapaAiry.MATRIZ and not comando and not state.aguardando_ok:
-        # Usuário pode colar ajustes; matriz é montada pelo redator e confirmada com OK
         state.aguardando_ok = True
     elif etapa == EtapaAiry.TOPICO and not comando:
         state.aprovados["_rascunho"] = mensagem.strip()[:12000]
@@ -256,30 +272,23 @@ def resumo_para_prompt(state: MissaoState) -> str:
     if state.caminho_curto:
         return (
             "PERFIL_COMPORTAMENTO: operacional\n"
-            "Modo: respostas curtas, resumo, contatos e tarefas. Sem protocolo Ary."
+            "Modo: respostas curtas, resumo, contatos e tarefas. Sem modo Ary."
         )
     if state.perfil == PerfilComportamento.ANALISTA.value:
         return (
             "PERFIL_COMPORTAMENTO: analista\n"
-            "Modo: inteligência com cifra + leitura. War-room curto. Sem Matriz Ary."
+            "Modo: inteligência com cifra + leitura. War-room curto. Sem modo Ary pleno."
         )
-    linhas = [
-        "PERFIL_COMPORTAMENTO: estrategista",
-        f"protocolo_ary: {'ATIVO' if state.protocolo_ativo else 'em espera (diga Ativar Ary)'}",
-        f"pack_criacao: {state.pack_criacao}",
-        f"etapa: {state.etapa}",
-        f"aguardando_ok: {state.aguardando_ok}",
-    ]
-    if state.objetivo:
-        linhas.append(f"objetivo: {state.objetivo[:800]}")
-    if state.estilo:
-        linhas.append(f"estilo: {state.estilo[:400]}")
-    if state.papel:
-        linhas.append(f"papel: {state.papel[:400]}")
-    if state.detalhe:
-        linhas.append(f"detalhe: {state.detalhe[:1200]}")
-    if state.matriz:
-        linhas.append("matriz: " + " | ".join(state.matriz[:20]))
-    if state.agentes_plano:
-        linhas.append("agentes_plano: " + ", ".join(state.agentes_plano))
-    return "\n".join(linhas)
+    if state.protocolo_ativo:
+        return (
+            "PERFIL_COMPORTAMENTO: estrategista\n"
+            "MODO_ARY: ATIVO (modelo robusto + agentes plenos)\n"
+            f"pack_criacao: {state.pack_criacao}\n"
+            "Sem briefing. Esperar perguntas complexas; usar tools/agentes necessários.\n"
+            + (f"agentes_plano: {', '.join(state.agentes_plano)}" if state.agentes_plano else "")
+        )
+    return (
+        "PERFIL_COMPORTAMENTO: estrategista\n"
+        "MODO_ARY: em espera — diga Ativar Ary (ou Ativar Airy) para modelo pleno + agentes.\n"
+        f"pack_criacao: {state.pack_criacao}"
+    )

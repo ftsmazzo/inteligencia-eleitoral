@@ -45,12 +45,22 @@ def main() -> int:
 
     st = estado_inicial("estrategista")
     assert detectar_comando("Ativar Ary") == "ativar"
+    assert detectar_comando("Ativar Airy") == "ativar"
+    assert detectar_comando("Desativar Ary") == "desativar"
     st = aplicar_comando(st, "ativar", "Ativar Ary")
-    assert st.protocolo_ativo and st.etapa == "briefing_objetivo"
+    assert st.protocolo_ativo and st.etapa == "ary_ativo"
     st = aplicar_comando(st, None, "Quero um dossiê do adversário")
-    assert st.aguardando_ok and st.objetivo
-    st = aplicar_comando(st, "ok", "OK")
-    assert st.etapa == "briefing_estilo"
+    assert st.etapa == "ary_ativo"  # não entra em briefing
+    st = aplicar_comando(st, "desativar", "Desativar Ary")
+    assert not st.protocolo_ativo and st.etapa == "inativo"
+
+    # legado: se já estiver em briefing, OK ainda avança
+    st2 = estado_inicial("estrategista")
+    st2.protocolo_ativo = True
+    st2.etapa = "briefing_objetivo"
+    st2.aguardando_ok = True
+    st2 = aplicar_comando(st2, "ok", "OK")
+    assert st2.etapa == "briefing_estilo"
 
     st_op = estado_inicial("consultor_minimo")
     assert st_op.caminho_curto
@@ -97,7 +107,7 @@ def main() -> int:
     print("  Checklist humano pos-deploy:")
     print("    1. Login super -> Operar Amapa -> Chat cifra 2022")
     print("    2. Operar vice -> contexto troca")
-    print("    3. Estrategista: 'Ativar Ary' inicia briefing")
+    print("    3. Estrategista: 'Ativar Ary' liga modo pleno (sem briefing)")
     print("    4. Operacional: contato/tarefa")
     return 0
 

@@ -51,6 +51,23 @@ def _writer_model() -> str:
     return os.environ.get("APURA_WRITER_MODEL") or "openai/gpt-4o"
 
 
+def _ary_orchestrator_model() -> str:
+    """Modelo robusto com Ary ativo (tool-calling forte)."""
+    return (
+        os.environ.get("APURA_ARY_ORCHESTRATOR_MODEL")
+        or "openai/gpt-4o"
+    )
+
+
+def _ary_writer_model() -> str:
+    """Redator robusto com Ary ativo."""
+    return (
+        os.environ.get("APURA_ARY_WRITER_MODEL")
+        or os.environ.get("APURA_WRITER_MODEL")
+        or "openai/gpt-4o"
+    )
+
+
 def _openrouter_key() -> str:
     key = (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     if not key:
@@ -145,6 +162,12 @@ def _system_protocolo(state: MissaoState) -> str:
         return PROTOCOLO_OPERACIONAL
     if state.perfil == "analista":
         return PROTOCOLO_ANALISTA
+    if not state.protocolo_ativo:
+        return (
+            "ESTRATEGISTA (Ary em espera): diga Ativar Ary ou Ativar Airy para "
+            "modelo robusto + agentes plenos. Sem briefing automático.\n\n"
+            + resumo_para_prompt(state)
+        )
     parts = [PROTOCOLO_AIRY_ELEITORAL]
     if state.pack_criacao:
         parts.append(PROTOCOLO_AIRY_CRIACAO)
@@ -305,6 +328,9 @@ async def executar_hub(
 
     orch_model = (pol.get("modelo_orquestrador") or _orchestrator_model()).strip()
     writer_model = (pol.get("modelo_redator") or _writer_model()).strip()
+    if state.usa_protocolo_airy:
+        orch_model = _ary_orchestrator_model().strip()
+        writer_model = _ary_writer_model().strip()
     tools = filtrar_mcp_tools(pol) if not pol.get("bypass") else MCP_TOOLS
     if not tools:
         yield _sse(
@@ -313,7 +339,7 @@ async def executar_hub(
         )
         return
 
-    # Protocolo Ary em briefing/matriz: redator conduz; tools só se pedido explícito de dado
+    # Briefing legado só se ainda estiver nessas etapas (Ativar Ary NÃO entra aqui)
     _etapas_protocolo = {
         "briefing_objetivo",
         "briefing_estilo",
@@ -344,6 +370,8 @@ async def executar_hub(
         and state.etapa in _etapas_protocolo
         and (cmd is not None or not _pedido_dado)
     )
+    so_ativacao = cmd in ("ativar", "ativar_criacao", "desativar")
+    max_rounds = 16 if state.usa_protocolo_airy else _MAX_TOOL_ROUNDS
 
     orch_system = SYSTEM_ORCHESTRATOR
     if modo_narrativa or state.perfil == "estrategista":
@@ -352,7 +380,7 @@ async def executar_hub(
     if campanha_ctx.strip():
         orch_system = (
             f"{orch_system}\n\n"
-            "Contexto desta campanha (escopo + memória). Números oficiais só via tools.\n"
+            "Contexto desta campanha (escopo + memória / RAG). Números oficiais só via tools.\n"
             f"{campanha_ctx.strip()[:6000]}"
         )
     slug = pol.get("perfil_slug")
@@ -366,11 +394,34 @@ async def executar_hub(
     notas = ""
 
     try:
-        if so_protocolo:
+        if so_ativacao:
+            if cmd == "desativar":
+                notas = (
+                    "Ary DESATIVADO. Confirme em 1–2 frases o retorno ao modo padrão. "
+                    "Sem briefing."
+                )
+            else:
+                notas = (
+                    "Ary ATIVADO: modelo robusto + agentes plenos. "
+                    "Resposta curta (3–5 linhas): pronta para perguntas complexas; "
+                    "usará dados/clima/acervo/web conforme a pergunta. "
+                    "NÃO faça briefing. NÃO pergunte objetivo/estilo/papel. Sem inventar cifra."
+                )
+            yield _sse(
+                "status",
+                {
+                    "fase": "ary",
+                    "etapa": state.etapa,
+                    "perfil": state.perfil,
+                    "modelo": writer_model,
+                    "ary": state.protocolo_ativo,
+                },
+            )
+        elif so_protocolo:
             notas = (
-                f"PROTOCOLO:\netapa={state.etapa}\ncomando={cmd or 'conteudo'}\n"
+                f"PROTOCOLO_LEGADO:\netapa={state.etapa}\ncomando={cmd or 'conteudo'}\n"
                 f"aguardando_ok={state.aguardando_ok}\n"
-                "Conduza a próxima fala do protocolo Ary (pergunta ou resumo+OK)."
+                "Conduza a etapa legada se necessário."
             )
             yield _sse("status", {"fase": "protocolo", "etapa": state.etapa, "perfil": state.perfil})
         else:
@@ -379,10 +430,15 @@ async def executar_hub(
             campanha_id = pol.get("campanha_id")
             usuario_id = pol.get("usuario_id")
 
-            for _ in range(_MAX_TOOL_ROUNDS):
+            for _ in range(max_rounds):
                 yield _sse(
                     "status",
-                    {"fase": "planejando", "modelo": orch_model, "perfil": state.perfil},
+                    {
+                        "fase": "planejando",
+                        "modelo": orch_model,
+                        "perfil": state.perfil,
+                        "ary": state.protocolo_ativo,
+                    },
                 )
                 r = await _openrouter(orch_messages, model=orch_model, tools=tools, stream=False)
                 if r.status_code >= 400:
@@ -446,7 +502,10 @@ async def executar_hub(
                 return
 
         state.agentes_plano = plano_de_tool_log(tool_log)
-        yield _sse("status", {"fase": "redigindo", "modelo": writer_model})
+        yield _sse(
+            "status",
+            {"fase": "redigindo", "modelo": writer_model, "ary": state.protocolo_ativo},
+        )
         writer_messages = [
             {"role": "system", "content": _system_redator(skills_text, campanha_ctx, state)},
             {
@@ -470,6 +529,8 @@ async def executar_hub(
             "politica": resumo_politica(pol),
             "missao_state": state.to_dict(),
             "agentes": state.agentes_plano,
+            "ary_ativo": state.protocolo_ativo,
+            "modelos": {"orquestrador": orch_model, "redator": writer_model},
         }
         if tool_log:
             dados["tool_results"] = tool_log
