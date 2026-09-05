@@ -31,6 +31,18 @@ app.include_router(gestao_plataforma_router)
 app.include_router(radar_router)
 
 
+@app.on_event("startup")
+def _startup_gestao_schema() -> None:
+    """Aplica patches Gestão (incl. v3 plataforma) antes do 1º /auth/eu."""
+    try:
+        from gestao.schema import ensure_schema
+
+        ensure_schema()
+    except Exception as exc:
+        # Não derruba o boot — endpoints re-tentam no 1º acesso
+        print(f"[startup] ensure_schema Gestão: {exc}")
+
+
 @app.exception_handler(Exception)
 async def apura_erro_generico(_request, exc: Exception) -> JSONResponse:
     if isinstance(exc, HTTPException):

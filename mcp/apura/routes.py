@@ -228,26 +228,42 @@ def login(body: LoginIn) -> dict[str, str]:
 
 @router.get("/auth/eu")
 def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
+    try:
+        from gestao.schema import ensure_schema
+
+        ensure_schema()
+    except Exception:
+        pass
     with _db() as conn:
-        row = conn.execute(
-            """
-            SELECT u.ultima_sessao_id::text,
-                   COALESCE(u.campanha_ativa_id, u.campanha_id)::text,
-                   c.nome
-            FROM ctl.apura_usuario u
-            LEFT JOIN ctl.campanha c
-              ON c.id = COALESCE(u.campanha_ativa_id, u.campanha_id)
-            WHERE u.id = %s::uuid
-            """,
-            (user[0],),
-        ).fetchone()
+        try:
+            row = conn.execute(
+                """
+                SELECT u.ultima_sessao_id::text,
+                       COALESCE(u.campanha_ativa_id, u.campanha_id)::text,
+                       c.nome
+                FROM ctl.apura_usuario u
+                LEFT JOIN ctl.campanha c
+                  ON c.id = COALESCE(u.campanha_ativa_id, u.campanha_id)
+                WHERE u.id = %s::uuid
+                """,
+                (user[0],),
+            ).fetchone()
+        except Exception:
+            # Banco ainda sem patch v3 — fallback legado
+            row = conn.execute(
+                """
+                SELECT u.ultima_sessao_id::text, u.campanha_id::text, c.nome
+                FROM ctl.apura_usuario u
+                LEFT JOIN ctl.campanha c ON c.id = u.campanha_id
+                WHERE u.id = %s::uuid
+                """,
+                (user[0],),
+            ).fetchone()
         q = quota_usuario(conn, user[0])
         plataforma_ctx: dict[str, Any] = {}
         try:
             from gestao import plataforma as plat
-            from gestao.schema import ensure_schema
 
-            ensure_schema()
             plataforma_ctx = plat.contexto_usuario(conn, user[0], user[1])
         except Exception:
             plataforma_ctx = {}

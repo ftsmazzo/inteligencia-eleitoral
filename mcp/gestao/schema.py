@@ -42,12 +42,13 @@ def ensure_schema() -> None:
     patch_v3 = _find_sql("patch_gestao_v3.sql")
     if not patch_gestao:
         raise RuntimeError("Schema Gestão indisponível")
+    if not patch_v3:
+        raise RuntimeError("Schema Gestão v3 (plataforma) indisponível — patch_gestao_v3.sql ausente na imagem")
     with psycopg.connect(url, autocommit=True) as conn:
         if patch_apura:
             conn.execute(patch_apura.read_text(encoding="utf-8"))
         conn.execute(patch_gestao.read_text(encoding="utf-8"))
         if patch_v2:
             conn.execute(patch_v2.read_text(encoding="utf-8"))
-        if patch_v3:
-            conn.execute(patch_v3.read_text(encoding="utf-8"))
+        conn.execute(patch_v3.read_text(encoding="utf-8"))
     _READY = True
