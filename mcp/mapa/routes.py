@@ -1,7 +1,9 @@
 """API HTTP do Mapa sob /apura/api/mapa — JWT + campanha ativa."""
 from __future__ import annotations
 
+import asyncio
 import os
+import re
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -172,6 +174,179 @@ def delete_nota(
 
 class RotaPreviewIn(BaseModel):
     pontos: list[PontoIn] = Field(default_factory=list)
+
+
+class GeocodeCepsIn(BaseModel):
+    """Lista de CEPs (e opcionalmente endereços livres, 1 por linha)."""
+    ceps: list[str] = Field(default_factory=list, max_length=40)
+    uf: str = Field(default="AP", max_length=2)
+
+
+def _normalizar_cep(raw: str) -> str | None:
+    digitos = "".join(c for c in (raw or "") if c.isdigit())
+    return digitos if len(digitos) == 8 else None
+
+
+async def _geocode_cep_um(client: httpx.AsyncClient, cep: str, uf: str) -> dict[str, Any]:
+    """BrasilAPI (coords) → ViaCEP+Nominatim se faltar ponto."""
+    out: dict[str, Any] = {
+        "cep": cep,
+        "ok": False,
+        "lat": None,
+        "lng": None,
+        "nome": None,
+        "fonte": None,
+        "erro": None,
+    }
+    try:
+        r = await client.get(f"https://brasilapi.com.br/api/cep/v2/{cep}")
+        if r.status_code == 200:
+            data = r.json()
+            state = (data.get("state") or "").upper()
+            if uf and state and state != uf.upper():
+                out["erro"] = f"CEP fora de {uf.upper()} ({state})"
+                return out
+            city = data.get("city") or ""
+            street = data.get("street") or ""
+            neigh = data.get("neighborhood") or ""
+            label = " · ".join(x for x in (street, neigh, city) if x) or f"CEP {cep}"
+            loc = (data.get("location") or {}).get("coordinates") or {}
+            lat_s, lng_s = loc.get("latitude"), loc.get("longitude")
+            if lat_s not in (None, "") and lng_s not in (None, ""):
+                out.update(
+                    ok=True,
+                    lat=float(lat_s),
+                    lng=float(lng_s),
+                    nome=label,
+                    fonte="brasilapi",
+                    cod_ibge=int((data.get("ibge") or {}).get("city") or 0) or None,
+                )
+                return out
+            # Sem coords: monta query Nominatim
+            q = ", ".join(x for x in (street, neigh, city, state or uf, "Brasil") if x)
+            out["nome"] = label
+            nr = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={
+                    "q": q,
+                    "format": "json",
+                    "limit": 1,
+                    "countrycodes": "br",
+                },
+                headers={"User-Agent": "ApuraMapa/1.0 (campanha-eleitoral)"},
+            )
+            if nr.status_code == 200:
+                hits = nr.json() or []
+                if hits:
+                    out.update(
+                        ok=True,
+                        lat=float(hits[0]["lat"]),
+                        lng=float(hits[0]["lon"]),
+                        fonte="nominatim",
+                    )
+                    return out
+            out["erro"] = "CEP encontrado, sem coordenada"
+            return out
+        if r.status_code == 404:
+            out["erro"] = "CEP não encontrado"
+            return out
+        out["erro"] = f"BrasilAPI HTTP {r.status_code}"
+        return out
+    except Exception as exc:
+        out["erro"] = str(exc)[:200]
+        return out
+
+
+async def _geocode_endereco(
+    client: httpx.AsyncClient, texto: str, uf: str
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "cep": None,
+        "ok": False,
+        "lat": None,
+        "lng": None,
+        "nome": texto,
+        "fonte": None,
+        "erro": None,
+    }
+    q = f"{texto}, {uf}, Brasil" if uf else f"{texto}, Brasil"
+    try:
+        nr = await client.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={
+                "q": q,
+                "format": "json",
+                "limit": 1,
+                "countrycodes": "br",
+            },
+            headers={"User-Agent": "ApuraMapa/1.0 (campanha-eleitoral)"},
+        )
+        if nr.status_code == 200:
+            hits = nr.json() or []
+            if hits:
+                out.update(
+                    ok=True,
+                    lat=float(hits[0]["lat"]),
+                    lng=float(hits[0]["lon"]),
+                    nome=hits[0].get("display_name") or texto,
+                    fonte="nominatim",
+                )
+                return out
+        out["erro"] = "Endereço não encontrado"
+        return out
+    except Exception as exc:
+        out["erro"] = str(exc)[:200]
+        return out
+
+
+@router.post("/geocode-ceps")
+async def geocode_ceps(
+    body: GeocodeCepsIn,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    """Resolve CEPs (e linhas de endereço) → pontos lat/lng para carreata."""
+    _campanha(user)
+    uf = (body.uf or "AP").upper()[:2]
+    linhas = [str(x).strip() for x in (body.ceps or []) if str(x).strip()]
+    if not linhas:
+        return {"status": "vazio", "mensagem": "informe ao menos 1 CEP", "pontos": [], "falhas": []}
+
+    pontos: list[dict[str, Any]] = []
+    falhas: list[dict[str, Any]] = []
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for raw in linhas[:40]:
+            # "68900-073", "68900073 Centro" ou endereço livre
+            m = re.search(r"\d{5}-?\d{3}", raw)
+            cep = _normalizar_cep(m.group(0)) if m else None
+            if cep:
+                hit = await _geocode_cep_um(client, cep, uf)
+            else:
+                hit = await _geocode_endereco(client, raw, uf)
+            if hit.get("ok") and hit.get("lat") is not None and hit.get("lng") is not None:
+                pontos.append(
+                    {
+                        "lat": hit["lat"],
+                        "lng": hit["lng"],
+                        "ordem": len(pontos),
+                        "nome": hit.get("nome") or f"Parada {len(pontos) + 1}",
+                        "cod_ibge": hit.get("cod_ibge"),
+                        "cep": hit.get("cep") or cep,
+                        "fonte": hit.get("fonte"),
+                    }
+                )
+            else:
+                falhas.append({"linha": raw, "erro": hit.get("erro") or "falha"})
+            # Nominatim pede ~1 req/s
+            if hit.get("fonte") == "nominatim" or not hit.get("ok"):
+                await asyncio.sleep(1.05)
+
+    return {
+        "status": "ok",
+        "uf": uf,
+        "pontos": pontos,
+        "falhas": falhas,
+        "mensagem": f"{len(pontos)} ponto(s) · {len(falhas)} falha(s)",
+    }
 
 
 @router.post("/rota-preview")

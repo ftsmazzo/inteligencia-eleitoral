@@ -356,12 +356,30 @@
     }
     #mapa-view #mapa-salvar { background: var(--brand); color: #fff; }
     #mapa-view #mapa-limpar-nota { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
-    #mapa-view .mapa-caravana-list { padding: 0 16px 16px; overflow: auto; max-height: 180px; font-size: .85rem; }
+    #mapa-view .mapa-caravana-list { padding: 0 16px 16px; overflow: auto; flex: 1; min-height: 0; font-size: .85rem; display: flex; flex-direction: column; gap: 8px; }
     #mapa-view .mapa-caravana-list .item {
       border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px;
       display: flex; justify-content: space-between; gap: 8px; align-items: center;
     }
+    #mapa-view .mapa-cep-box {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 4px 0 10px; border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    #mapa-view .mapa-cep-box label { font-size: .78rem; color: var(--muted); font-weight: 600; }
+    #mapa-view .mapa-cep-box textarea {
+      width: 100%; min-height: 88px; resize: vertical; font: 13px/1.35 ui-monospace, Consolas, monospace;
+      padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink);
+      box-sizing: border-box;
+    }
+    #mapa-view .mapa-cep-box .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    #mapa-view .mapa-cep-box .row-actions button {
+      border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 600; font-size: .82rem;
+    }
+    #mapa-view #mapa-aplicar-ceps { background: var(--brand); color: #fff; }
+    #mapa-view #mapa-limpar-ceps { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
     #mapa-view .mapa-err { color: var(--danger); padding: 0 16px 8px; font-size: .85rem; }
+    #mapa-view .leaflet-control-layers { border-radius: 8px; border: 1px solid rgba(0,0,0,.12); }
     .mcps-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 48px; }
     .mcps-hero h3 { font-family: Fraunces, serif; font-size: 1.55rem; color: var(--brand); margin-bottom: 6px; }
     .mcps-hero p { color: var(--muted); max-width: 640px; line-height: 1.5; margin-bottom: 8px; }
@@ -1470,6 +1488,14 @@
               </div>
             </div>
             <div class="mapa-caravana-list hidden" id="mapa-caravana-panel">
+              <div class="mapa-cep-box">
+                <label for="mapa-ceps">CEPs ou endereços (1 por linha) · gera a rota pelas vias</label>
+                <textarea id="mapa-ceps" placeholder="68900-073&#10;68908-120&#10;Av. FAB, Macapá"></textarea>
+                <div class="row-actions">
+                  <button type="button" id="mapa-aplicar-ceps">Gerar rota pelos CEPs</button>
+                  <button type="button" id="mapa-limpar-ceps">Limpar lista</button>
+                </div>
+              </div>
               <div id="mapa-pontos-live"></div>
               <div id="mapa-caravanas-salvas"></div>
             </div>
@@ -4339,9 +4365,10 @@
       if (mapaModo === 'caravana') {
         return {
           color: dark ? '#6aa8a0' : '#0d4f4a',
-          weight: 1.2,
-          fillColor: dark ? '#0d4f4a' : '#0d4f4a',
-          fillOpacity: 0.06,
+          weight: 1.5,
+          dashArray: '4 6',
+          fillColor: '#0d4f4a',
+          fillOpacity: 0,
         };
       }
       if (sel) {
@@ -4394,7 +4421,11 @@
       if ($('mapa-sel')) {
         $('mapa-sel').textContent = nota
           ? 'Mapa de ruas · clique no município para anotar.'
-          : 'Carreata · clique nas ruas/pontos do mapa na ordem. A rota segue a via (OSRM).';
+          : 'Carreata · cole CEPs (recomendado) ou dê zoom e clique nas ruas. Camada Ruas/Satélite no canto.';
+      }
+      if (!nota && mapaLeaflet && mapaLeaflet.getZoom() < 12) {
+        // Macapá centro aproximado — zoom de rua para ver vias
+        mapaLeaflet.setView([0.0349, -51.0694], 13, { animate: true });
       }
       mapaRefreshStyles();
       mapaDesenharDraft();
@@ -4404,7 +4435,7 @@
       const box = $('mapa-pontos-live');
       if (!box) return;
       if (!mapaPontosDraft.length) {
-        box.innerHTML = '<p class="hint">Clique no mapa para marcar a 1ª parada (rua, praça, bairro…).</p>';
+        box.innerHTML = '<p class="hint">Cole CEPs acima <b>ou</b> clique no mapa (dê zoom nas ruas).</p>';
         return;
       }
       box.innerHTML = '<b>Paradas (' + mapaPontosDraft.length + ')</b>' + mapaPontosDraft.map((p, i) =>
@@ -4576,18 +4607,37 @@
           zoomControl: true,
           attributionControl: true,
           minZoom: 7,
-          maxZoom: 17,
+          maxZoom: 19,
           preferCanvas: true,
         });
         if (mapaLeaflet.attributionControl) {
           mapaLeaflet.attributionControl.setPrefix(false);
-          mapaLeaflet.attributionControl.addAttribution('Ruínas/vias OSM · malha IBGE');
+          mapaLeaflet.attributionControl.addAttribution('OSM · Carto · Esri · IBGE');
         }
 
-        // Mapa rodoviário sem API key (Esri World Street Map)
-        mapaTiles = L.tileLayer(
-          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-          { maxZoom: 17, attribution: 'Esri, OpenStreetMap' }
+        // Ruas legíveis (estilo tipo Google) + satélite — sem API key
+        const tilesRuas = L.tileLayer(
+          'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+          {
+            maxZoom: 20,
+            subdomains: 'abcd',
+            attribution: '&copy; OSM &copy; CARTO',
+          }
+        );
+        const tilesOsm = L.tileLayer(
+          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          { maxZoom: 19, attribution: '&copy; OpenStreetMap' }
+        );
+        const tilesSat = L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom: 19, attribution: 'Esri' }
+        );
+        tilesRuas.addTo(mapaLeaflet);
+        mapaTiles = tilesRuas;
+        L.control.layers(
+          { 'Ruas (claro)': tilesRuas, 'OpenStreetMap': tilesOsm, 'Satélite': tilesSat },
+          null,
+          { position: 'topright', collapsed: true }
         ).addTo(mapaLeaflet);
 
         mapaPolys = L.geoJSON(geoRes, {
@@ -4641,7 +4691,8 @@
 
         const b = mapaPolys.getBounds();
         mapaLeaflet.fitBounds(b, { padding: [24, 24], maxZoom: 9 });
-        mapaLeaflet.setMaxBounds(b.pad(0.15));
+        // Bounds frouxos: permite zoom de rua sem “travar” o pan
+        mapaLeaflet.setMaxBounds(b.pad(0.35));
         setTimeout(() => mapaLeaflet.invalidateSize(), 60);
         mapaSyncModoUi();
         mapaRenderPontosLive();
@@ -4695,6 +4746,56 @@
         mapaPontosDraft.pop();
         mapaRenderPontosLive();
         mapaDesenharDraft();
+      });
+    }
+    if ($('mapa-limpar-ceps')) {
+      $('mapa-limpar-ceps').addEventListener('click', () => {
+        if ($('mapa-ceps')) $('mapa-ceps').value = '';
+      });
+    }
+    if ($('mapa-aplicar-ceps')) {
+      $('mapa-aplicar-ceps').addEventListener('click', async () => {
+        const raw = ($('mapa-ceps') && $('mapa-ceps').value) || '';
+        const linhas = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        if (linhas.length < 1) {
+          mapaSetErr('Cole ao menos 1 CEP (ou endereço) por linha.');
+          return;
+        }
+        mapaSetErr('Geocodificando CEPs…');
+        try {
+          const d = await api('/mapa/geocode-ceps', {
+            method: 'POST',
+            body: JSON.stringify({ ceps: linhas, uf: 'AP' }),
+          });
+          const pts = d.pontos || [];
+          if (!pts.length) {
+            const falhas = (d.falhas || []).map(f => f.linha + ': ' + f.erro).join(' · ');
+            mapaSetErr('Nenhum CEP resolvido. ' + (falhas || d.mensagem || ''));
+            return;
+          }
+          mapaPontosDraft = pts.map((p, i) => ({
+            lat: p.lat,
+            lng: p.lng,
+            ordem: i,
+            nome: p.nome || ('CEP ' + (p.cep || (i + 1))),
+            cod_ibge: p.cod_ibge || null,
+            cep: p.cep || null,
+          }));
+          mapaRenderPontosLive();
+          await mapaDesenharDraft();
+          if (mapaLeaflet && mapaPontosDraft.length) {
+            const latlngs = mapaPontosDraft.map(p => [p.lat, p.lng]);
+            try {
+              mapaLeaflet.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 15 });
+            } catch (_) {}
+          }
+          const nFail = (d.falhas || []).length;
+          mapaSetErr(
+            pts.length + ' ponto(s) pelos CEPs' +
+            (nFail ? (' · ' + nFail + ' falha(s)') : '') +
+            ' — confira a prévia e Salvar rota.'
+          );
+        } catch (e) { mapaSetErr(e.message); }
       });
     }
     if ($('mapa-salvar-caravana')) {

@@ -10,12 +10,15 @@ Status: fatia 1+2 (cidades + notas + carreata). Calor por zona = depois.
 
 ## Uso
 
-1. Operar Amapá → **Mapa** (mapa de ruas + contorno dos municípios)
+1. Operar Amapá → **Mapa**
 2. **Notas:** clique no município → edite → **Salvar nota**
-3. **Carreata:** clique em qualquer ponto/rua do mapa (zoom nas vias) na ordem → prévia OSRM → **Salvar rota**
+3. **Carreata (recomendado):** cole CEPs (1 por linha) → **Gerar rota pelos CEPs** → **Salvar rota**
+4. **Carreata (mapa):** alterne camada Ruas/OSM/Satélite → dê zoom → clique nas vias
 
 Malha: `mcp/static/apura/assets/ap-municipios.geojson` (16 municípios).  
-Tiles: Esri World Street Map (sem API key). Rota: OSRM (`/mapa/rota-preview`).
+Tiles: Carto Voyager + OSM + Esri Imagery (sem API key).  
+Geocode: BrasilAPI CEP (+ Nominatim fallback) em `/mapa/geocode-ceps`.  
+Rota: OSRM (`/mapa/rota-preview`).
 
 ## Dados
 
