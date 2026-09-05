@@ -37,10 +37,21 @@ def main() -> int:
         return 1
 
     idx = (ROOT / "mcp" / "static" / "apura" / "index.html").read_text(encoding="utf-8")
-    for token in ("btn-view-mapa", "mapa-view", "loadMapa", "leaflet"):
-        if token not in idx:
-            print("FAIL UI ausente:", token)
-            return 1
+    for token in ("btn-view-mapa", "mapa-view", "loadMapa", "leaflet", "ap-municipios.geojson", "MAPA_AP_BOUNDS"):
+        if token not in idx and token != "ap-municipios.geojson":
+            # geojson is referenced as path; check file separately
+            if token not in idx:
+                print("FAIL UI ausente:", token)
+                return 1
+    geo = ROOT / "mcp" / "static" / "apura" / "assets" / "ap-municipios.geojson"
+    if not geo.exists():
+        print("FAIL geojson ausente")
+        return 1
+    import json
+    fc = json.loads(geo.read_text(encoding="utf-8"))
+    if len(fc.get("features") or []) != 16:
+        print("FAIL geojson deve ter 16 municipios")
+        return 1
 
     print("OK smoke_mapa_apura")
     print("  rotas mapa + seed AP 16 mun + UI Leaflet")

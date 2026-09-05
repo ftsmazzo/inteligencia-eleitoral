@@ -300,7 +300,17 @@
     #radar-view.on, #gestao-view.on, #paineis-view.on, #mcps-view.on, #mapa-view.on { display: flex; }
     #mapa-view .mapa-layout { display: flex; flex: 1; min-height: 0; gap: 0; }
     #mapa-view .mapa-canvas { flex: 1; min-width: 0; min-height: 320px; }
-    #mapa-canvas { width: 100%; height: 100%; background: #dce6ef; }
+    #mapa-canvas { width: 100%; height: 100%; background: #c5d0db; }
+    .mapa-muni-label {
+      background: transparent !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      color: #0c1222;
+      font: 600 11px/1.2 'DM Sans', system-ui, sans-serif;
+      text-shadow: 0 0 3px #fff, 0 0 3px #fff, 1px 1px 0 #fff;
+      white-space: nowrap;
+    }
+    .mapa-muni-label.selected { color: #0d4f4a; font-size: 12px; }
     #mapa-view .mapa-side {
       width: 320px; max-width: 42vw; border-left: 1px solid var(--line);
       background: var(--surface); display: flex; flex-direction: column; min-height: 0;
@@ -4281,16 +4291,42 @@
     // ——— Mapa Amapá ———
     let mapaLeaflet = null;
     let mapaMarkers = [];
+    let mapaPolys = null;
+    let mapaLabels = [];
     let mapaLayerRota = null;
     let mapaMunis = [];
+    let mapaMuniByIbge = {};
     let mapaNotas = {};
     let mapaModo = 'nota';
     let mapaSel = null;
     let mapaPontosDraft = [];
+    const MAPA_AP_BOUNDS = [[-1.35, -54.7], [4.5, -49.7]];
 
     function mapaSetErr(msg) {
       const el = $('mapa-err');
       if (el) el.textContent = msg || '';
+    }
+
+    function mapaStyleFeature(feature) {
+      const cod = Number(feature.properties.cod_ibge || feature.properties.codarea);
+      const temNota = !!(mapaNotas[cod] && (mapaNotas[cod].texto || '').trim());
+      const sel = mapaSel && mapaSel.cod_ibge === cod;
+      return {
+        color: sel ? '#c98a1c' : (temNota ? '#0d4f4a' : '#3d5a6c'),
+        weight: sel ? 2.5 : 1.2,
+        fillColor: sel ? '#f6d48a' : (temNota ? '#7eb8b2' : '#e8eef4'),
+        fillOpacity: sel ? 0.75 : (temNota ? 0.65 : 0.55),
+      };
+    }
+
+    function mapaRefreshStyles() {
+      if (mapaPolys) mapaPolys.setStyle(f => mapaStyleFeature(f));
+      mapaLabels.forEach(lab => {
+        const el = lab.getElement && lab.getElement();
+        if (!el) return;
+        const cod = lab._codIbge;
+        el.classList.toggle('selected', !!(mapaSel && mapaSel.cod_ibge === cod));
+      });
     }
 
     function mapaSyncModoUi() {
@@ -4304,8 +4340,8 @@
       });
       if ($('mapa-sel')) {
         $('mapa-sel').textContent = nota
-          ? 'Clique em uma cidade para notas. Tudo fica salvo na campanha.'
-          : 'Clique nas cidades na ordem da carreata, depois Salvar rota.';
+          ? 'Só Amapá · clique no município (nome no mapa) para anotar.'
+          : 'Só Amapá · clique nos municípios na ordem da carreata, depois Salvar rota.';
       }
     }
 
@@ -4351,9 +4387,10 @@
 
     function mapaAbrirCidade(m) {
       mapaSel = m;
-      if ($('mapa-cidade-nome')) $('mapa-cidade-nome').textContent = m.nome + ' · ' + m.cod_ibge;
+      if ($('mapa-cidade-nome')) $('mapa-cidade-nome').textContent = m.nome + ' · IBGE ' + m.cod_ibge;
       const nota = mapaNotas[m.cod_ibge];
       if ($('mapa-nota-texto')) $('mapa-nota-texto').value = nota ? (nota.texto || '') : '';
+      mapaRefreshStyles();
       if (mapaModo === 'caravana') {
         const exists = mapaPontosDraft.some(p => p.cod_ibge === m.cod_ibge);
         if (!exists) {
@@ -4389,39 +4426,99 @@
         return;
       }
       try {
-        const [mun, notas] = await Promise.all([
+        const [mun, notas, geoRes] = await Promise.all([
           api('/mapa/municipios?uf=AP'),
           api('/mapa/notas'),
+          fetch('/apura/assets/ap-municipios.geojson').then(r => {
+            if (!r.ok) throw new Error('Malha do Amapá indisponível');
+            return r.json();
+          }),
         ]);
         mapaMunis = mun.linhas || [];
+        mapaMuniByIbge = {};
+        mapaMunis.forEach(m => { mapaMuniByIbge[m.cod_ibge] = m; });
         mapaNotas = {};
         (notas.linhas || []).forEach(n => { mapaNotas[n.cod_ibge] = n; });
+
         if (!mapaLeaflet) {
-          mapaLeaflet = L.map('mapa-canvas').setView([1.0, -51.5], 7);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '&copy; OpenStreetMap',
+          mapaLeaflet = L.map('mapa-canvas', {
+            maxBounds: MAPA_AP_BOUNDS,
+            maxBoundsViscosity: 1.0,
+            minZoom: 7,
+            maxZoom: 12,
+            zoomControl: true,
+            attributionControl: true,
+          });
+          L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 12,
+            minZoom: 7,
+            attribution: '&copy; OSM &copy; CARTO · malha IBGE',
+          }).addTo(mapaLeaflet);
+          // Máscara: mundo escuro fora do AP (inversão via world + hole = bounds AP)
+          const world = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+          const hole = [
+            [MAPA_AP_BOUNDS[0][0], MAPA_AP_BOUNDS[0][1]],
+            [MAPA_AP_BOUNDS[0][0], MAPA_AP_BOUNDS[1][1]],
+            [MAPA_AP_BOUNDS[1][0], MAPA_AP_BOUNDS[1][1]],
+            [MAPA_AP_BOUNDS[1][0], MAPA_AP_BOUNDS[0][1]],
+          ];
+          L.polygon([world, hole], {
+            stroke: false,
+            fillColor: '#8a96a3',
+            fillOpacity: 0.55,
+            interactive: false,
           }).addTo(mapaLeaflet);
         }
+
+        if (mapaPolys) {
+          mapaLeaflet.removeLayer(mapaPolys);
+          mapaPolys = null;
+        }
+        mapaLabels.forEach(l => mapaLeaflet.removeLayer(l));
+        mapaLabels = [];
         mapaMarkers.forEach(mk => mapaLeaflet.removeLayer(mk));
         mapaMarkers = [];
-        mapaMunis.forEach(m => {
-          const temNota = !!(mapaNotas[m.cod_ibge] && (mapaNotas[m.cod_ibge].texto || '').trim());
-          const mk = L.circleMarker([m.lat, m.lng], {
-            radius: temNota ? 9 : 7,
-            color: temNota ? '#0d4f4a' : '#5c6478',
-            fillColor: temNota ? '#12665f' : '#c5cdd8',
-            fillOpacity: 0.9,
-            weight: 2,
-          }).addTo(mapaLeaflet);
-          mk.bindTooltip(m.nome + (temNota ? ' · com nota' : ''));
-          mk.on('click', () => mapaAbrirCidade(m));
-          mapaMarkers.push(mk);
-        });
-        if (mapaMunis.length) {
-          const group = L.featureGroup(mapaMarkers);
-          mapaLeaflet.fitBounds(group.getBounds().pad(0.2));
-        }
+
+        mapaPolys = L.geoJSON(geoRes, {
+          style: f => mapaStyleFeature(f),
+          onEachFeature: (feature, layer) => {
+            const cod = Number(feature.properties.cod_ibge || feature.properties.codarea);
+            const base = mapaMuniByIbge[cod] || {
+              cod_ibge: cod,
+              nome: feature.properties.nome || String(cod),
+              lat: layer.getBounds().getCenter().lat,
+              lng: layer.getBounds().getCenter().lng,
+            };
+            const temNota = !!(mapaNotas[cod] && (mapaNotas[cod].texto || '').trim());
+            layer.bindTooltip(
+              base.nome + (temNota ? ' · com nota' : ''),
+              { sticky: true }
+            );
+            layer.on('click', () => mapaAbrirCidade(base));
+            layer.on('mouseover', () => {
+              if (!(mapaSel && mapaSel.cod_ibge === cod)) {
+                layer.setStyle({ weight: 2.2, fillOpacity: 0.8 });
+              }
+            });
+            layer.on('mouseout', () => mapaRefreshStyles());
+
+            const center = layer.getBounds().getCenter();
+            const lab = L.marker(center, {
+              interactive: false,
+              icon: L.divIcon({
+                className: 'mapa-muni-label' + ((mapaSel && mapaSel.cod_ibge === cod) ? ' selected' : ''),
+                html: esc(base.nome),
+                iconSize: [0, 0],
+              }),
+            });
+            lab._codIbge = cod;
+            lab.addTo(mapaLeaflet);
+            mapaLabels.push(lab);
+          },
+        }).addTo(mapaLeaflet);
+
+        const b = mapaPolys.getBounds();
+        mapaLeaflet.fitBounds(b.pad(0.04));
         setTimeout(() => mapaLeaflet.invalidateSize(), 80);
         mapaSyncModoUi();
         mapaRenderPontosLive();
