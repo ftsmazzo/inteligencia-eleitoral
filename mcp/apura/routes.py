@@ -209,7 +209,21 @@ def registrar(body: RegistroIn) -> dict[str, str]:
 @router.post("/auth/login")
 def login(body: LoginIn) -> dict[str, str]:
     with _db() as conn:
-        return login_usuario(conn, body.email, body.senha)
+        out = login_usuario(conn, body.email, body.senha)
+        try:
+            from gestao.plataforma import registrar_evento
+            from gestao.schema import ensure_schema
+
+            ensure_schema()
+            registrar_evento(
+                conn,
+                acao="login",
+                usuario_id=out["id"],
+                detalhe={"email": out.get("email")},
+            )
+        except Exception:
+            pass
+        return out
 
 
 @router.get("/auth/eu")
@@ -217,14 +231,26 @@ def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
     with _db() as conn:
         row = conn.execute(
             """
-            SELECT u.ultima_sessao_id::text, u.campanha_id::text, c.nome
+            SELECT u.ultima_sessao_id::text,
+                   COALESCE(u.campanha_ativa_id, u.campanha_id)::text,
+                   c.nome
             FROM ctl.apura_usuario u
-            LEFT JOIN ctl.campanha c ON c.id = u.campanha_id
+            LEFT JOIN ctl.campanha c
+              ON c.id = COALESCE(u.campanha_ativa_id, u.campanha_id)
             WHERE u.id = %s::uuid
             """,
             (user[0],),
         ).fetchone()
         q = quota_usuario(conn, user[0])
+        plataforma_ctx: dict[str, Any] = {}
+        try:
+            from gestao import plataforma as plat
+            from gestao.schema import ensure_schema
+
+            ensure_schema()
+            plataforma_ctx = plat.contexto_usuario(conn, user[0], user[1])
+        except Exception:
+            plataforma_ctx = {}
     return {
         "id": user[0],
         "email": user[1],
@@ -232,6 +258,10 @@ def eu(user: tuple[str, str, str] = Depends(_usuario_atual)) -> dict[str, Any]:
         "campanha_id": row[1] if row else None,
         "campanha_nome": row[2] if row else None,
         "quota": q,
+        "is_super_gestor": bool(plataforma_ctx.get("is_super_gestor")),
+        "campanha_ativa_id": plataforma_ctx.get("campanha_ativa_id") or (row[1] if row else None),
+        "vinculos": plataforma_ctx.get("vinculos") or [],
+        "precisa_seletor": bool(plataforma_ctx.get("precisa_seletor")),
     }
 
 
@@ -386,7 +416,7 @@ async def chat(
     body: ChatIn,
     user: tuple[str, str, str] = Depends(_usuario_atual),
 ) -> StreamingResponse:
-    uid, _, mcp_token = user
+    uid, email, mcp_token = user
     try:
         with _db() as conn:
             ok = conn.execute(
@@ -423,6 +453,22 @@ async def chat(
                 """,
                 (body.sessao_id,),
             ).fetchall()
+            try:
+                from gestao.plataforma import registrar_evento
+                from gestao.schema import ensure_schema
+                from gestao.store import campanha_do_usuario
+
+                ensure_schema()
+                camp = campanha_do_usuario(conn, uid)
+                registrar_evento(
+                    conn,
+                    acao="chat_pergunta",
+                    usuario_id=uid,
+                    campanha_id=camp[0] if camp else None,
+                    detalhe={"sessao_id": body.sessao_id},
+                )
+            except Exception:
+                pass
     except HTTPException:
         raise
     except psycopg.Error as exc:
@@ -437,11 +483,16 @@ async def chat(
         if body.modo_narrativa and SKILL_NARRATIVA_DEFAULT not in skills_txt:
             skills_txt = (skills_txt + "\n\n" + SKILL_NARRATIVA_DEFAULT).strip()
         campanha_ctx = ""
+        politica = None
         try:
+            from apura.perfil_policy import politica_usuario
             from gestao import memoria as gestao_memoria
+            from gestao.schema import ensure_schema
             from gestao.store import campanha_do_usuario, get_status
             from radar import store as radar_store
 
+            ensure_schema()
+            politica = politica_usuario(conn, uid, email)
             camp = campanha_do_usuario(conn, uid)
             if camp:
                 partes_ctx: list[str] = []
@@ -462,12 +513,18 @@ async def chat(
                 campanha_ctx = "\n\n".join(partes_ctx)
         except Exception:
             campanha_ctx = ""
+            politica = None
 
     async def stream_and_save() -> Any:
         final_content = ""
         final_dados = None
         async for chunk in executar_chat(
-            historico, mcp_token, skills_txt, body.modo_narrativa, campanha_ctx
+            historico,
+            mcp_token,
+            skills_txt,
+            body.modo_narrativa,
+            campanha_ctx,
+            politica,
         ):
             yield chunk
             if chunk.startswith("event: done"):

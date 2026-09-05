@@ -20,12 +20,14 @@ from pydantic import BaseModel, EmailStr, Field
 
 from apura.routes import pagina_apura, pagina_cadastro, router as apura_router
 from gestao.routes import router as gestao_router
+from gestao.routes_plataforma import router as gestao_plataforma_router
 import mcp_packs
 from radar.routes import router as radar_router
 
 app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
 app.include_router(apura_router)
 app.include_router(gestao_router)
+app.include_router(gestao_plataforma_router)
 app.include_router(radar_router)
 
 
@@ -594,8 +596,12 @@ def _extract_token(authorization: str | None, x_token: str | None) -> str:
     return ""
 
 
-def _token_ok(authorization: str | None, x_token: str | None) -> None:
-    """Valida token e consome 1 unidade da cota demo (se houver)."""
+def _token_ok(
+    authorization: str | None,
+    x_token: str | None,
+    method: str | None = None,
+) -> None:
+    """Valida token, consome cota demo e (opcional) enforce Perfil×método MCP."""
     master = os.environ.get("MCP_TOKEN", "")
     got = _extract_token(authorization, x_token)
     if not master and not got:
@@ -631,6 +637,24 @@ def _token_ok(authorization: str | None, x_token: str | None) -> None:
                 "UPDATE ctl.mcp_token SET quota_used = quota_used + 1 WHERE token = %s",
                 (got,),
             )
+        if method:
+            try:
+                from apura.perfil_policy import metodo_permitido, politica_token
+                from gestao.schema import ensure_schema
+
+                ensure_schema()
+                pol = politica_token(conn, got, master=master)
+                if not metodo_permitido(pol, method):
+                    raise HTTPException(
+                        403,
+                        f"Método '{method}' não permitido no Perfil "
+                        f"{pol.get('perfil_slug') or 'deste token'}.",
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                # Schema/perfil indisponível: não derruba MCP legado
+                pass
         conn.commit()
 
 
@@ -1106,7 +1130,7 @@ def catalogo(
     authorization: str | None = Header(default=None),
     x_token: str | None = Header(default=None),
 ) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "catalogo")
     with db() as conn:
         return _one(conn, "SELECT api.catalogo()", ())
 
@@ -1117,7 +1141,7 @@ def municipio(
     authorization: str | None = Header(default=None),
     x_token: str | None = Header(default=None),
 ) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "municipio")
     _ensure_municipio_api()
     with db() as conn:
         return _one(
@@ -1129,7 +1153,7 @@ def municipio(
 
 @app.post("/v1/nominata")
 def nominata(body: NominataIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "nominata")
     with db() as conn:
         return _one(
             conn,
@@ -1150,7 +1174,7 @@ def nominata(body: NominataIn, authorization: str | None = Header(default=None),
 
 @app.post("/v1/votacao")
 def votacao(body: VotacaoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "votacao")
     with db() as conn:
         return _one(
             conn,
@@ -1174,7 +1198,7 @@ def votacao(body: VotacaoIn, authorization: str | None = Header(default=None), x
 
 @app.post("/v1/comparecimento")
 def comparecimento(body: ComparecimentoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "comparecimento")
     with db() as conn:
         return _one(
             conn,
@@ -1185,7 +1209,7 @@ def comparecimento(body: ComparecimentoIn, authorization: str | None = Header(de
 
 @app.post("/v1/eleitorado")
 def eleitorado(body: EleitoradoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "eleitorado")
     with db() as conn:
         return _one(
             conn,
@@ -1196,7 +1220,7 @@ def eleitorado(body: EleitoradoIn, authorization: str | None = Header(default=No
 
 @app.post("/v1/coligacao")
 def coligacao(body: ColigacaoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "coligacao")
     with db() as conn:
         return _one(
             conn,
@@ -1215,7 +1239,7 @@ def coligacao(body: ColigacaoIn, authorization: str | None = Header(default=None
 
 @app.post("/v1/vagas")
 def vagas(body: VagasIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "vagas")
     with db() as conn:
         return _one(
             conn,
@@ -1226,7 +1250,7 @@ def vagas(body: VagasIn, authorization: str | None = Header(default=None), x_tok
 
 @app.post("/v1/bem")
 def bem(body: BemIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "bem")
     with db() as conn:
         return _one(
             conn,
@@ -1239,7 +1263,7 @@ def bem(body: BemIn, authorization: str | None = Header(default=None), x_token: 
 def rede_social(
     body: RedeSocialIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)
 ) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "rede_social")
     _ensure_rede_complementar()
     with db() as conn:
         return _one(
@@ -1253,7 +1277,7 @@ def rede_social(
 def complementar(
     body: ComplementarIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)
 ) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "complementar")
     _ensure_rede_complementar()
     with db() as conn:
         return _one(
@@ -1265,7 +1289,7 @@ def complementar(
 
 @app.post("/v1/receita")
 def receita(body: ContasIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "receita")
     with db() as conn:
         return _one(
             conn,
@@ -1276,7 +1300,7 @@ def receita(body: ContasIn, authorization: str | None = Header(default=None), x_
 
 @app.post("/v1/despesa")
 def despesa(body: ContasIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "despesa")
     _ensure_contas_resumo()
     with db() as conn:
         return _one(
@@ -1292,7 +1316,7 @@ def contas_resumo(
     authorization: str | None = Header(default=None),
     x_token: str | None = Header(default=None),
 ) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "contas_resumo")
     _ensure_contas_resumo()
     with db() as conn:
         return _one(
@@ -1312,7 +1336,7 @@ def contas_resumo(
 
 @app.post("/v1/eleitos")
 def eleitos(body: EleitosIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "eleitos")
     _ensure_partido_linha()
     with db() as conn:
         return _one(
@@ -1332,7 +1356,7 @@ def eleitos(body: EleitosIn, authorization: str | None = Header(default=None), x
 
 @app.post("/v1/populacao")
 def populacao(body: PopulacaoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "populacao")
     with db() as conn:
         return _one(
             conn,
@@ -1343,7 +1367,7 @@ def populacao(body: PopulacaoIn, authorization: str | None = Header(default=None
 
 @app.post("/v1/cadunico")
 def cadunico(body: SocialIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "cadunico")
     with db() as conn:
         return _one(
             conn,
@@ -1354,7 +1378,7 @@ def cadunico(body: SocialIn, authorization: str | None = Header(default=None), x
 
 @app.post("/v1/bolsa_familia")
 def bolsa_familia(body: SocialIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "bolsa_familia")
     with db() as conn:
         return _one(
             conn,
@@ -1365,7 +1389,7 @@ def bolsa_familia(body: SocialIn, authorization: str | None = Header(default=Non
 
 @app.post("/v1/deputados_casa")
 def deputados_casa(body: DeputadosCasaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "deputados_casa")
     with db() as conn:
         return _one(
             conn,
@@ -1376,7 +1400,7 @@ def deputados_casa(body: DeputadosCasaIn, authorization: str | None = Header(def
 
 @app.post("/v1/senadores")
 def senadores(body: SenadoresIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "senadores")
     with db() as conn:
         return _one(
             conn,
@@ -1387,7 +1411,7 @@ def senadores(body: SenadoresIn, authorization: str | None = Header(default=None
 
 @app.post("/v1/proposicoes")
 def proposicoes(body: ProposicoesIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "proposicoes")
     with db() as conn:
         return _one(
             conn,
@@ -1398,7 +1422,7 @@ def proposicoes(body: ProposicoesIn, authorization: str | None = Header(default=
 
 @app.post("/v1/votos_camara")
 def votos_camara(body: VotosCamaraIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "votos_camara")
     with db() as conn:
         return _one(
             conn,
@@ -1409,7 +1433,7 @@ def votos_camara(body: VotosCamaraIn, authorization: str | None = Header(default
 
 @app.post("/v1/depara_parlamentar")
 def depara_parlamentar(body: DeparaParlamentarIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "depara_parlamentar")
     with db() as conn:
         return _one(
             conn,
@@ -1420,7 +1444,7 @@ def depara_parlamentar(body: DeparaParlamentarIn, authorization: str | None = He
 
 @app.post("/v1/acervo")
 def acervo(body: AcervoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "acervo")
     _ensure_acervo()
     # NULL explícito em p_vigente_em anula DEFAULT CURRENT_DATE — sempre passar data concreta.
     vigente = body.vigente_em or date.today().isoformat()
@@ -1443,7 +1467,7 @@ def acervo(body: AcervoIn, authorization: str | None = Header(default=None), x_t
 
 @app.post("/v1/acervo_comparar")
 def acervo_comparar(body: AcervoCompararIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "acervo_comparar")
     _ensure_acervo()
     with db() as conn:
         return _one(
@@ -1455,7 +1479,7 @@ def acervo_comparar(body: AcervoCompararIn, authorization: str | None = Header(d
 
 @app.post("/v1/linha_temporal")
 def linha_temporal(body: LinhaTemporalIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "linha_temporal")
     _ensure_analitico()
     _ensure_partido_linha()
     anos = body.anos or [2014, 2018, 2022]
@@ -1469,7 +1493,7 @@ def linha_temporal(body: LinhaTemporalIn, authorization: str | None = Header(def
 
 @app.post("/v1/cruzamento_social")
 def cruzamento_social(body: CruzamentoSocialIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "cruzamento_social")
     _ensure_analitico()
     with db() as conn:
         return _one(
@@ -1481,7 +1505,7 @@ def cruzamento_social(body: CruzamentoSocialIn, authorization: str | None = Head
 
 @app.post("/v1/mandato_urna")
 def mandato_urna(body: MandatoUrnaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "mandato_urna")
     _ensure_analitico()
     with db() as conn:
         return _one(
@@ -1493,7 +1517,7 @@ def mandato_urna(body: MandatoUrnaIn, authorization: str | None = Header(default
 
 @app.post("/v1/clima")
 async def clima(body: ClimaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "clima")
     from radar_client import consultar_clima
 
     campanha_uuid = (body.campanha_id or "").strip() or _campanha_id_do_token(authorization, x_token)
@@ -1543,7 +1567,7 @@ async def _mcp_exec(
     authorization: str | None,
     x_token: str | None,
 ) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, body.method)
     name = (body.method or "").strip()
     p = body.params or {}
     allowed = mcp_packs.PACKS.get(pack)
@@ -1660,20 +1684,20 @@ async def mcp_contexto(body: McpCall, authorization: str | None = Header(default
 
 @app.post("/v1/escopo")
 def v1_escopo(authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "escopo")
     with db() as conn:
         return mcp_packs.montar_escopo(conn)
 
 
 @app.post("/v1/memoria")
 def v1_memoria(body: MemoriaMcpIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "memoria")
     with db() as conn:
         return mcp_packs.montar_memoria(conn, query=body.query, tipo=body.tipo, limite=body.limite)
 
 
 @app.post("/v1/temas_plano")
 def v1_temas_plano(authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
-    _token_ok(authorization, x_token)
+    _token_ok(authorization, x_token, "temas_plano")
     with db() as conn:
         return mcp_packs.montar_temas(conn)

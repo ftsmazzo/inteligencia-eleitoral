@@ -1079,11 +1079,12 @@ def _recomendacoes(
 
 
 def campanha_do_usuario(conn: psycopg.Connection, usuario_id: str) -> tuple[str, str] | None:
+    """Campanha de trabalho: campanha_ativa_id (seletor), senão legado campanha_id."""
     row = conn.execute(
         """
-        SELECT u.campanha_id::text, c.nome
+        SELECT COALESCE(u.campanha_ativa_id, u.campanha_id)::text, c.nome
         FROM ctl.apura_usuario u
-        JOIN ctl.campanha c ON c.id = u.campanha_id
+        JOIN ctl.campanha c ON c.id = COALESCE(u.campanha_ativa_id, u.campanha_id)
         WHERE u.id = %s::uuid AND u.ativo IS TRUE
         """,
         (usuario_id,),

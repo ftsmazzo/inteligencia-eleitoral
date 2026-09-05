@@ -784,6 +784,76 @@
     .theme-toggle:hover, .btn-conta:hover { border-color: var(--brand); color: var(--brand); }
     .sidebar-foot-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 4px; }
 
+    /* Plataforma gestão (seletor, frota, auditoria) */
+    #seletor-screen {
+      position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+      padding: 24px; background: linear-gradient(160deg, #0f2f2c 0%, #1a4a44 45%, #0d2422 100%);
+    }
+    #seletor-screen.hidden { display: none; }
+    .seletor-box {
+      width: min(560px, 100%); background: var(--card); border-radius: 20px; padding: 28px 28px 24px;
+      box-shadow: 0 24px 60px rgba(0,0,0,.35);
+    }
+    .seletor-box h2 { font-family: Fraunces, serif; font-size: 1.55rem; color: var(--brand); margin: 0 0 6px; }
+    .seletor-box .sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 18px; line-height: 1.45; }
+    .seletor-list { display: grid; gap: 10px; max-height: 50vh; overflow-y: auto; }
+    .seletor-item {
+      text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 12px;
+      padding: 14px 16px; cursor: pointer; transition: border-color .15s, background .15s;
+    }
+    .seletor-item:hover { border-color: var(--brand); background: var(--brand-light); }
+    .seletor-item b { display: block; color: var(--ink); font-size: 1rem; margin-bottom: 4px; }
+    .seletor-item span { color: var(--muted); font-size: 0.82rem; }
+    .seletor-err { color: #b91c1c; font-size: 0.85rem; min-height: 1.2em; margin-top: 10px; }
+    .plat-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 18px; }
+    .plat-toolbar label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 4px; }
+    .plat-toolbar input, .plat-toolbar select {
+      padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; min-width: 160px;
+      font: inherit; background: var(--input-bg, #fff); color: var(--ink);
+    }
+    .plat-grid { display: grid; gap: 12px; }
+    .plat-card {
+      border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; background: var(--bg);
+      display: grid; gap: 8px;
+    }
+    .plat-card h4 { margin: 0; font-size: 1.05rem; color: var(--ink); }
+    .plat-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+    .plat-meta em {
+      font-style: normal; background: var(--surface, #fff); border: 1px solid var(--line);
+      border-radius: 999px; padding: 2px 8px;
+    }
+    .plat-card .gestao-actions { margin-top: 4px; }
+    .gestao-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+    .gestao-tabs button {
+      border: 1px solid var(--line); background: var(--surface, #fff); border-radius: 999px; padding: 6px 14px;
+      font: inherit; font-size: 0.85rem; cursor: pointer; color: var(--muted);
+    }
+    .gestao-tabs button.on { background: var(--brand-light); color: var(--brand); border-color: #9ec5c0; font-weight: 600; }
+    #campanha-chip {
+      display: none; font-size: 0.75rem; color: var(--brand); background: var(--brand-light);
+      border-radius: 8px; padding: 4px 8px; margin-top: 4px; max-width: 100%; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    #campanha-chip.on { display: inline-block; }
+    .workspace-lock {
+      display: none; margin: 16px 20px; padding: 14px 16px; border-radius: 12px;
+      background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 0.9rem; line-height: 1.45;
+    }
+    .workspace-lock.on { display: block; }
+    html[data-theme="dark"] .workspace-lock {
+      background: #3a2a14; border-color: #8a5a20; color: #f0c090;
+    }
+    .membro-row, .token-row {
+      display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+      margin-bottom: 8px; background: var(--surface, #fff); font-size: 0.88rem;
+    }
+    .membro-row b, .token-row b { color: var(--ink); }
+    .token-reveal {
+      margin-top: 10px; padding: 12px; border-radius: 10px; background: #ecfdf5; border: 1px solid #a7f3d0;
+      font-family: ui-monospace, monospace; font-size: 0.8rem; word-break: break-all;
+    }
+    html[data-theme="dark"] .token-reveal { background: #143028; border-color: #2a6a50; }
+
   </style>
 
   <script>
@@ -796,6 +866,15 @@
   </script>
 </head>
 <body>
+  <div id="seletor-screen" class="hidden">
+    <div class="seletor-box">
+      <h2>Escolha a campanha</h2>
+      <p class="sub">Você participa de mais de uma. O Chat, o Radar e o clima usam só o contexto da campanha escolhida.</p>
+      <div class="seletor-list" id="seletor-list"></div>
+      <p class="seletor-err" id="seletor-err"></p>
+    </div>
+  </div>
+
   <div id="auth-screen">
     <div class="auth-card">
       <img class="auth-brand" src="/apura/assets/logo-apura.jpg" alt="Apura" width="72" height="72" />
@@ -871,6 +950,7 @@
       </div>
       <div class="sidebar-foot">
         <span id="user-email"></span><br />
+        <span id="campanha-chip"></span>
         <span id="user-quota" class="quota-pill"></span>
         <div class="sidebar-foot-actions">
           <button type="button" class="theme-toggle" id="btn-theme" title="Alternar tema">Tema escuro</button>
@@ -887,6 +967,7 @@
         <a href="/guia" target="_blank" rel="noopener">Guia · Token MCP</a>
       </header>
       <div class="ambiente-banner" id="banner-chat">Ambiente em configuração — complete a <a data-goto-gestao>Gestão</a>.</div>
+      <div class="workspace-lock" id="lock-chat">Entre em uma campanha na <a data-goto-gestao>Gestão</a> (ou no seletor) para usar o Chat.</div>
       <div class="messages" id="messages"></div>
       <div class="composer" id="composer">
         <p class="app-err" id="app-err"></p>
@@ -906,6 +987,7 @@
 
       <div id="radar-view">
         <div class="ambiente-banner" id="banner-radar" style="margin:16px 20px 0">Ambiente em configuração — complete a <a data-goto-gestao>Gestão</a>.</div>
+        <div class="workspace-lock" id="lock-radar">Entre em uma campanha na <a data-goto-gestao>Gestão</a> para usar o Radar.</div>
         <div class="radar-head">
           <h3>Radar · PULSO</h3>
           <div class="sub" id="radar-campanha">Clima + Termômetro · nível indício</div>
@@ -1076,22 +1158,126 @@
 
       <div id="gestao-view">
         <div class="gestao-wrap">
-          <div class="gestao-hero">
-            <span class="gestao-status-pill" id="gestao-status-pill">legado</span>
-            <h3>Gestão da campanha</h3>
-            <p>Defina o recorte oficial (ano, cargo, UF e candidato). Isso ancora o ambiente para Radar e Apura. Dossiê e Perfil entram nos próximos sprints.</p>
+          <div id="gestao-plataforma" class="hidden">
+            <div class="gestao-hero">
+              <span class="gestao-status-pill">plataforma</span>
+              <h3>Gestão de campanhas</h3>
+              <p>Crie campanhas virgens (módulos já provisionados) e entre quando for configurar. Chat e Radar só herdam contexto depois do Entrar.</p>
+            </div>
+            <div class="gestao-tabs" id="plat-tabs">
+              <button type="button" class="on" data-plat-tab="frota">Frota</button>
+              <button type="button" data-plat-tab="auditoria">Auditoria</button>
+            </div>
+            <div id="plat-panel-frota">
+            <div class="plat-toolbar" id="plat-criar-wrap">
+              <div>
+                <label for="plat-nome">Nova campanha</label>
+                <input id="plat-nome" maxlength="80" placeholder="Ex.: governador-tocantins" />
+              </div>
+              <div>
+                <label for="plat-rotulo">Rótulo (opcional)</label>
+                <input id="plat-rotulo" maxlength="120" placeholder="Nome amigável" />
+              </div>
+              <button type="button" class="primary" id="plat-criar" style="padding:10px 16px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;cursor:pointer">Criar</button>
+            </div>
+            <div class="plat-grid" id="plat-lista"></div>
+            <p class="gestao-err" id="plat-err"></p>
+            </div>
+            <div id="plat-panel-auditoria" class="hidden">
+              <div class="plat-toolbar">
+                <div>
+                  <label for="aud-dias">Período (dias)</label>
+                  <input id="aud-dias" type="number" min="1" max="90" value="7" style="width:80px" />
+                </div>
+                <button type="button" class="primary" id="aud-refresh" style="padding:10px 16px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;cursor:pointer">Atualizar</button>
+                <button type="button" class="secondary" id="aud-sugerir" style="padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface,#fff);font:inherit;cursor:pointer">IA boas práticas</button>
+              </div>
+              <div class="gestao-resumo" id="aud-kpis"></div>
+              <div class="gestao-card" style="margin-top:12px">
+                <h4>Por usuário</h4>
+                <div id="aud-usuarios"></div>
+              </div>
+              <div class="gestao-card" style="margin-top:12px">
+                <h4>Interações recentes</h4>
+                <div id="aud-interacoes"></div>
+              </div>
+              <div class="gestao-card" style="margin-top:12px">
+                <h4>Eventos de acesso</h4>
+                <div id="aud-eventos"></div>
+              </div>
+              <div class="gestao-card" style="margin-top:12px">
+                <h4>Sugestões</h4>
+                <div id="aud-sugestoes"></div>
+              </div>
+              <p class="gestao-err" id="aud-err"></p>
+            </div>
           </div>
-          <div class="gestao-steps" id="gestao-steps">
-            <span data-step="0">Início</span>
-            <span data-step="1">Ano</span>
-            <span data-step="2">Cargo</span>
-            <span data-step="3">UF</span>
-            <span data-step="4">Candidato</span>
-            <span data-step="5">Resumo</span>
+
+          <div id="gestao-campanha-panel">
+            <div class="gestao-hero">
+              <span class="gestao-status-pill" id="gestao-status-pill">legado</span>
+              <h3 id="gestao-campanha-titulo">Gestão da campanha</h3>
+              <p id="gestao-campanha-sub">Defina o recorte oficial (ano, cargo, UF e candidato). Isso ancora o ambiente para Radar e Apura.</p>
+              <div class="gestao-actions" id="gestao-nav-frota" style="display:none;margin-top:8px">
+                <button type="button" class="secondary" id="btn-voltar-frota">← Voltar à frota</button>
+                <button type="button" class="secondary" id="btn-trocar-campanha">Trocar campanha</button>
+              </div>
+            </div>
+            <div class="gestao-tabs" id="gestao-tabs">
+              <button type="button" class="on" data-g-tab="escopo">Escopo</button>
+              <button type="button" data-g-tab="equipe">Equipe local</button>
+              <button type="button" data-g-tab="membros">Membros &amp; Perfis</button>
+              <button type="button" data-g-tab="tokens">Tokens MCP</button>
+            </div>
+            <div id="gestao-tab-escopo">
+              <div class="gestao-steps" id="gestao-steps">
+                <span data-step="0">Início</span>
+                <span data-step="1">Ano</span>
+                <span data-step="2">Cargo</span>
+                <span data-step="3">UF</span>
+                <span data-step="4">Candidato</span>
+                <span data-step="5">Resumo</span>
+              </div>
+              <div class="gestao-card" id="gestao-card"></div>
+              <p class="gestao-err" id="gestao-err"></p>
+            </div>
+            <div id="gestao-tab-equipe" class="hidden">
+              <div class="gestao-card equipe-box" id="box-equipe"></div>
+            </div>
+            <div id="gestao-tab-membros" class="hidden">
+              <div class="gestao-card">
+                <h4>Membros (plataforma)</h4>
+                <p class="hint">Vínculo = usuário + Perfil nesta campanha. O mesmo login pode ter outro Perfil em outra campanha.</p>
+                <div class="plat-toolbar">
+                  <div><label>E-mail</label><input id="mem-email" type="email" placeholder="jao@…" /></div>
+                  <div><label>Perfil</label><select id="mem-perfil"></select></div>
+                  <div><label>Papel</label>
+                    <select id="mem-papel">
+                      <option value="equipe">equipe</option>
+                      <option value="coordenador">coordenador</option>
+                    </select>
+                  </div>
+                  <button type="button" class="primary" id="mem-add" style="padding:10px 16px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;cursor:pointer">Vincular</button>
+                </div>
+                <div id="mem-lista"></div>
+                <p class="gestao-err" id="mem-err"></p>
+              </div>
+            </div>
+            <div id="gestao-tab-tokens" class="hidden">
+              <div class="gestao-card">
+                <h4>Tokens MCP da campanha</h4>
+                <p class="hint">Times externos consomem dados no contexto desta campanha, com a matriz do Perfil escolhido. Token completo só aparece na emissão.</p>
+                <div class="plat-toolbar">
+                  <div><label>Rótulo</label><input id="tok-rotulo" placeholder="time-midia" /></div>
+                  <div><label>Perfil</label><select id="tok-perfil"></select></div>
+                  <button type="button" class="primary" id="tok-emitir" style="padding:10px 16px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;cursor:pointer">Emitir</button>
+                </div>
+                <div id="tok-reveal"></div>
+                <div id="tok-lista"></div>
+                <p class="gestao-err" id="tok-err"></p>
+              </div>
+            </div>
           </div>
-          <div class="gestao-card" id="gestao-card"></div>
-          <div class="gestao-card equipe-box" id="box-equipe"></div>
-          <p class="gestao-err" id="gestao-err"></p>
         </div>
       </div>
 
@@ -1238,6 +1424,7 @@
       jwt = d.token;
       localStorage.setItem('apura_jwt', jwt);
       $('auth-screen').classList.add('hidden');
+      if ($('seletor-screen')) $('seletor-screen').classList.add('hidden');
       $('app-screen').classList.remove('hidden');
       $('user-email').textContent = d.email || '';
       initApp().catch(err => { $('app-err').textContent = err.message; });
@@ -1342,20 +1529,113 @@
 
     window.addEventListener('pagehide', () => { if (sessaoId) saveSessao(sessaoId); });
 
-    async function initApp() {
-      appReady = false;
-      $('composer').classList.add('loading');
-      $('app-err').textContent = '';
+    let platCtx = null;
+    let perfisCache = [];
+    let gestaoUiMode = 'campanha'; // plataforma | campanha
+
+    function syncCampanhaChip() {
+      const chip = $('campanha-chip');
+      if (!chip) return;
+      const nome = platCtx && (platCtx.campanha_ativa_nome || null);
+      if (nome) {
+        chip.textContent = nome;
+        chip.classList.add('on');
+        chip.title = nome;
+      } else {
+        chip.textContent = '';
+        chip.classList.remove('on');
+      }
+    }
+
+    function temCampanhaAtiva() {
+      return !!(platCtx && platCtx.campanha_ativa_id);
+    }
+
+    function syncWorkspaceLock() {
+      const lock = !temCampanhaAtiva();
+      const lc = $('lock-chat');
+      const lr = $('lock-radar');
+      if (lc) lc.classList.toggle('on', lock);
+      if (lr) lr.classList.toggle('on', lock);
+      if (lock) {
+        if ($('banner-chat')) $('banner-chat').classList.remove('on');
+        if ($('banner-radar')) $('banner-radar').classList.remove('on');
+      }
+    }
+
+    async function refreshPlatCtx() {
+      try {
+        platCtx = await api('/gestao/plataforma/eu');
+      } catch (_) {
+        const eu = await api('/auth/eu');
+        platCtx = {
+          email: eu.email,
+          is_super_gestor: !!eu.is_super_gestor,
+          campanha_ativa_id: eu.campanha_ativa_id || eu.campanha_id,
+          campanha_ativa_nome: eu.campanha_nome,
+          vinculos: eu.vinculos || [],
+          precisa_seletor: !!eu.precisa_seletor,
+        };
+      }
+      syncCampanhaChip();
+      syncWorkspaceLock();
+      return platCtx;
+    }
+
+    function showSeletor(vinculos) {
+      $('seletor-err').textContent = '';
+      const box = $('seletor-list');
+      box.innerHTML = '';
+      (vinculos || []).forEach(v => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'seletor-item';
+        btn.innerHTML = '<b>' + esc(v.campanha_nome) + '</b><span>' +
+          esc([v.sg_uf, v.nm_urna, v.perfil_nome, v.papel_campanha].filter(Boolean).join(' · ')) + '</span>';
+        btn.onclick = () => entrarCampanhaUi(v.campanha_id);
+        box.appendChild(btn);
+      });
+      $('auth-screen').classList.add('hidden');
+      $('app-screen').classList.add('hidden');
+      $('seletor-screen').classList.remove('hidden');
+    }
+
+    async function entrarCampanhaUi(campanhaId) {
+      $('seletor-err').textContent = '';
+      try {
+        platCtx = await api('/gestao/plataforma/entrar', {
+          method: 'POST',
+          body: JSON.stringify({ campanha_id: campanhaId }),
+        });
+        $('seletor-screen').classList.add('hidden');
+        $('app-screen').classList.remove('hidden');
+        syncCampanhaChip();
+        syncWorkspaceLock();
+        gestaoUiMode = 'campanha';
+        await initAppWorkspace();
+        setView(platCtx.is_super_gestor ? 'gestao' : 'chat');
+      } catch (e) {
+        $('seletor-err').textContent = e.message;
+        if ($('plat-err')) $('plat-err').textContent = e.message;
+      }
+    }
+
+    async function initAppWorkspace() {
+      ultimaSessaoServidor = '';
       try {
         const eu = await api('/auth/eu');
         ultimaSessaoServidor = eu.ultima_sessao_id || '';
         atualizarQuota(eu.quota);
+      } catch (_) {}
+      try {
         const list = await carregarSessoes();
         await carregarSkills();
         try {
-          gestaoStatus = await api('/gestao/status');
-          syncAmbienteBanner();
-        } catch (_) { /* gestão opcional no boot */ }
+          if (temCampanhaAtiva()) {
+            gestaoStatus = await api('/gestao/status');
+            syncAmbienteBanner();
+          }
+        } catch (_) {}
         const alvo = escolherSessao(list);
         if (alvo) {
           await abrirSessao(alvo.id, alvo.titulo, false);
@@ -1364,6 +1644,58 @@
           mostrarBoasVindas();
         }
         appReady = true;
+      } catch (err) {
+        $('app-err').textContent = err.message || 'Não foi possível iniciar o workspace';
+      } finally {
+        syncSendBtn();
+      }
+    }
+
+
+    async function initApp() {
+      appReady = false;
+      $('composer').classList.add('loading');
+      $('app-err').textContent = '';
+      try {
+        const eu = await api('/auth/eu');
+        $('user-email').textContent = eu.email || '';
+        atualizarQuota(eu.quota);
+        await refreshPlatCtx();
+
+        const vinculos = platCtx.vinculos || [];
+        const superG = !!platCtx.is_super_gestor;
+
+        if (!superG && vinculos.length === 0) {
+          $('app-screen').classList.remove('hidden');
+          await initAppWorkspace();
+          setView('gestao');
+          if ($('gestao-err')) $('gestao-err').textContent = 'Você ainda não está vinculado a nenhuma campanha. Peça a um gestor.';
+          return;
+        }
+        if (!superG && vinculos.length > 1 && !platCtx.campanha_ativa_id) {
+          showSeletor(vinculos);
+          return;
+        }
+        if (!superG && vinculos.length === 1 && platCtx.campanha_ativa_id !== vinculos[0].campanha_id) {
+          await entrarCampanhaUi(vinculos[0].campanha_id);
+          return;
+        }
+        if (!superG && vinculos.length === 1 && !platCtx.campanha_ativa_id) {
+          await entrarCampanhaUi(vinculos[0].campanha_id);
+          return;
+        }
+
+        if (superG && !platCtx.campanha_ativa_id) {
+          $('app-screen').classList.remove('hidden');
+          gestaoUiMode = 'plataforma';
+          await initAppWorkspace();
+          setView('gestao');
+          return;
+        }
+
+        $('app-screen').classList.remove('hidden');
+        await initAppWorkspace();
+        setView('chat');
       } catch (err) {
         $('app-err').textContent = err.message || 'Não foi possível iniciar o chat';
         throw err;
@@ -1915,6 +2247,11 @@
     let candCache = [];
 
     function setView(wh) {
+      if ((wh === 'chat' || wh === 'radar' || wh === 'paineis' || wh === 'mcps') && !temCampanhaAtiva()) {
+        syncWorkspaceLock();
+        wh = 'gestao';
+        gestaoUiMode = (platCtx && platCtx.is_super_gestor) ? 'plataforma' : 'campanha';
+      }
       const chat = wh === 'chat';
       const radar = wh === 'radar';
       const gestao = wh === 'gestao';
@@ -1930,14 +2267,17 @@
       $('gestao-view').classList.toggle('on', gestao);
       $('paineis-view').classList.toggle('on', paineis);
       $('mcps-view').classList.toggle('on', mcps);
-      if (radar) loadRadarMeta().then(() => showRadarTab(radarTab));
+      if (radar && temCampanhaAtiva()) loadRadarMeta().then(() => showRadarTab(radarTab));
       if (gestao) loadGestao();
-      if (paineis) loadPainel(painelTab);
-      if (mcps) loadMcps();
+      if (paineis && temCampanhaAtiva()) loadPainel(painelTab);
+      if (mcps && temCampanhaAtiva()) loadMcps();
     }
     $('btn-view-chat').addEventListener('click', () => setView('chat'));
     $('btn-view-radar').addEventListener('click', () => setView('radar'));
-    $('btn-view-gestao').addEventListener('click', () => setView('gestao'));
+    $('btn-view-gestao').addEventListener('click', () => {
+      if (platCtx && platCtx.is_super_gestor && !temCampanhaAtiva()) gestaoUiMode = 'plataforma';
+      setView('gestao');
+    });
     $('btn-view-paineis').addEventListener('click', () => setView('paineis'));
     $('btn-view-mcps').addEventListener('click', () => setView('mcps'));
     document.querySelectorAll('[data-goto-gestao]').forEach(a => {
@@ -2031,6 +2371,11 @@
     }
 
     function syncAmbienteBanner() {
+      if (!temCampanhaAtiva()) {
+        $('banner-chat').classList.remove('on');
+        $('banner-radar').classList.remove('on');
+        return;
+      }
       const st = gestaoStatus && gestaoStatus.ambiente_status;
       const temEscopo = !!(gestaoStatus && (gestaoStatus.sq_candidato || gestaoStatus.nm_candidato || gestaoStatus.nm_urna));
       // Com escopo salvo o Apura já sabe o candidato/UF/cargo — não é mais "ambiente cego".
@@ -2040,11 +2385,301 @@
       $('banner-radar').classList.toggle('on', !!show);
     }
 
+    function setGestaoTab(tab) {
+      document.querySelectorAll('#gestao-tabs [data-g-tab]').forEach(b => {
+        b.classList.toggle('on', b.getAttribute('data-g-tab') === tab);
+      });
+      $('gestao-tab-escopo').classList.toggle('hidden', tab !== 'escopo');
+      $('gestao-tab-equipe').classList.toggle('hidden', tab !== 'equipe');
+      $('gestao-tab-membros').classList.toggle('hidden', tab !== 'membros');
+      $('gestao-tab-tokens').classList.toggle('hidden', tab !== 'tokens');
+      if (tab === 'equipe') loadEquipe();
+      if (tab === 'membros') loadMembrosUi();
+      if (tab === 'tokens') loadTokensUi();
+    }
+    document.querySelectorAll('#gestao-tabs [data-g-tab]').forEach(b => {
+      b.addEventListener('click', () => setGestaoTab(b.getAttribute('data-g-tab')));
+    });
+
+    async function ensurePerfis() {
+      if (perfisCache.length) return perfisCache;
+      const d = await api('/gestao/plataforma/perfis');
+      perfisCache = d.itens || [];
+      return perfisCache;
+    }
+
+    function fillPerfilSelect(selId) {
+      const el = $(selId);
+      if (!el) return;
+      el.innerHTML = perfisCache.map(p =>
+        '<option value="' + esc(p.slug) + '">' + esc(p.nome) + '</option>'
+      ).join('');
+    }
+
+    async function loadPlataformaFrota() {
+      if ($('plat-err')) $('plat-err').textContent = '';
+      $('gestao-plataforma').classList.remove('hidden');
+      $('gestao-campanha-panel').classList.add('hidden');
+      if ($('plat-criar-wrap')) $('plat-criar-wrap').style.display = (platCtx && platCtx.is_super_gestor) ? '' : 'none';
+      if ($('plat-tabs')) $('plat-tabs').style.display = (platCtx && platCtx.is_super_gestor) ? 'flex' : 'none';
+      setPlatTab('frota');
+      try {
+        const d = await api('/gestao/plataforma/campanhas');
+        const box = $('plat-lista');
+        const itens = d.itens || [];
+        if (!itens.length) {
+          box.innerHTML = '<p class="hint">Nenhuma campanha ainda. Crie a primeira acima.</p>';
+          return;
+        }
+        box.innerHTML = itens.map(c => {
+          const mods = (c.modulos || []).map(m => '<em>' + esc(typeof m === 'string' ? m : m) + '</em>').join('');
+          return '<div class="plat-card" data-cid="' + esc(c.campanha_id) + '">' +
+            '<h4>' + esc(c.nome) + '</h4>' +
+            '<div class="plat-meta">' +
+            '<em>' + esc(c.ambiente_status || '—') + '</em>' +
+            (c.sg_uf ? '<em>' + esc(c.sg_uf) + '</em>' : '') +
+            (c.nm_urna ? '<em>' + esc(c.nm_urna) + '</em>' : '') +
+            '<em>' + (c.membros_count || 0) + ' membros</em>' +
+            mods +
+            '</div>' +
+            '<div class="gestao-actions">' +
+            '<button type="button" class="primary plat-entrar">Entrar</button>' +
+            '</div></div>';
+        }).join('');
+        box.querySelectorAll('.plat-entrar').forEach(btn => {
+          btn.onclick = () => {
+            const cid = btn.closest('.plat-card').getAttribute('data-cid');
+            entrarCampanhaUi(cid);
+          };
+        });
+      } catch (e) {
+        if ($('plat-err')) $('plat-err').textContent = e.message;
+      }
+    }
+
+    function setPlatTab(tab) {
+      document.querySelectorAll('#plat-tabs [data-plat-tab]').forEach(b => {
+        b.classList.toggle('on', b.getAttribute('data-plat-tab') === tab);
+      });
+      $('plat-panel-frota').classList.toggle('hidden', tab !== 'frota');
+      $('plat-panel-auditoria').classList.toggle('hidden', tab !== 'auditoria');
+      if (tab === 'auditoria') loadAuditoria();
+    }
+    document.querySelectorAll('#plat-tabs [data-plat-tab]').forEach(b => {
+      b.addEventListener('click', () => setPlatTab(b.getAttribute('data-plat-tab')));
+    });
+
+    async function loadAuditoria() {
+      if (!platCtx || !platCtx.is_super_gestor) return;
+      $('aud-err').textContent = '';
+      const dias = parseInt(($('aud-dias') && $('aud-dias').value) || '7', 10) || 7;
+      try {
+        const [resumo, inter, ev] = await Promise.all([
+          api('/gestao/plataforma/auditoria/resumo?dias=' + dias),
+          api('/gestao/plataforma/auditoria/interacoes?limite=40'),
+          api('/gestao/plataforma/eventos?limite=40'),
+        ]);
+        $('aud-kpis').innerHTML =
+          '<div><span>Perguntas</span><b>' + (resumo.perguntas_total_periodo || 0) + '</b></div>' +
+          '<div><span>Usuários ativos</span><b>' + (resumo.usuarios_ativos_periodo || 0) + '</b></div>' +
+          '<div><span>Eventos</span><b>' + (resumo.eventos_periodo || 0) + '</b></div>' +
+          '<div><span>Tools negadas</span><b>' + (resumo.tools_negadas || 0) + '</b></div>' +
+          '<div><span>Tools top</span><b>' + esc((resumo.tools_top || []).slice(0, 3).map(t => t[0] + '(' + t[1] + ')').join(', ') || '—') + '</b></div>';
+
+        $('aud-usuarios').innerHTML = (resumo.por_usuario || []).slice(0, 30).map(u =>
+          '<div class="membro-row">' +
+          '<b>' + esc(u.nome || u.email) + '</b>' +
+          '<span>' + esc(u.email) + ' · ' + esc(u.campanha_ativa || 'sem campanha') +
+          ' · ' + u.perguntas_periodo + ' perguntas' +
+          (u.quota_max != null ? ' · quota ' + u.quota_used + '/' + u.quota_max : '') +
+          '</span></div>'
+        ).join('') || '<p class="hint">Sem usuários.</p>';
+
+        $('aud-interacoes').innerHTML = (inter.itens || []).map(m =>
+          '<div class="membro-row">' +
+          '<b>' + esc(m.papel) + ' · ' + esc(m.usuario_email || '') + '</b>' +
+          '<span>' + esc(m.campanha_nome || '—') + ' · ' + esc(m.criado_em || '') + '</span>' +
+          '<span>' + esc(m.trecho || '') + '</span>' +
+          (m.tools && m.tools.length
+            ? '<span style="opacity:.8">tools: ' + esc(m.tools.map(t => t.tool + (t.erro ? '!' : '')).join(', ')) + '</span>'
+            : '') +
+          '</div>'
+        ).join('') || '<p class="hint">Sem interações no recorte.</p>';
+
+        $('aud-eventos').innerHTML = (ev.itens || []).map(e =>
+          '<div class="membro-row">' +
+          '<b>' + esc(e.acao) + '</b>' +
+          '<span>' + esc(e.usuario_email || '—') + ' · ' + esc(e.campanha_nome || '—') +
+          ' · ' + esc(e.ocorrido_em || '') + '</span></div>'
+        ).join('') || '<p class="hint">Sem eventos.</p>';
+      } catch (e) {
+        $('aud-err').textContent = e.message;
+      }
+    }
+    if ($('aud-refresh')) $('aud-refresh').addEventListener('click', () => loadAuditoria());
+    if ($('aud-sugerir')) $('aud-sugerir').addEventListener('click', async () => {
+      $('aud-err').textContent = 'Gerando sugestões…';
+      $('aud-sugestoes').innerHTML = '';
+      const dias = parseInt(($('aud-dias') && $('aud-dias').value) || '7', 10) || 7;
+      try {
+        const d = await api('/gestao/plataforma/auditoria/sugerir?dias=' + dias + '&usar_llm=true', {
+          method: 'POST',
+          body: '{}',
+        });
+        let html = '<p class="hint">' + esc(d.aviso || '') + '</p>';
+        (d.heuristicas || []).forEach(h => {
+          html += '<div class="membro-row"><b>[' + esc(h.nivel) + '] ' + esc(h.titulo) + '</b><span>' + esc(h.texto) + '</span></div>';
+        });
+        if (d.llm && d.llm.ok) {
+          html += '<div class="membro-row" style="white-space:pre-wrap"><b>IA (' + esc(d.llm.modelo) + ')</b><span>' + esc(d.llm.texto) + '</span></div>';
+        } else if (d.llm && d.llm.erro) {
+          html += '<p class="hint">LLM: ' + esc(d.llm.erro) + '</p>';
+        }
+        $('aud-sugestoes').innerHTML = html;
+        $('aud-err').textContent = '';
+      } catch (e) {
+        $('aud-err').textContent = e.message;
+      }
+    });
+
+    if ($('plat-criar')) $('plat-criar').addEventListener('click', async () => {
+      $('plat-err').textContent = '';
+      const nome = ($('plat-nome').value || '').trim();
+      const rotulo = ($('plat-rotulo').value || '').trim();
+      if (nome.length < 2) { $('plat-err').textContent = 'Informe o nome da campanha'; return; }
+      try {
+        await api('/gestao/plataforma/campanhas', {
+          method: 'POST',
+          body: JSON.stringify({ nome, rotulo: rotulo || null }),
+        });
+        $('plat-nome').value = '';
+        $('plat-rotulo').value = '';
+        await loadPlataformaFrota();
+      } catch (e) { $('plat-err').textContent = e.message; }
+    });
+
+    async function voltarFrota() {
+      try {
+        platCtx = await api('/gestao/plataforma/sair', { method: 'POST', body: '{}' });
+      } catch (_) {
+        await refreshPlatCtx();
+      }
+      syncCampanhaChip();
+      syncWorkspaceLock();
+      gestaoUiMode = 'plataforma';
+      await loadPlataformaFrota();
+    }
+    if ($('btn-voltar-frota')) $('btn-voltar-frota').addEventListener('click', () => voltarFrota());
+    if ($('btn-trocar-campanha')) $('btn-trocar-campanha').addEventListener('click', async () => {
+      await refreshPlatCtx();
+      const v = platCtx.vinculos || [];
+      if (platCtx.is_super_gestor) {
+        gestaoUiMode = 'plataforma';
+        loadPlataformaFrota();
+        return;
+      }
+      if (v.length > 1) showSeletor(v);
+    });
+
+    async function loadMembrosUi() {
+      $('mem-err').textContent = '';
+      try {
+        await ensurePerfis();
+        fillPerfilSelect('mem-perfil');
+        const cid = platCtx.campanha_ativa_id;
+        const d = await api('/gestao/plataforma/campanhas/' + cid + '/membros');
+        const box = $('mem-lista');
+        box.innerHTML = (d.itens || []).map(m =>
+          '<div class="membro-row" data-mid="' + esc(m.membro_id) + '">' +
+          '<b>' + esc(m.nome || m.email) + '</b>' +
+          '<span>' + esc(m.email) + ' · ' + esc(m.perfil_nome) + ' · ' + esc(m.papel_campanha) +
+          (m.ativo ? '' : ' · inativo') + '</span>' +
+          (m.ativo ? '<button type="button" class="secondary mem-off" style="justify-self:start;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface,#fff);cursor:pointer">Desativar</button>' : '') +
+          '</div>'
+        ).join('') || '<p class="hint">Nenhum membro vinculado.</p>';
+        box.querySelectorAll('.mem-off').forEach(btn => {
+          btn.onclick = async () => {
+            const mid = btn.closest('.membro-row').getAttribute('data-mid');
+            try {
+              await api('/gestao/plataforma/campanhas/' + cid + '/membros/' + mid, { method: 'DELETE' });
+              loadMembrosUi();
+            } catch (e) { $('mem-err').textContent = e.message; }
+          };
+        });
+      } catch (e) { $('mem-err').textContent = e.message; }
+    }
+    if ($('mem-add')) $('mem-add').addEventListener('click', async () => {
+      $('mem-err').textContent = '';
+      try {
+        const cid = platCtx.campanha_ativa_id;
+        await api('/gestao/plataforma/campanhas/' + cid + '/membros', {
+          method: 'POST',
+          body: JSON.stringify({
+            email: $('mem-email').value.trim(),
+            perfil: $('mem-perfil').value,
+            papel_campanha: $('mem-papel').value,
+          }),
+        });
+        $('mem-email').value = '';
+        loadMembrosUi();
+      } catch (e) { $('mem-err').textContent = e.message; }
+    });
+
+    async function loadTokensUi() {
+      $('tok-err').textContent = '';
+      try {
+        await ensurePerfis();
+        fillPerfilSelect('tok-perfil');
+        const cid = platCtx.campanha_ativa_id;
+        const d = await api('/gestao/plataforma/campanhas/' + cid + '/tokens');
+        $('tok-lista').innerHTML = (d.itens || []).map(t =>
+          '<div class="token-row"><b>' + esc(t.rotulo) + '</b>' +
+          '<span>' + esc(t.perfil_nome || t.perfil_slug || '—') +
+          ' · ' + (t.ativo ? 'ativo' : 'inativo') +
+          ' · ' + esc(t.token_prefix || '') + '…' +
+          (t.quota_max != null ? ' · quota ' + t.quota_used + '/' + t.quota_max : '') +
+          '</span></div>'
+        ).join('') || '<p class="hint">Nenhum token emitido.</p>';
+      } catch (e) { $('tok-err').textContent = e.message; }
+    }
+    if ($('tok-emitir')) $('tok-emitir').addEventListener('click', async () => {
+      $('tok-err').textContent = '';
+      $('tok-reveal').innerHTML = '';
+      try {
+        const cid = platCtx.campanha_ativa_id;
+        const r = await api('/gestao/plataforma/campanhas/' + cid + '/tokens', {
+          method: 'POST',
+          body: JSON.stringify({
+            rotulo: $('tok-rotulo').value.trim(),
+            perfil: $('tok-perfil').value,
+          }),
+        });
+        $('tok-rotulo').value = '';
+        $('tok-reveal').innerHTML = '<div class="token-reveal"><strong>Guarde agora:</strong><br />' +
+          esc(r.token) + '<br /><span style="color:var(--muted)">' + esc(r.aviso || '') + '</span></div>';
+        loadTokensUi();
+      } catch (e) { $('tok-err').textContent = e.message; }
+    });
+
     async function loadGestao() {
-      $('gestao-err').textContent = '';
+      if ($('gestao-err')) $('gestao-err').textContent = '';
+      await refreshPlatCtx();
+      if (gestaoUiMode === 'plataforma' || (platCtx.is_super_gestor && !temCampanhaAtiva())) {
+        gestaoUiMode = 'plataforma';
+        await loadPlataformaFrota();
+        return;
+      }
+      $('gestao-plataforma').classList.add('hidden');
+      $('gestao-campanha-panel').classList.remove('hidden');
+      if ($('gestao-nav-frota')) {
+        $('gestao-nav-frota').style.display = (platCtx.is_super_gestor || (platCtx.vinculos || []).length > 1) ? 'flex' : 'none';
+      }
       try {
         gestaoStatus = await api('/gestao/status');
         $('gestao-status-pill').textContent = gestaoStatus.ambiente_status || 'legado';
+        if ($('gestao-campanha-titulo')) {
+          $('gestao-campanha-titulo').textContent = 'Gestão · ' + (gestaoStatus.campanha_nome || 'campanha');
+        }
         if (gestaoStatus.sq_candidato) {
           draft.ano = gestaoStatus.ano_ref || 2026;
           draft.cd_cargo = gestaoStatus.cd_cargo;
@@ -2064,10 +2699,14 @@
           gestaoStep = Math.max(gestaoStep, 1);
         }
         syncAmbienteBanner();
+        setGestaoTab('escopo');
         renderGestaoStep();
-        loadEquipe();
       } catch (e) {
-        $('gestao-err').textContent = e.message;
+        if ($('gestao-err')) $('gestao-err').textContent = e.message;
+        if (/sem campanha/i.test(e.message || '') && platCtx && platCtx.is_super_gestor) {
+          gestaoUiMode = 'plataforma';
+          await loadPlataformaFrota();
+        }
       }
     }
 

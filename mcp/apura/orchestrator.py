@@ -268,9 +268,29 @@ async def executar_chat(
     skills_text: str = "",
     modo_narrativa: bool = False,
     campanha_ctx: str = "",
+    politica: dict[str, Any] | None = None,
 ) -> AsyncIterator[str]:
     """Gera eventos SSE: status, token, done (opcional relatorio_html), error."""
+    from apura.perfil_policy import filtrar_mcp_tools, resumo_politica, tool_permitida
+
     pergunta = _ultima_pergunta(historico)
+    pol = politica or {
+        "bypass": True,
+        "tools": set(),
+        "modelo_orquestrador": _orchestrator_model(),
+        "modelo_redator": _writer_model(),
+        "fonte": "sem_politica",
+    }
+    orch_model = (pol.get("modelo_orquestrador") or _orchestrator_model()).strip()
+    writer_model = (pol.get("modelo_redator") or _writer_model()).strip()
+    tools = filtrar_mcp_tools(pol) if not pol.get("bypass") else MCP_TOOLS
+    if not tools:
+        yield _sse(
+            "error",
+            {"mensagem": "Seu Perfil não tem tools liberadas. Peça ajuste ao gestor da campanha."},
+        )
+        return
+
     orch_system = SYSTEM_ORCHESTRATOR
     if modo_narrativa:
         orch_system = f"{SYSTEM_ORCHESTRATOR}\n\n{NARRATIVA_ORCHESTRATOR}"
@@ -281,6 +301,13 @@ async def executar_chat(
             "candidato monitorado e pra orientar estratégia/narrativa; números oficiais continuam só via tools.\n"
             f"{campanha_ctx.strip()[:6000]}"
         )
+    slug = pol.get("perfil_slug")
+    if slug and not pol.get("bypass"):
+        orch_system = (
+            f"{orch_system}\n\n"
+            f"Perfil de acesso deste usuário: {slug}. "
+            "Use apenas as tools disponíveis; se faltar tool para a pergunta, diga a lacuna."
+        )
     orch_messages: list[dict[str, Any]] = [{"role": "system", "content": orch_system}]
     orch_messages.extend(_historico_orquestrador(historico))
 
@@ -289,8 +316,8 @@ async def executar_chat(
 
     try:
         for _ in range(_MAX_TOOL_ROUNDS):
-            yield _sse("status", {"fase": "planejando"})
-            r = await _openrouter(orch_messages, model=_orchestrator_model(), tools=MCP_TOOLS, stream=False)
+            yield _sse("status", {"fase": "planejando", "modelo": orch_model})
+            r = await _openrouter(orch_messages, model=orch_model, tools=tools, stream=False)
             if r.status_code >= 400:
                 yield _sse("error", {"mensagem": _erro_openrouter(r.status_code, r.text)})
                 return
@@ -306,6 +333,25 @@ async def executar_chat(
                         args = json.loads(fn.get("arguments") or "{}")
                     except json.JSONDecodeError:
                         args = {}
+                    if not tool_permitida(pol, name):
+                        result = {
+                            "erro": "tool_negada_pelo_perfil",
+                            "tool": name,
+                            "perfil": pol.get("perfil_slug"),
+                            "mensagem": (
+                                f"Tool '{name}' não permitida no Perfil "
+                                f"{pol.get('perfil_slug') or 'atual'}."
+                            ),
+                        }
+                        tool_log.append({"tool": name, "params": args, "result": result})
+                        orch_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc["id"],
+                                "content": resumir_resultado(result, max_chars=2000),
+                            }
+                        )
+                        continue
                     yield _sse("status", {"fase": "consultando", "tool": name})
                     result = await chamar_mcp(name, args, mcp_token)
                     tool_log.append({"tool": name, "params": args, "result": result})
@@ -324,18 +370,20 @@ async def executar_chat(
             yield _sse("error", {"mensagem": "Limite de consultas atingido nesta mensagem."})
             return
 
-        yield _sse("status", {"fase": "redigindo"})
+        yield _sse("status", {"fase": "redigindo", "modelo": writer_model})
         writer_messages = [
             {"role": "system", "content": _system_redator(skills_text, campanha_ctx)},
             {"role": "user", "content": _entrada_redator(pergunta, historico, tool_log, notas)},
         ]
         full_parts: list[str] = []
-        async for token in _stream_resposta(_writer_model(), writer_messages):
+        async for token in _stream_resposta(writer_model, writer_messages):
             full_parts.append(token)
             yield _sse("token", {"text": token})
         full = "".join(full_parts)
 
-        dados = {"tool_results": tool_log} if tool_log else None
+        dados: dict[str, Any] = {"politica": resumo_politica(pol)}
+        if tool_log:
+            dados["tool_results"] = tool_log
         done: dict[str, Any] = {"conteudo": full, "dados": dados}
         if _pediu_relatorio_html(pergunta) and tool_log:
             titulo = pergunta[:80] or "Relatório Apura"
