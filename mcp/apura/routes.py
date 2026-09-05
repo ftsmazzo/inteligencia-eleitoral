@@ -463,7 +463,7 @@ async def chat(
                 )
             hist_rows = conn.execute(
                 """
-                SELECT papel, conteudo FROM ctl.apura_mensagem
+                SELECT papel, conteudo, dados_json FROM ctl.apura_mensagem
                 WHERE sessao_id = %s::uuid AND papel IN ('user', 'assistant')
                 ORDER BY criado_em
                 """,
@@ -491,6 +491,17 @@ async def chat(
         raise HTTPException(503, f"Falha ao preparar mensagem ({exc.pgcode or 'erro'})") from exc
 
     historico = [{"papel": r[0], "conteudo": r[1]} for r in hist_rows]
+    dados_anteriores: list = []
+    for r in hist_rows:
+        if r[0] != "assistant":
+            continue
+        dj = r[2]
+        if isinstance(dj, str):
+            try:
+                dj = json.loads(dj)
+            except json.JSONDecodeError:
+                dj = None
+        dados_anteriores.append(dj if isinstance(dj, dict) else None)
 
     with _db() as conn:
         skills_txt = texto_skills_ativas(conn, uid)
@@ -500,7 +511,9 @@ async def chat(
             skills_txt = (skills_txt + "\n\n" + SKILL_NARRATIVA_DEFAULT).strip()
         campanha_ctx = ""
         politica = None
+        missao_state = None
         try:
+            from apura.missao_state import carregar_do_historico_dados
             from apura.perfil_policy import politica_usuario
             from gestao import memoria as gestao_memoria
             from gestao.schema import ensure_schema
@@ -509,6 +522,12 @@ async def chat(
 
             ensure_schema()
             politica = politica_usuario(conn, uid, email)
+            if isinstance(politica, dict):
+                politica["usuario_id"] = uid
+            missao_state = carregar_do_historico_dados(
+                dados_anteriores,
+                perfil_slug=politica.get("perfil_slug") if politica else None,
+            )
             camp = campanha_do_usuario(conn, uid)
             if camp:
                 partes_ctx: list[str] = []
@@ -530,6 +549,7 @@ async def chat(
         except Exception:
             campanha_ctx = ""
             politica = None
+            missao_state = None
 
     async def stream_and_save() -> Any:
         final_content = ""
@@ -541,6 +561,7 @@ async def chat(
             body.modo_narrativa,
             campanha_ctx,
             politica,
+            missao_state,
         ):
             yield chunk
             if chunk.startswith("event: done"):
@@ -552,6 +573,10 @@ async def chat(
                     if payload.get("relatorio_html"):
                         base = dict(final_dados) if isinstance(final_dados, dict) else {}
                         base["relatorio_html"] = payload["relatorio_html"]
+                        final_dados = base
+                    if payload.get("mapa_html"):
+                        base = dict(final_dados) if isinstance(final_dados, dict) else {}
+                        base["mapa_html"] = payload["mapa_html"]
                         final_dados = base
         if final_content:
             with _db() as conn:

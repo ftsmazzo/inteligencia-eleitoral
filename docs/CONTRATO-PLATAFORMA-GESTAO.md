@@ -70,9 +70,9 @@ Ao `POST` criar campanha, provisionar linhas em `ctl.campanha_modulo` (ativas, v
 
 | slug | Modelos (default OpenRouter) | Tools (resumo) |
 |---|---|---|
-| `consultor_minimo` | orch + writer baratos | catalogo, municipio, nominata |
-| `analista` | orch médio / writer forte | + cifras TSE, social, contas, Parlamento, população/MDS, cruzamentos |
-| `estrategista` | orch + writer fortes | Analista + acervo + clima |
+| `consultor_minimo` (Operacional) | orch + writer baratos | catalogo, municipio, nominata + contatos/tarefas |
+| `analista` | orch médio / writer forte | + cifras TSE, social, contas, Parlamento, população/MDS, cruzamentos + web/PDF/visão/clima |
+| `estrategista` | orch + writer fortes | Analista + acervo + imagem/mapa HTML + protocolo Ary |
 | `coordenador` | iguais ao estrategista | Mesmas tools; poder extra é UI/API de gestão da campanha |
 
 Enforcement: filtrar `MCP_TOOLS` no orchestrator **e** rejeitar tool call fora da allowlist no servidor.

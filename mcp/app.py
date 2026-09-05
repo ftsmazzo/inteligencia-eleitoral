@@ -1676,6 +1676,20 @@ async def _mcp_exec(
         return mandato_urna(MandatoUrnaIn(**p), authorization, x_token)
     if name == "clima":
         return await clima(ClimaIn(**p), authorization, x_token)
+    if name in (
+        "pesquisar_web",
+        "ler_pdf",
+        "ler_imagem",
+        "transcrever_audio",
+        "gerar_imagem",
+        "gerar_mapa_html",
+        "operacional_contato",
+        "operacional_tarefa",
+    ):
+        from apura.capabilities import executar_local
+
+        campanha_uuid = _campanha_id_do_token(authorization, x_token)
+        return await executar_local(name, p, campanha_id=campanha_uuid)
     raise HTTPException(400, "tool inexistente neste catálogo")
 
 

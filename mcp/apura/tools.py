@@ -579,6 +579,140 @@ MCP_TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "pesquisar_web",
+            "description": (
+                "Pesquisa na internet (Perplexity/OpenRouter). Resultado = indício, nunca cifra de urna. "
+                "Use para notícia recente, contexto público ou checagem superficial."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "q": {"type": "string"},
+                    "contexto_campanha": {"type": "string"},
+                },
+                "required": ["q"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ler_pdf",
+            "description": "Lê/resume PDF por URL ou texto colado. Indício — não inventa cifra.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string"},
+                    "texto": {"type": "string"},
+                    "pergunta": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ler_imagem",
+            "description": "Descreve imagem por URL (visão). Indício.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string"},
+                    "pergunta": {"type": "string"},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "transcrever_audio",
+            "description": "Transcreve/resume áudio por URL. Indício.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string"}},
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gerar_imagem",
+            "description": "Gera brief/descrição de imagem de campanha (artefato).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string"},
+                    "contexto_campanha": {"type": "string"},
+                },
+                "required": ["prompt"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gerar_mapa_html",
+            "description": "Gera mapa estratégico visual em HTML autocontido (artefato).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "titulo": {"type": "string"},
+                    "eixos": {"type": "string"},
+                    "conteudo": {"type": "string"},
+                    "contexto_campanha": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "operacional_contato",
+            "description": (
+                "Lista ou salva contatos da campanha (ex. telefone do gerente de mobilização). "
+                "acao=listar|salvar; campos nome, papel, telefone, email, notas, q."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "acao": {"type": "string"},
+                    "q": {"type": "string"},
+                    "nome": {"type": "string"},
+                    "papel": {"type": "string"},
+                    "telefone": {"type": "string"},
+                    "email": {"type": "string"},
+                    "notas": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "operacional_tarefa",
+            "description": (
+                "Lista, cria ou conclui tarefas da campanha. "
+                "acao=listar|criar|concluir; titulo/texto, descricao, id, status."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "acao": {"type": "string"},
+                    "titulo": {"type": "string"},
+                    "texto": {"type": "string"},
+                    "descricao": {"type": "string"},
+                    "id": {"type": "string"},
+                    "status": {"type": "string"},
+                },
+            },
+        },
+    },
 ]
 
 TOOL_TO_MCP: dict[str, str] = {
@@ -611,4 +745,12 @@ TOOL_TO_MCP: dict[str, str] = {
     "consultar_linha_temporal": "linha_temporal",
     "consultar_cruzamento_social": "cruzamento_social",
     "consultar_mandato_urna": "mandato_urna",
+    "pesquisar_web": "pesquisar_web",
+    "ler_pdf": "ler_pdf",
+    "ler_imagem": "ler_imagem",
+    "transcrever_audio": "transcrever_audio",
+    "gerar_imagem": "gerar_imagem",
+    "gerar_mapa_html": "gerar_mapa_html",
+    "operacional_contato": "operacional_contato",
+    "operacional_tarefa": "operacional_tarefa",
 }

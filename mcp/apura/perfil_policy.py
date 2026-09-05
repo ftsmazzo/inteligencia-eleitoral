@@ -204,9 +204,13 @@ def metodo_permitido(politica: dict[str, Any], method: str) -> bool:
 
 def resumo_politica(politica: dict[str, Any]) -> dict[str, Any]:
     tools = sorted(politica.get("tools") or [])
+    from apura.missao_state import perfil_de_slug
+
+    slug = politica.get("perfil_slug")
     return {
-        "perfil_slug": politica.get("perfil_slug"),
+        "perfil_slug": slug,
         "perfil_nome": politica.get("perfil_nome"),
+        "comportamento": perfil_de_slug(slug).value if slug else None,
         "modelo_orquestrador": politica.get("modelo_orquestrador"),
         "modelo_redator": politica.get("modelo_redator"),
         "fonte": politica.get("fonte"),

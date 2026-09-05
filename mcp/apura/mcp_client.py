@@ -80,10 +80,34 @@ def _merge_resultados(
     return out
 
 
-async def chamar_mcp(tool_name: str, params: dict[str, Any], mcp_token: str) -> Any:
+async def chamar_mcp(
+    tool_name: str,
+    params: dict[str, Any],
+    mcp_token: str,
+    *,
+    campanha_id: str | None = None,
+    usuario_id: str | None = None,
+) -> Any:
     method = TOOL_TO_MCP.get(tool_name)
     if not method:
         return {"erro": f"tool desconhecida: {tool_name}"}
+
+    from apura.capabilities import LOCAL_METHODS, executar_local
+
+    if method in LOCAL_METHODS:
+        try:
+            return await executar_local(
+                method,
+                dict(params or {}),
+                campanha_id=campanha_id,
+                usuario_id=usuario_id,
+            )
+        except Exception as exc:
+            return {
+                "status": "vazio",
+                "mensagem": f"capacidade indisponível: {exc}",
+                "nivel": "indicio",
+            }
 
     params = dict(params or {})
     params, nota_recorte = normalizar_params_mcp(method, params)

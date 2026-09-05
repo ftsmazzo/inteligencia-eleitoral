@@ -19,6 +19,13 @@ Hard refresh: `Ctrl+F5`.
 1. Login → entra direto no workspace (sem shell de plataforma).
 2. Chat + 1 pergunta oficial ok.
 
+## Multiagente (após deploy com patch_gestao_v5)
+
+1. Perfil **Estrategista**: no Chat, digite `Ativar Ary` → inicia briefing (não inventa cifra).
+2. Pedido de clima/redes com escopo → `consultar_clima` usa candidato do escopo (não frio).
+3. Perfil **Operacional**: salvar/listar contato (`telefone do gerente`) e criar tarefa.
+4. Smoke estático: `python scripts/smoke_apura_multiagente.py`
+
 ## Não é regressão (esperado)
 
 - Super não cai mais automaticamente “dentro” do Amapá no login (precisa Operar).

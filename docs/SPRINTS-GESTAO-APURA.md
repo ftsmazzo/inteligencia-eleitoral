@@ -20,6 +20,7 @@ Contrato da virada multi-campanha: `docs/CONTRATO-PLATAFORMA-GESTAO.md`.
 | **P3** | Orchestrator/MCP leem Perfil do vínculo/token | feito (`apura/perfil_policy.py`) |
 | **P4** | Painel interações/logs + IA governança | feito (`gestao/auditoria.py` + aba Auditoria) |
 | **P5** | Shell multi-tenant (1B+2C): sidebar sem tools; Operar/Administrar; dash+quotas+conversas | feito (código; deploy se860g) |
+| **Multiagente** | Hub + MissaoState + Ary + capacidades OR + ops (patch_gestao_v5) | feito (código; smoke estático ok; deploy pendente) |
 
 ## UI Plataforma (P2 → P5)
 

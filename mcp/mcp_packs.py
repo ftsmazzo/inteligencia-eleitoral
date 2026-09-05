@@ -45,6 +45,14 @@ TOOLS_FATO = (
     "cruzamento_social",
     "mandato_urna",
     "clima",
+    "pesquisar_web",
+    "ler_pdf",
+    "ler_imagem",
+    "transcrever_audio",
+    "gerar_imagem",
+    "gerar_mapa_html",
+    "operacional_contato",
+    "operacional_tarefa",
 )
 
 TOOLS_RAG = ("catalogo", "acervo", "acervo_comparar")
