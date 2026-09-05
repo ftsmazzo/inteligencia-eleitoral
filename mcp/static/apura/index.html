@@ -378,6 +378,18 @@
     }
     #mapa-view #mapa-aplicar-ceps { background: var(--brand); color: #fff; }
     #mapa-view #mapa-limpar-ceps { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+    #mapa-view .mapa-calor-panel { padding: 0 16px 16px; overflow: auto; flex: 1; min-height: 0; font-size: .85rem; }
+    #mapa-view .mapa-calor-panel select {
+      border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; background: var(--surface); color: var(--ink);
+    }
+    #mapa-view #mapa-calor-carregar { background: var(--brand); color: #fff; border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 600; }
+    #mapa-view .mapa-calor-scale {
+      display: flex; align-items: center; gap: 8px; margin: 8px 0 12px; font-size: .75rem; color: var(--muted);
+    }
+    #mapa-view .mapa-calor-scale .bar {
+      flex: 1; height: 10px; border-radius: 6px;
+      background: linear-gradient(90deg, #f7f1e3, #e8b86d, #c45c26, #7a1f1f);
+    }
     #mapa-view .mapa-err { color: var(--danger); padding: 0 16px 8px; font-size: .85rem; }
     #mapa-view .leaflet-control-layers { border-radius: 8px; border: 1px solid rgba(0,0,0,.12); }
     .mcps-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 48px; }
@@ -1474,6 +1486,7 @@
             <div class="mapa-toolbar">
               <button type="button" class="on" id="mapa-modo-nota">Notas</button>
               <button type="button" id="mapa-modo-caravana">Carreata</button>
+              <button type="button" id="mapa-modo-calor">Calor</button>
               <button type="button" id="mapa-salvar-caravana" class="hidden">Salvar rota</button>
               <button type="button" id="mapa-limpar-pontos" class="hidden">Limpar pontos</button>
               <button type="button" id="mapa-desfazer-ponto" class="hidden">Desfazer</button>
@@ -1498,6 +1511,23 @@
               </div>
               <div id="mapa-pontos-live"></div>
               <div id="mapa-caravanas-salvas"></div>
+            </div>
+            <div class="mapa-calor-panel hidden" id="mapa-calor-panel">
+              <div class="mapa-cep-box">
+                <label>Urna oficial (candidato da campanha)</label>
+                <div class="row-actions" style="align-items:center">
+                  <select id="mapa-calor-ano">
+                    <option value="2022" selected>2022</option>
+                    <option value="2018">2018</option>
+                    <option value="2024">2024</option>
+                    <option value="2020">2020</option>
+                  </select>
+                  <button type="button" id="mapa-calor-carregar">Atualizar calor</button>
+                </div>
+                <p class="hint" id="mapa-calor-meta" style="margin:0">Município colorido pelo %; zonas na tabela (sem polígono oficial).</p>
+              </div>
+              <div id="mapa-calor-escala"></div>
+              <div id="mapa-calor-zonas"></div>
             </div>
           </aside>
         </div>
@@ -4350,10 +4380,33 @@
     let mapaPontosDraft = [];
     let mapaRotaTimer = null;
     let mapaGeoCache = null;
+    let mapaCalorByIbge = {};
+    let mapaCalorMeta = null;
 
     function mapaSetErr(msg) {
       const el = $('mapa-err');
       if (el) el.textContent = msg || '';
+    }
+
+    function mapaCalorColor(pct, minP, maxP) {
+      if (pct == null || minP == null || maxP == null) return '#9aa8b5';
+      const span = Math.max(0.01, maxP - minP);
+      const t = Math.max(0, Math.min(1, (pct - minP) / span));
+      // bege → âmbar → terracota → vinho
+      const stops = [
+        [247, 241, 227],
+        [232, 184, 109],
+        [196, 92, 38],
+        [122, 31, 31],
+      ];
+      const x = t * (stops.length - 1);
+      const i = Math.min(stops.length - 2, Math.floor(x));
+      const f = x - i;
+      const a = stops[i], b = stops[i + 1];
+      const r = Math.round(a[0] + (b[0] - a[0]) * f);
+      const g = Math.round(a[1] + (b[1] - a[1]) * f);
+      const bl = Math.round(a[2] + (b[2] - a[2]) * f);
+      return 'rgb(' + r + ',' + g + ',' + bl + ')';
     }
 
     function mapaStyleFeature(feature) {
@@ -4361,7 +4414,17 @@
       const temNota = !!(mapaNotas[cod] && (mapaNotas[cod].texto || '').trim());
       const sel = mapaSel && mapaSel.cod_ibge === cod;
       const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-      // Em carreata: contorno leve para ver as ruas
+      if (mapaModo === 'calor') {
+        const row = mapaCalorByIbge[cod];
+        const esc = (mapaCalorMeta && mapaCalorMeta.escala) || {};
+        const fill = mapaCalorColor(row && row.pct, esc.min_pct, esc.max_pct);
+        return {
+          color: sel ? '#0d4f4a' : (dark ? '#1a2330' : '#fff'),
+          weight: sel ? 2.4 : 1,
+          fillColor: fill,
+          fillOpacity: row && row.pct != null ? 0.78 : 0.25,
+        };
+      }
       if (mapaModo === 'caravana') {
         return {
           color: dark ? '#6aa8a0' : '#0d4f4a',
@@ -4411,24 +4474,30 @@
 
     function mapaSyncModoUi() {
       const nota = mapaModo === 'nota';
+      const caravana = mapaModo === 'caravana';
+      const calor = mapaModo === 'calor';
       if ($('mapa-modo-nota')) $('mapa-modo-nota').classList.toggle('on', nota);
-      if ($('mapa-modo-caravana')) $('mapa-modo-caravana').classList.toggle('on', !nota);
+      if ($('mapa-modo-caravana')) $('mapa-modo-caravana').classList.toggle('on', caravana);
+      if ($('mapa-modo-calor')) $('mapa-modo-calor').classList.toggle('on', calor);
       if ($('mapa-nota-panel')) $('mapa-nota-panel').classList.toggle('hidden', !nota);
-      if ($('mapa-caravana-panel')) $('mapa-caravana-panel').classList.toggle('hidden', nota);
+      if ($('mapa-caravana-panel')) $('mapa-caravana-panel').classList.toggle('hidden', !caravana);
+      if ($('mapa-calor-panel')) $('mapa-calor-panel').classList.toggle('hidden', !calor);
       ['mapa-salvar-caravana', 'mapa-limpar-pontos', 'mapa-desfazer-ponto'].forEach(id => {
-        if ($(id)) $(id).classList.toggle('hidden', nota);
+        if ($(id)) $(id).classList.toggle('hidden', !caravana);
       });
       if ($('mapa-sel')) {
-        $('mapa-sel').textContent = nota
-          ? 'Mapa de ruas · clique no município para anotar.'
-          : 'Carreata · cole CEPs (recomendado) ou dê zoom e clique nas ruas. Camadas Ruas/OSM/Satélite no canto.';
+        if (nota) $('mapa-sel').textContent = 'Mapa de ruas · clique no município para anotar.';
+        else if (caravana) $('mapa-sel').textContent = 'Carreata · cole CEPs ou clique nas ruas. Export HTML nas salvas.';
+        else $('mapa-sel').textContent = 'Calor · % do candidato da campanha por município (urna). Zonas na tabela.';
       }
-      if (!nota && mapaLeaflet && mapaLeaflet.getZoom() < 12) {
-        // Macapá centro aproximado — zoom de rua para ver vias
+      if (caravana && mapaLeaflet && mapaLeaflet.getZoom() < 12) {
         mapaLeaflet.setView([0.0349, -51.0694], 13, { animate: true });
       }
+      if (calor) {
+        mapaLoadCalor();
+      }
       mapaRefreshStyles();
-      mapaDesenharDraft();
+      if (caravana) mapaDesenharDraft();
     }
 
     function mapaRenderPontosLive() {
@@ -4460,6 +4529,7 @@
           '<span>' + esc(c.nome) + ' · ' + ((c.pontos || []).length) + ' pts</span>' +
           '<span>' +
           '<button type="button" data-show="' + esc(c.id) + '">Ver</button> ' +
+          '<button type="button" data-html="' + esc(c.id) + '">HTML</button> ' +
           '<button type="button" data-del="' + esc(c.id) + '">Apagar</button></span></div>'
         ).join('');
         box.querySelectorAll('[data-del]').forEach(btn => {
@@ -4481,17 +4551,97 @@
             }
           });
         });
+        box.querySelectorAll('[data-html]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              const id = btn.getAttribute('data-html');
+              const r = await fetch('/apura/api/mapa/caravanas/' + id + '/export.html', {
+                headers: authHeaders(),
+              });
+              if (!r.ok) throw new Error('Falha ao exportar HTML (' + r.status + ')');
+              const blob = await r.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'carreata-' + id.slice(0, 8) + '.html';
+              a.click();
+              URL.revokeObjectURL(url);
+            } catch (e) { mapaSetErr(e.message); }
+          });
+        });
       } catch (e) {
         box.innerHTML = '<p class="hint">' + esc(e.message) + '</p>';
       }
     }
 
+    async function mapaLoadCalor() {
+      const ano = Number(($('mapa-calor-ano') && $('mapa-calor-ano').value) || 2022);
+      mapaSetErr('Carregando calor…');
+      try {
+        const d = await api('/mapa/calor?ano=' + encodeURIComponent(ano));
+        mapaCalorMeta = d;
+        mapaCalorByIbge = {};
+        (d.municipios || []).forEach(m => { mapaCalorByIbge[m.cod_ibge] = m; });
+        if ($('mapa-calor-meta')) {
+          const nm = d.nm_urna || 'candidato';
+          const part = d.sg_partido ? (' · ' + d.sg_partido) : '';
+          $('mapa-calor-meta').textContent =
+            (d.status === 'ok'
+              ? (nm + part + ' · ' + d.ano + ' T' + d.turno + ' · ' + (d.cargo_label || ''))
+              : (d.mensagem || 'Sem dados')) +
+            ' · fonte ' + (d.fonte || 'urna');
+        }
+        const esc = d.escala || {};
+        if ($('mapa-calor-escala')) {
+          if (esc.min_pct != null) {
+            $('mapa-calor-escala').innerHTML =
+              '<div class="mapa-calor-scale"><span>' + esc.min_pct + '%</span>' +
+              '<div class="bar"></div><span>' + esc.max_pct + '%</span></div>';
+          } else {
+            $('mapa-calor-escala').innerHTML = '';
+          }
+        }
+        const box = $('mapa-calor-zonas');
+        if (box) {
+          const zs = d.zonas || [];
+          if (!zs.length) {
+            box.innerHTML = '<p class="hint">' + esc(d.mensagem || 'Zonas inexistentes neste recorte.') + '</p>';
+          } else {
+            box.innerHTML = '<b>Por zona eleitoral</b>' + zs.map(z =>
+              '<div class="item"><span><b>Zona ' + z.nr_zona + '</b> · ' +
+              esc(z.composicao || z.municipio_exemplo || '—') +
+              '</span><em>' +
+              (z.pct != null ? (z.pct + '% · ' + Number(z.votos_candidato).toLocaleString('pt-BR') + ' votos') : '—') +
+              '</em></div>'
+            ).join('');
+          }
+        }
+        mapaSetErr(d.status === 'ok' ? '' : (d.mensagem || ''));
+        mapaRefreshStyles();
+        if (mapaLeaflet && mapaPolys) {
+          try { mapaLeaflet.fitBounds(mapaPolys.getBounds(), { padding: [24, 24], maxZoom: 9 }); } catch (_) {}
+        }
+      } catch (e) {
+        mapaSetErr(e.message);
+      }
+    }
+
     function mapaAbrirCidade(m) {
-      if (mapaModo === 'caravana') return; // clique em polígono não marca; usa clique livre no mapa
+      if (mapaModo === 'caravana') return;
       mapaSel = m;
       if ($('mapa-cidade-nome')) $('mapa-cidade-nome').textContent = m.nome + ' · IBGE ' + m.cod_ibge;
       const nota = mapaNotas[m.cod_ibge];
       if ($('mapa-nota-texto')) $('mapa-nota-texto').value = nota ? (nota.texto || '') : '';
+      if (mapaModo === 'calor') {
+        const row = mapaCalorByIbge[m.cod_ibge];
+        if (row && row.pct != null) {
+          mapaSetErr(m.nome + ': ' + row.pct + '% · ' +
+            Number(row.votos_candidato).toLocaleString('pt-BR') + ' / ' +
+            Number(row.votos_total).toLocaleString('pt-BR') + ' votos');
+        } else {
+          mapaSetErr(m.nome + ': votação inexistente neste recorte (não é zero).');
+        }
+      }
       mapaRefreshStyles();
     }
 
@@ -4715,6 +4865,17 @@
     }
     if ($('mapa-modo-caravana')) {
       $('mapa-modo-caravana').addEventListener('click', () => { mapaModo = 'caravana'; mapaSyncModoUi(); });
+    }
+    if ($('mapa-modo-calor')) {
+      $('mapa-modo-calor').addEventListener('click', () => { mapaModo = 'calor'; mapaSyncModoUi(); });
+    }
+    if ($('mapa-calor-carregar')) {
+      $('mapa-calor-carregar').addEventListener('click', () => mapaLoadCalor());
+    }
+    if ($('mapa-calor-ano')) {
+      $('mapa-calor-ano').addEventListener('change', () => {
+        if (mapaModo === 'calor') mapaLoadCalor();
+      });
     }
     if ($('mapa-salvar')) {
       $('mapa-salvar').addEventListener('click', async () => {

@@ -11,6 +11,7 @@ import httpx
 import psycopg
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
+from starlette.responses import HTMLResponse
 
 from apura.auth import decodificar_jwt, usuario_por_id
 from mapa import store
@@ -450,3 +451,109 @@ def delete_caravana(
     if not ok:
         raise HTTPException(404, "Caravana não encontrada")
     return {"status": "ok"}
+
+
+@router.get("/calor")
+def calor(
+    ano: int = 2022,
+    turno: int = 0,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    """Mapa de calor oficial (município) + tabela por zona. Trilha A."""
+    camp = _campanha(user)
+    with _db() as conn:
+        return store.calor_urna(
+            conn,
+            campanha_id=camp[0],
+            ano=ano,
+            turno=turno if turno > 0 else None,
+        )
+
+
+@router.get("/caravanas/{caravana_id}/export.html")
+def export_caravana_html(
+    caravana_id: str,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> Any:
+    """HTML autocontido da carreata (paradas + trajeto) para baixar/imprimir."""
+    camp = _campanha(user)
+    with _db() as conn:
+        itens = store.listar_caravanas(conn, camp[0])
+    found = next((c for c in itens if c["id"] == caravana_id), None)
+    if not found:
+        raise HTTPException(404, "Caravana não encontrada")
+    html = _html_caravana(found)
+    return HTMLResponse(
+        content=html,
+        headers={
+            "Content-Disposition": f'attachment; filename="carreata-{caravana_id[:8]}.html"'
+        },
+    )
+
+
+def _html_caravana(item: dict[str, Any]) -> str:
+    import json as _json
+
+    nome = (item.get("nome") or "Carreata").replace("<", "")
+    pontos = item.get("pontos") or []
+    rota = item.get("rota_geojson")
+    props = (rota or {}).get("properties") or {} if isinstance(rota, dict) else {}
+    km = props.get("distance_m")
+    dur = props.get("duration_s")
+    meta = []
+    if km is not None:
+        meta.append(f"{float(km) / 1000:.1f} km")
+    if dur is not None:
+        meta.append(f"~{int(round(float(dur) / 60))} min")
+    meta_s = " · ".join(meta) if meta else "trajeto salvo"
+    pontos_js = _json.dumps(pontos, ensure_ascii=False)
+    rota_js = _json.dumps(rota, ensure_ascii=False) if rota else "null"
+    lis = "".join(
+        f"<li><b>{i + 1}.</b> {(p.get('nome') or 'Parada')} "
+        f"<span>({p.get('lat')}, {p.get('lng')})"
+        f"{(' · CEP ' + str(p['cep'])) if p.get('cep') else ''}</span></li>"
+        for i, p in enumerate(pontos)
+    )
+    return f"""<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>{nome} · Apura Mapa</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  body{{margin:0;font-family:system-ui,sans-serif;color:#0c1222;background:#f4f7fa}}
+  header{{padding:16px 20px;background:#0d4f4a;color:#fff}}
+  header h1{{margin:0;font-size:1.25rem}}
+  header p{{margin:6px 0 0;opacity:.9;font-size:.9rem}}
+  #map{{height:55vh;min-height:320px;border-bottom:1px solid #cfd8e3}}
+  main{{padding:16px 20px 40px;max-width:720px}}
+  ol{{padding-left:1.2rem;line-height:1.55}}
+  li span{{color:#5a6a7a;font-size:.85rem}}
+  .fonte{{margin-top:24px;font-size:.8rem;color:#5a6a7a}}
+</style></head><body>
+<header><h1>{nome}</h1><p>Carreata roteirizada · {meta_s}</p></header>
+<div id="map"></div>
+<main>
+  <h2>Paradas / endereços</h2>
+  <ol>{lis or "<li>Sem pontos</li>"}</ol>
+  <p class="fonte">Gerado pelo Apura Mapa · rota OSRM quando disponível · não é cifra eleitoral.</p>
+</main>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const pontos = {pontos_js};
+const rota = {rota_js};
+const map = L.map('map');
+L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+  maxZoom: 19, attribution: '&copy; OpenStreetMap'
+}}).addTo(map);
+const latlngs = pontos.map(p => [p.lat, p.lng]);
+pontos.forEach((p, i) => {{
+  L.marker([p.lat, p.lng]).addTo(map).bindPopup((i+1)+'. '+(p.nome||'Parada'));
+}});
+if (rota && rota.geometry) {{
+  L.geoJSON(rota, {{ style: {{ color: '#0d4f4a', weight: 5 }} }}).addTo(map);
+}} else if (latlngs.length >= 2) {{
+  L.polyline(latlngs, {{ color: '#0d4f4a', weight: 4, dashArray: '6 8' }}).addTo(map);
+}}
+if (latlngs.length) map.fitBounds(latlngs, {{ padding: [40, 40] }});
+else map.setView([0.0349, -51.0694], 11);
+</script></body></html>"""

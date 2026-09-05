@@ -197,3 +197,167 @@ def apagar_caravana(conn: psycopg.Connection, *, campanha_id: str, caravana_id: 
         (caravana_id, campanha_id),
     )
     return (cur.rowcount or 0) > 0
+
+
+# Rótulos TRE-AP (composição territorial — não é polígono). Fonte: portal TRE-AP.
+ZONA_AP_COMPOSICAO: dict[int, str] = {
+    1: "Amapá, Calçoene e Pracuúba",
+    2: "Macapá (Zona Sul)",
+    4: "Oiapoque",
+    5: "Mazagão",
+    6: "Santana",
+    7: "Laranjal do Jari e Vitória do Jari",
+    8: "Tartarugalzinho",
+    10: "Macapá (Zona Norte), Cutias e Itaubal",
+    11: "Pedra Branca do Amapari e Serra do Navio",
+    12: "Porto Grande e Ferreira Gomes",
+    14: "Macapá",
+}
+
+
+def calor_urna(
+    conn: psycopg.Connection,
+    *,
+    campanha_id: str,
+    ano: int,
+    turno: int | None = None,
+) -> dict[str, Any]:
+    """Calor oficial: % do candidato da campanha por município + detalhe por zona.
+
+    Geometria de zona TSE não está disponível → mapa pinta município;
+    zonas entram na tabela lateral (Trilha A: eleicao.votacao).
+    """
+    from gestao.store import get_status
+
+    st = get_status(conn, campanha_id)
+    uf = (st.get("sg_uf") or "AP").upper()[:2]
+    cargo = st.get("cd_cargo")
+    sq = st.get("sq_candidato")
+    if not cargo or not sq:
+        return {
+            "status": "vazio",
+            "mensagem": "Campanha sem cargo/candidato configurado na Gestão.",
+            "municipios": [],
+            "zonas": [],
+            "fonte": "eleicao.votacao",
+        }
+    if ano not in (2014, 2016, 2018, 2020, 2022, 2024):
+        return {
+            "status": "vazio",
+            "mensagem": f"Ano {ano} fora do recorte de urna.",
+            "municipios": [],
+            "zonas": [],
+        }
+
+    if turno is None or int(turno) <= 0:
+        row_t = conn.execute(
+            """
+            SELECT MAX(nr_turno)::int
+            FROM eleicao.votacao
+            WHERE ano = %s AND sg_uf = %s AND cd_cargo = %s
+            """,
+            (ano, uf, int(cargo)),
+        ).fetchone()
+        if not row_t or row_t[0] is None:
+            return {
+                "status": "vazio",
+                "mensagem": f"Votação inexistente para {uf} cargo={cargo} ano={ano}.",
+                "municipios": [],
+                "zonas": [],
+                "fonte": "eleicao.votacao",
+            }
+        turno = int(row_t[0])
+    else:
+        turno = int(turno)
+
+    mun_rows = conn.execute(
+        """
+        SELECT m.cod_ibge, m.nome, m.cd_municipio_tse,
+               COALESCE(SUM(v.qt_votos) FILTER (WHERE v.sq_candidato = %s), 0)::bigint AS nosso,
+               COALESCE(SUM(v.qt_votos), 0)::bigint AS total
+        FROM ref.municipio m
+        LEFT JOIN eleicao.votacao v
+          ON v.cd_municipio_tse = m.cd_municipio_tse
+         AND v.sg_uf = m.sg_uf
+         AND v.ano = %s AND v.nr_turno = %s AND v.cd_cargo = %s
+        WHERE m.sg_uf = %s
+        GROUP BY m.cod_ibge, m.nome, m.cd_municipio_tse
+        ORDER BY m.nome
+        """,
+        (int(sq), ano, turno, int(cargo), uf),
+    ).fetchall()
+
+    municipios: list[dict[str, Any]] = []
+    for ibge, nome, tse, nosso, total in mun_rows:
+        nosso_i = int(nosso or 0)
+        total_i = int(total or 0)
+        pct = round(100.0 * nosso_i / total_i, 2) if total_i > 0 else None
+        municipios.append(
+            {
+                "cod_ibge": int(ibge),
+                "nome": nome,
+                "cd_municipio_tse": int(tse) if tse is not None else None,
+                "votos_candidato": nosso_i if total_i > 0 else None,
+                "votos_total": total_i if total_i > 0 else None,
+                "pct": pct,
+                "status": "ok" if total_i > 0 else "inexistente",
+            }
+        )
+
+    zona_rows = conn.execute(
+        """
+        SELECT v.nr_zona,
+               MAX(m.nome) AS municipio_exemplo,
+               COALESCE(SUM(v.qt_votos) FILTER (WHERE v.sq_candidato = %s), 0)::bigint AS nosso,
+               COALESCE(SUM(v.qt_votos), 0)::bigint AS total
+        FROM eleicao.votacao v
+        LEFT JOIN ref.municipio m
+          ON m.cd_municipio_tse = v.cd_municipio_tse AND m.sg_uf = v.sg_uf
+        WHERE v.ano = %s AND v.sg_uf = %s AND v.cd_cargo = %s AND v.nr_turno = %s
+        GROUP BY v.nr_zona
+        ORDER BY v.nr_zona
+        """,
+        (int(sq), ano, uf, int(cargo), turno),
+    ).fetchall()
+
+    zonas: list[dict[str, Any]] = []
+    for nr_zona, mun_ex, nosso, total in zona_rows:
+        nosso_i = int(nosso or 0)
+        total_i = int(total or 0)
+        pct = round(100.0 * nosso_i / total_i, 2) if total_i > 0 else None
+        nz = int(nr_zona)
+        zonas.append(
+            {
+                "nr_zona": nz,
+                "composicao": ZONA_AP_COMPOSICAO.get(nz),
+                "municipio_exemplo": mun_ex,
+                "votos_candidato": nosso_i,
+                "votos_total": total_i,
+                "pct": pct,
+            }
+        )
+
+    pcts = [m["pct"] for m in municipios if m["pct"] is not None]
+    return {
+        "status": "ok" if municipios else "vazio",
+        "uf": uf,
+        "ano": ano,
+        "turno": turno,
+        "cd_cargo": int(cargo),
+        "cargo_label": st.get("cargo_label"),
+        "sq_candidato": int(sq),
+        "nm_urna": st.get("nm_urna") or st.get("nm_candidato"),
+        "sg_partido": st.get("sg_partido"),
+        "fonte": "eleicao.votacao (Trilha A)",
+        "nota": (
+            "Calor no mapa = município (malha IBGE). "
+            "Detalhe por zona eleitoral na tabela (sem polígono oficial de zona). "
+            "pct = votos do candidato / votos nominais+legenda no recorte. Ausência ≠ zero."
+        ),
+        "escala": {
+            "min_pct": min(pcts) if pcts else None,
+            "max_pct": max(pcts) if pcts else None,
+        },
+        "municipios": municipios,
+        "zonas": zonas,
+    }
