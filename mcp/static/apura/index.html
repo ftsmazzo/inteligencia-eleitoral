@@ -4416,8 +4416,8 @@
       const dark = document.documentElement.getAttribute('data-theme') === 'dark';
       if (mapaModo === 'calor') {
         const row = mapaCalorByIbge[cod];
-        const esc = (mapaCalorMeta && mapaCalorMeta.escala) || {};
-        const fill = mapaCalorColor(row && row.pct, esc.min_pct, esc.max_pct);
+        const escala = (mapaCalorMeta && mapaCalorMeta.escala) || {};
+        const fill = mapaCalorColor(row && row.pct, escala.min_pct, escala.max_pct);
         return {
           color: sel ? '#0d4f4a' : (dark ? '#1a2330' : '#fff'),
           weight: sel ? 2.4 : 1,
@@ -4591,12 +4591,12 @@
               : (d.mensagem || 'Sem dados')) +
             ' · fonte ' + (d.fonte || 'urna');
         }
-        const esc = d.escala || {};
+        const escala = d.escala || {};
         if ($('mapa-calor-escala')) {
-          if (esc.min_pct != null) {
+          if (escala.min_pct != null) {
             $('mapa-calor-escala').innerHTML =
-              '<div class="mapa-calor-scale"><span>' + esc.min_pct + '%</span>' +
-              '<div class="bar"></div><span>' + esc.max_pct + '%</span></div>';
+              '<div class="mapa-calor-scale"><span>' + escala.min_pct + '%</span>' +
+              '<div class="bar"></div><span>' + escala.max_pct + '%</span></div>';
           } else {
             $('mapa-calor-escala').innerHTML = '';
           }
