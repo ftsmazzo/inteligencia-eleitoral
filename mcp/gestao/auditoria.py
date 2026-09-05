@@ -372,3 +372,108 @@ async def sugerir_boas_praticas(
     except Exception as exc:
         out["llm"] = {"ok": False, "erro": str(exc), "modelo": model}
     return out
+
+
+def listar_sessoes(
+    conn: psycopg.Connection,
+    *,
+    campanha_id: str | None = None,
+    usuario_id: str | None = None,
+    limite: int = 50,
+) -> list[dict[str, Any]]:
+    limite = max(1, min(int(limite), 200))
+    clauses = ["TRUE"]
+    params: list[Any] = []
+    if usuario_id:
+        clauses.append("s.usuario_id = %s::uuid")
+        params.append(usuario_id)
+    if campanha_id:
+        clauses.append("COALESCE(u.campanha_ativa_id, u.campanha_id) = %s::uuid")
+        params.append(campanha_id)
+    params.append(limite)
+    where = " AND ".join(clauses)
+    rows = conn.execute(
+        f"""
+        SELECT s.id::text, s.titulo, s.fixada, s.criado_em, s.atualizado_em,
+               u.id::text, u.email, u.nome,
+               c.id::text, c.nome,
+               (SELECT COUNT(*)::int FROM ctl.apura_mensagem m WHERE m.sessao_id = s.id)
+        FROM ctl.apura_sessao s
+        JOIN ctl.apura_usuario u ON u.id = s.usuario_id
+        LEFT JOIN ctl.campanha c ON c.id = COALESCE(u.campanha_ativa_id, u.campanha_id)
+        WHERE {where}
+        ORDER BY s.atualizado_em DESC NULLS LAST, s.criado_em DESC
+        LIMIT %s
+        """,
+        params,
+    ).fetchall()
+    return [
+        {
+            "sessao_id": r[0],
+            "titulo": r[1],
+            "fixada": bool(r[2]),
+            "criado_em": r[3].isoformat() if r[3] else None,
+            "atualizado_em": r[4].isoformat() if r[4] else None,
+            "usuario_id": r[5],
+            "usuario_email": r[6],
+            "usuario_nome": r[7],
+            "campanha_id": r[8],
+            "campanha_nome": r[9],
+            "num_mensagens": int(r[10] or 0),
+        }
+        for r in rows
+    ]
+
+
+def mensagens_sessao(
+    conn: psycopg.Connection, *, sessao_id: str, limite: int = 200
+) -> dict[str, Any]:
+    limite = max(1, min(int(limite), 500))
+    meta = conn.execute(
+        """
+        SELECT s.id::text, s.titulo, u.id::text, u.email, u.nome,
+               c.id::text, c.nome
+        FROM ctl.apura_sessao s
+        JOIN ctl.apura_usuario u ON u.id = s.usuario_id
+        LEFT JOIN ctl.campanha c ON c.id = COALESCE(u.campanha_ativa_id, u.campanha_id)
+        WHERE s.id = %s::uuid
+        """,
+        (sessao_id,),
+    ).fetchone()
+    if not meta:
+        from fastapi import HTTPException
+
+        raise HTTPException(404, "Sessão não encontrada")
+    rows = conn.execute(
+        """
+        SELECT id::text, papel, conteudo, criado_em, dados_json
+        FROM ctl.apura_mensagem
+        WHERE sessao_id = %s::uuid
+        ORDER BY criado_em ASC
+        LIMIT %s
+        """,
+        (sessao_id, limite),
+    ).fetchall()
+    msgs = []
+    for r in rows:
+        dj = r[4] if isinstance(r[4], dict) else (json.loads(r[4]) if r[4] else None)
+        msgs.append(
+            {
+                "mensagem_id": r[0],
+                "papel": r[1],
+                "conteudo": r[2],
+                "criado_em": r[3].isoformat() if r[3] else None,
+                "dados_json": dj,
+            }
+        )
+    return {
+        "sessao_id": meta[0],
+        "titulo": meta[1],
+        "usuario_id": meta[2],
+        "usuario_email": meta[3],
+        "usuario_nome": meta[4],
+        "campanha_id": meta[5],
+        "campanha_nome": meta[6],
+        "mensagens": msgs,
+        "total": len(msgs),
+    }

@@ -12,6 +12,7 @@ COPY sql/patch_apura.sql /app/sql/patch_apura.sql
 COPY sql/patch_gestao.sql /app/sql/patch_gestao.sql
 COPY sql/patch_gestao_v2.sql /app/sql/patch_gestao_v2.sql
 COPY sql/patch_gestao_v3.sql /app/sql/patch_gestao_v3.sql
+COPY sql/patch_gestao_v4.sql /app/sql/patch_gestao_v4.sql
 COPY sql/patch_partido_linha.sql /app/sql/patch_partido_linha.sql
 COPY sql/patch_acervo.sql /app/sql/patch_acervo.sql
 COPY sql/patch_analitico.sql /app/sql/patch_analitico.sql

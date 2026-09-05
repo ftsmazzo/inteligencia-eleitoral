@@ -333,3 +333,84 @@ async def auditoria_sugerir(
             campanha_id=campanha_id,
             usar_llm=usar_llm,
         )
+
+
+class QuotaUsuarioIn(BaseModel):
+    quota_max: int | None = None
+    reset_used: bool = False
+
+
+class QuotaCampanhaIn(BaseModel):
+    quota_perguntas_max: int | None = None
+
+
+@router.get("/quotas")
+def quotas(
+    campanha_id: str | None = None,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    with _db() as conn:
+        return plataforma.listar_quotas(conn, email_super=user[1], campanha_id=campanha_id)
+
+
+@router.patch("/usuarios/{usuario_id}/quota")
+def patch_quota_usuario(
+    usuario_id: str,
+    body: QuotaUsuarioIn,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    with _db() as conn:
+        return plataforma.atualizar_quota_usuario(
+            conn,
+            email_super=user[1],
+            actor_id=user[0],
+            usuario_id=usuario_id,
+            quota_max=body.quota_max,
+            reset_used=body.reset_used,
+        )
+
+
+@router.patch("/campanhas/{campanha_id}/quota")
+def patch_quota_campanha(
+    campanha_id: str,
+    body: QuotaCampanhaIn,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    with _db() as conn:
+        return plataforma.atualizar_quota_campanha(
+            conn,
+            email_super=user[1],
+            actor_id=user[0],
+            campanha_id=campanha_id,
+            quota_perguntas_max=body.quota_perguntas_max,
+        )
+
+
+@router.get("/auditoria/sessoes")
+def auditoria_sessoes(
+    campanha_id: str | None = None,
+    usuario_id: str | None = None,
+    limite: int = 50,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    from gestao import auditoria
+
+    with _db() as conn:
+        plataforma.exigir_super(conn, user[1])
+        itens = auditoria.listar_sessoes(
+            conn, campanha_id=campanha_id, usuario_id=usuario_id, limite=limite
+        )
+        return {"itens": itens, "total": len(itens)}
+
+
+@router.get("/auditoria/sessoes/{sessao_id}/mensagens")
+def auditoria_mensagens(
+    sessao_id: str,
+    limite: int = 200,
+    user: tuple[str, str, str] = Depends(_usuario),
+) -> dict[str, Any]:
+    from gestao import auditoria
+
+    with _db() as conn:
+        plataforma.exigir_super(conn, user[1])
+        return auditoria.mensagens_sessao(conn, sessao_id=sessao_id, limite=limite)

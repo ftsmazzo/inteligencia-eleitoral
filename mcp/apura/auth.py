@@ -265,23 +265,62 @@ def quota_usuario(conn: psycopg.Connection, usuario_id: str) -> dict[str, Any]:
 
 
 def consumir_pergunta_demo(conn: psycopg.Connection, usuario_id: str) -> dict[str, Any]:
-    """Consome 1 pergunta do demo. Levanta 429 se esgotado."""
+    """Consome 1 pergunta do demo. Levanta 429 se esgotado (usuário ou campanha)."""
     from fastapi import HTTPException
 
     row = conn.execute(
         """
-        SELECT quota_perguntas_max, quota_perguntas_used
-        FROM ctl.apura_usuario
-        WHERE id = %s::uuid AND ativo IS TRUE
+        SELECT u.quota_perguntas_max, u.quota_perguntas_used,
+               COALESCE(u.campanha_ativa_id, u.campanha_id)::text
+        FROM ctl.apura_usuario u
+        WHERE u.id = %s::uuid AND u.ativo IS TRUE
         FOR UPDATE
         """,
         (usuario_id,),
     ).fetchone()
     if not row:
         raise HTTPException(401, "Usuário não encontrado")
-    qmax, used = row[0], int(row[1] or 0)
+    qmax, used, campanha_id = row[0], int(row[1] or 0), row[2]
+
+    if campanha_id:
+        crow = conn.execute(
+            """
+            SELECT quota_perguntas_max FROM ctl.campanha
+            WHERE id = %s::uuid AND ativo IS TRUE
+            """,
+            (campanha_id,),
+        ).fetchone()
+        if crow and crow[0] is not None:
+            cmax = int(crow[0])
+            cused = conn.execute(
+                """
+                SELECT COUNT(*)::int FROM ctl.apura_mensagem msg
+                JOIN ctl.apura_sessao s ON s.id = msg.sessao_id
+                JOIN ctl.apura_usuario u ON u.id = s.usuario_id
+                WHERE COALESCE(u.campanha_ativa_id, u.campanha_id) = %s::uuid
+                  AND msg.papel = 'user'
+                """,
+                (campanha_id,),
+            ).fetchone()
+            cused_n = int(cused[0] if cused else 0)
+            if cused_n >= cmax:
+                raise HTTPException(
+                    429,
+                    f"Cota da campanha esgotada ({cmax} perguntas). Peça ao gestor da plataforma.",
+                )
+
     if qmax is None:
-        return {"ilimitado": True, "max": None, "used": used, "restantes": None}
+        # ainda incrementa used para métrica, sem teto de usuário
+        conn.execute(
+            """
+            UPDATE ctl.apura_usuario
+            SET quota_perguntas_used = quota_perguntas_used + 1
+            WHERE id = %s::uuid
+            """,
+            (usuario_id,),
+        )
+        return {"ilimitado": True, "max": None, "used": used + 1, "restantes": None}
+
     if used >= int(qmax):
         raise HTTPException(
             429,

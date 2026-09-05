@@ -193,7 +193,13 @@ def listar_campanhas(
                     WHERE m.campanha_id = c.id AND m.ativo IS TRUE),
                    (SELECT COALESCE(json_agg(cm.codigo ORDER BY cm.codigo), '[]'::json)
                     FROM ctl.campanha_modulo cm
-                    WHERE cm.campanha_id = c.id AND cm.ativo IS TRUE)
+                    WHERE cm.campanha_id = c.id AND cm.ativo IS TRUE),
+                   c.quota_perguntas_max,
+                   (SELECT COUNT(*)::int FROM ctl.apura_mensagem msg
+                    JOIN ctl.apura_sessao s ON s.id = msg.sessao_id
+                    JOIN ctl.apura_usuario u ON u.id = s.usuario_id
+                    WHERE COALESCE(u.campanha_ativa_id, u.campanha_id) = c.id
+                      AND msg.papel = 'user')
             FROM ctl.campanha c
             WHERE c.ativo IS TRUE
             ORDER BY c.nome
@@ -209,7 +215,13 @@ def listar_campanhas(
                     WHERE m2.campanha_id = c.id AND m2.ativo IS TRUE),
                    (SELECT COALESCE(json_agg(cm.codigo ORDER BY cm.codigo), '[]'::json)
                     FROM ctl.campanha_modulo cm
-                    WHERE cm.campanha_id = c.id AND cm.ativo IS TRUE)
+                    WHERE cm.campanha_id = c.id AND cm.ativo IS TRUE),
+                   c.quota_perguntas_max,
+                   (SELECT COUNT(*)::int FROM ctl.apura_mensagem msg
+                    JOIN ctl.apura_sessao s ON s.id = msg.sessao_id
+                    JOIN ctl.apura_usuario u ON u.id = s.usuario_id
+                    WHERE COALESCE(u.campanha_ativa_id, u.campanha_id) = c.id
+                      AND msg.papel = 'user')
             FROM ctl.campanha_membro m
             JOIN ctl.campanha c ON c.id = m.campanha_id
             WHERE m.usuario_id = %s::uuid AND m.ativo IS TRUE AND c.ativo IS TRUE
@@ -238,6 +250,8 @@ def listar_campanhas(
                 "atualizado_em": r[8].isoformat() if r[8] else None,
                 "membros_count": int(r[9] or 0),
                 "modulos": mods or [],
+                "quota_perguntas_max": r[11],
+                "quota_perguntas_used": int(r[12] or 0),
             }
         )
     return out
@@ -758,3 +772,176 @@ def listar_eventos(
         }
         for r in rows
     ]
+
+
+def atualizar_quota_usuario(
+    conn: psycopg.Connection,
+    *,
+    email_super: str,
+    actor_id: str,
+    usuario_id: str,
+    quota_max: int | None = None,
+    reset_used: bool = False,
+) -> dict[str, Any]:
+    exigir_super(conn, email_super)
+    row = conn.execute(
+        """
+        SELECT id::text, email, quota_perguntas_max, quota_perguntas_used
+        FROM ctl.apura_usuario WHERE id = %s::uuid
+        """,
+        (usuario_id,),
+    ).fetchone()
+    if not row:
+        from fastapi import HTTPException
+
+        raise HTTPException(404, "Usuário não encontrado")
+    if quota_max is not None:
+        q = None if int(quota_max) <= 0 else int(quota_max)
+        conn.execute(
+            "UPDATE ctl.apura_usuario SET quota_perguntas_max = %s WHERE id = %s::uuid",
+            (q, usuario_id),
+        )
+    if reset_used:
+        conn.execute(
+            "UPDATE ctl.apura_usuario SET quota_perguntas_used = 0 WHERE id = %s::uuid",
+            (usuario_id,),
+        )
+    registrar_evento(
+        conn,
+        acao="quota_usuario",
+        usuario_id=actor_id,
+        detalhe={
+            "alvo_usuario_id": usuario_id,
+            "quota_max": quota_max,
+            "reset_used": reset_used,
+        },
+    )
+    novo = conn.execute(
+        """
+        SELECT id::text, email, nome, quota_perguntas_max, quota_perguntas_used
+        FROM ctl.apura_usuario WHERE id = %s::uuid
+        """,
+        (usuario_id,),
+    ).fetchone()
+    return {
+        "usuario_id": novo[0],
+        "email": novo[1],
+        "nome": novo[2],
+        "quota_max": novo[3],
+        "quota_used": int(novo[4] or 0),
+    }
+
+
+def atualizar_quota_campanha(
+    conn: psycopg.Connection,
+    *,
+    email_super: str,
+    actor_id: str,
+    campanha_id: str,
+    quota_perguntas_max: int | None,
+) -> dict[str, Any]:
+    exigir_super(conn, email_super)
+    row = conn.execute(
+        "SELECT id::text, nome FROM ctl.campanha WHERE id = %s::uuid",
+        (campanha_id,),
+    ).fetchone()
+    if not row:
+        from fastapi import HTTPException
+
+        raise HTTPException(404, "Campanha não encontrada")
+    q = None
+    if quota_perguntas_max is not None:
+        q = None if int(quota_perguntas_max) <= 0 else int(quota_perguntas_max)
+    conn.execute(
+        "UPDATE ctl.campanha SET quota_perguntas_max = %s WHERE id = %s::uuid",
+        (q, campanha_id),
+    )
+    registrar_evento(
+        conn,
+        acao="quota_campanha",
+        usuario_id=actor_id,
+        campanha_id=campanha_id,
+        detalhe={"quota_perguntas_max": q},
+    )
+    used = conn.execute(
+        """
+        SELECT COUNT(*)::int FROM ctl.apura_mensagem msg
+        JOIN ctl.apura_sessao s ON s.id = msg.sessao_id
+        JOIN ctl.apura_usuario u ON u.id = s.usuario_id
+        WHERE COALESCE(u.campanha_ativa_id, u.campanha_id) = %s::uuid
+          AND msg.papel = 'user'
+        """,
+        (campanha_id,),
+    ).fetchone()
+    return {
+        "campanha_id": row[0],
+        "nome": row[1],
+        "quota_perguntas_max": q,
+        "quota_perguntas_used": int(used[0] if used else 0),
+    }
+
+
+def listar_quotas(
+    conn: psycopg.Connection, *, email_super: str, campanha_id: str | None = None
+) -> dict[str, Any]:
+    exigir_super(conn, email_super)
+    params: list[Any] = []
+    filtro = ""
+    if campanha_id:
+        filtro = "AND COALESCE(u.campanha_ativa_id, u.campanha_id) = %s::uuid"
+        params.append(campanha_id)
+    usuarios = conn.execute(
+        f"""
+        SELECT u.id::text, u.email, u.nome,
+               c.id::text, c.nome,
+               u.quota_perguntas_max, u.quota_perguntas_used
+        FROM ctl.apura_usuario u
+        LEFT JOIN ctl.campanha c ON c.id = COALESCE(u.campanha_ativa_id, u.campanha_id)
+        WHERE u.ativo IS TRUE {filtro}
+        ORDER BY u.email
+        LIMIT 500
+        """,
+        params,
+    ).fetchall()
+    camp_params: list[Any] = []
+    camp_filtro = ""
+    if campanha_id:
+        camp_filtro = "AND c.id = %s::uuid"
+        camp_params.append(campanha_id)
+    campanhas = conn.execute(
+        f"""
+        SELECT c.id::text, c.nome, c.quota_perguntas_max,
+               (SELECT COUNT(*)::int FROM ctl.apura_mensagem msg
+                JOIN ctl.apura_sessao s ON s.id = msg.sessao_id
+                JOIN ctl.apura_usuario u ON u.id = s.usuario_id
+                WHERE COALESCE(u.campanha_ativa_id, u.campanha_id) = c.id
+                  AND msg.papel = 'user')
+        FROM ctl.campanha c
+        WHERE c.ativo IS TRUE {camp_filtro}
+        ORDER BY c.nome
+        """,
+        camp_params,
+    ).fetchall()
+    return {
+        "usuarios": [
+            {
+                "usuario_id": r[0],
+                "email": r[1],
+                "nome": r[2],
+                "campanha_id": r[3],
+                "campanha_nome": r[4],
+                "quota_max": r[5],
+                "quota_used": int(r[6] or 0),
+            }
+            for r in usuarios
+        ],
+        "campanhas": [
+            {
+                "campanha_id": r[0],
+                "nome": r[1],
+                "quota_perguntas_max": r[2],
+                "quota_perguntas_used": int(r[3] or 0),
+            }
+            for r in campanhas
+        ],
+    }

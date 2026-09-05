@@ -835,6 +835,30 @@
       text-overflow: ellipsis; white-space: nowrap;
     }
     #campanha-chip.on { display: inline-block; }
+    #app-screen.shell-plataforma .workspace-only { display: none !important; }
+    #app-screen.shell-plataforma .shell-only { display: flex !important; }
+    #app-screen:not(.shell-plataforma) .shell-only { display: none !important; }
+    .shell-only { display: none; }
+    .shell-filter-bar {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin: 0 0 12px; padding: 10px 12px; border-radius: 10px;
+      background: var(--surface-2, var(--surface)); border: 1px solid var(--line);
+    }
+    .shell-filter-bar strong { color: var(--brand); }
+    .plat-cta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .plat-cta button { padding: 8px 12px; border-radius: 8px; font: inherit; cursor: pointer; }
+    .plat-cta .primary { border: 0; background: var(--brand); color: #fff; }
+    .plat-cta .secondary { border: 1px solid var(--line); background: var(--surface, #fff); color: var(--ink); }
+    .quota-alert { color: var(--danger, #c44); font-weight: 600; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+    .kpi-grid > div {
+      padding: 12px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--surface-2, var(--surface));
+    }
+    .kpi-grid span { display: block; font-size: 0.75rem; color: var(--muted); }
+    .kpi-grid b { font-size: 1.25rem; color: var(--ink); }
+    .conv-msg { padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 0.9rem; }
+    .conv-msg .papel { font-weight: 600; color: var(--brand); margin-right: 6px; }
     .workspace-lock {
       display: none; margin: 16px 20px; padding: 14px 16px; border-radius: 12px;
       background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 0.9rem; line-height: 1.45;
@@ -909,11 +933,16 @@
           </div>
         </div>
       </div>
-      <button type="button" class="btn-new" id="btn-nova">
+      <button type="button" class="btn-new workspace-only" id="btn-nova">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
         Nova conversa
       </button>
-      <div class="nav-views">
+      <div class="nav-views shell-only" id="nav-shell">
+        <button type="button" class="on" id="btn-view-plataforma">
+          <span class="nav-label">Plataforma</span>
+        </button>
+      </div>
+      <div class="nav-views workspace-only" id="nav-workspace">
         <button type="button" id="btn-view-gestao">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           <span class="nav-label">Gestão</span>
@@ -935,11 +964,11 @@
           MCPs
         </button>
       </div>
-      <div class="sess-list" id="sess-list"></div>
-      <div class="sidebar-actions">
+      <div class="sess-list workspace-only" id="sess-list"></div>
+      <div class="sidebar-actions workspace-only">
         <button type="button" id="btn-apagar-todas">🗑 Apagar todas as conversas</button>
       </div>
-      <div class="skills-panel" id="skills-panel">
+      <div class="skills-panel workspace-only" id="skills-panel">
         <div class="skills-head">
           <h3>Skills</h3>
           <button type="button" class="btn-skill-add" id="btn-skill-open">+ Nova</button>
@@ -950,8 +979,9 @@
       </div>
       <div class="sidebar-foot">
         <span id="user-email"></span><br />
-        <span id="campanha-chip"></span>
-        <span id="user-quota" class="quota-pill"></span>
+        <span id="campanha-chip" class="workspace-only"></span>
+        <span id="user-quota" class="quota-pill workspace-only"></span>
+        <button type="button" class="secondary workspace-only" id="btn-voltar-plataforma-ws" style="margin:8px 0;width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--ink);font:inherit;cursor:pointer">← Voltar à plataforma</button>
         <div class="sidebar-foot-actions">
           <button type="button" class="theme-toggle" id="btn-theme" title="Alternar tema">Tema escuro</button>
           <button type="button" class="btn-conta" id="btn-senha">Alterar senha</button>
@@ -1161,12 +1191,39 @@
           <div id="gestao-plataforma" class="hidden">
             <div class="gestao-hero">
               <span class="gestao-status-pill">plataforma</span>
-              <h3>Gestão de campanhas</h3>
-              <p>Crie campanhas virgens (módulos já provisionados) e entre quando for configurar. Chat e Radar só herdam contexto depois do Entrar.</p>
+              <h3>Gestão da plataforma</h3>
+              <p>Painel do super gestor: frota, quotas, conversas e eventos. Tools (Chat, Radar, Skills) só no workspace — use <b>Operar</b> para entrar numa campanha.</p>
+            </div>
+            <div class="shell-filter-bar hidden" id="shell-admin-filter">
+              <span>Administrando: <strong id="shell-admin-nome">—</strong></span>
+              <button type="button" class="secondary" id="btn-admin-todas" style="padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer">Ver todas</button>
             </div>
             <div class="gestao-tabs" id="plat-tabs">
-              <button type="button" class="on" data-plat-tab="frota">Frota</button>
-              <button type="button" data-plat-tab="auditoria">Auditoria</button>
+              <button type="button" class="on" data-plat-tab="visao">Visão geral</button>
+              <button type="button" data-plat-tab="frota">Frota</button>
+              <button type="button" data-plat-tab="quotas">Quotas</button>
+              <button type="button" data-plat-tab="conversas">Conversas</button>
+              <button type="button" data-plat-tab="eventos">Eventos</button>
+            </div>
+            <div id="plat-panel-visao" class="hidden">
+              <div class="plat-toolbar">
+                <div>
+                  <label for="aud-dias">Período (dias)</label>
+                  <input id="aud-dias" type="number" min="1" max="90" value="7" style="width:80px" />
+                </div>
+                <button type="button" class="primary" id="aud-refresh" style="padding:10px 16px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;cursor:pointer">Atualizar</button>
+                <button type="button" class="secondary" id="aud-sugerir" style="padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface,#fff);font:inherit;cursor:pointer">IA boas práticas</button>
+              </div>
+              <div class="kpi-grid gestao-resumo" id="aud-kpis"></div>
+              <div class="gestao-card" style="margin-top:12px">
+                <h4>Por campanha</h4>
+                <div id="aud-campanhas"></div>
+              </div>
+              <div class="gestao-card" style="margin-top:12px">
+                <h4>Sugestões</h4>
+                <div id="aud-sugestoes"></div>
+              </div>
+              <p class="gestao-err" id="aud-err"></p>
             </div>
             <div id="plat-panel-frota">
             <div class="plat-toolbar" id="plat-criar-wrap">
@@ -1183,33 +1240,39 @@
             <div class="plat-grid" id="plat-lista"></div>
             <p class="gestao-err" id="plat-err"></p>
             </div>
-            <div id="plat-panel-auditoria" class="hidden">
-              <div class="plat-toolbar">
-                <div>
-                  <label for="aud-dias">Período (dias)</label>
-                  <input id="aud-dias" type="number" min="1" max="90" value="7" style="width:80px" />
-                </div>
-                <button type="button" class="primary" id="aud-refresh" style="padding:10px 16px;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;cursor:pointer">Atualizar</button>
-                <button type="button" class="secondary" id="aud-sugerir" style="padding:10px 16px;border-radius:10px;border:1px solid var(--line);background:var(--surface,#fff);font:inherit;cursor:pointer">IA boas práticas</button>
-              </div>
-              <div class="gestao-resumo" id="aud-kpis"></div>
-              <div class="gestao-card" style="margin-top:12px">
-                <h4>Por usuário</h4>
-                <div id="aud-usuarios"></div>
+            <div id="plat-panel-quotas" class="hidden">
+              <div class="gestao-card">
+                <h4>Quotas por campanha</h4>
+                <p class="hint">Limite agregado de perguntas (0 ou vazio = ilimitado). Enforcement no chat.</p>
+                <div id="quota-campanhas"></div>
               </div>
               <div class="gestao-card" style="margin-top:12px">
-                <h4>Interações recentes</h4>
+                <h4>Quotas por usuário</h4>
+                <div id="quota-usuarios"></div>
+              </div>
+              <p class="gestao-err" id="quota-err"></p>
+            </div>
+            <div id="plat-panel-conversas" class="hidden">
+              <div class="gestao-card">
+                <h4>Sessões</h4>
+                <div id="conv-sessoes"></div>
+              </div>
+              <div class="gestao-card" style="margin-top:12px">
+                <h4>Mensagens <span id="conv-titulo" style="font-weight:400;color:var(--muted)"></span></h4>
+                <div id="conv-mensagens"><p class="hint">Selecione uma sessão.</p></div>
+              </div>
+              <div class="gestao-card" style="margin-top:12px">
+                <h4>Timeline (interações)</h4>
                 <div id="aud-interacoes"></div>
               </div>
-              <div class="gestao-card" style="margin-top:12px">
+              <p class="gestao-err" id="conv-err"></p>
+            </div>
+            <div id="plat-panel-eventos" class="hidden">
+              <div class="gestao-card">
                 <h4>Eventos de acesso</h4>
                 <div id="aud-eventos"></div>
               </div>
-              <div class="gestao-card" style="margin-top:12px">
-                <h4>Sugestões</h4>
-                <div id="aud-sugestoes"></div>
-              </div>
-              <p class="gestao-err" id="aud-err"></p>
+              <p class="gestao-err" id="ev-err"></p>
             </div>
           </div>
 
@@ -1531,13 +1594,41 @@
 
     let platCtx = null;
     let perfisCache = [];
-    let gestaoUiMode = 'campanha'; // plataforma | campanha
+    let gestaoUiMode = 'campanha'; // plataforma | campanha (painel wizard)
+    let shellMode = 'workspace'; // plataforma | workspace (sidebar)
+    let adminCampanhaId = null;
+    let adminCampanhaNome = null;
+
+    function applyShellMode() {
+      const app = $('app-screen');
+      if (!app) return;
+      const plat = shellMode === 'plataforma' && platCtx && platCtx.is_super_gestor;
+      app.classList.toggle('shell-plataforma', !!plat);
+      const bv = $('btn-voltar-plataforma-ws');
+      if (bv) bv.style.display = (platCtx && platCtx.is_super_gestor && shellMode === 'workspace') ? '' : 'none';
+      syncAdminFilterBar();
+    }
+
+    function syncAdminFilterBar() {
+      const bar = $('shell-admin-filter');
+      if (!bar) return;
+      if (adminCampanhaId) {
+        bar.classList.remove('hidden');
+        if ($('shell-admin-nome')) $('shell-admin-nome').textContent = adminCampanhaNome || adminCampanhaId;
+      } else {
+        bar.classList.add('hidden');
+      }
+    }
+
+    function adminQs() {
+      return adminCampanhaId ? ('&campanha_id=' + encodeURIComponent(adminCampanhaId)) : '';
+    }
 
     function syncCampanhaChip() {
       const chip = $('campanha-chip');
       if (!chip) return;
       const nome = platCtx && (platCtx.campanha_ativa_nome || null);
-      if (nome) {
+      if (nome && shellMode === 'workspace') {
         chip.textContent = nome;
         chip.classList.add('on');
         chip.title = nome;
@@ -1579,21 +1670,17 @@
       }
       syncCampanhaChip();
       syncWorkspaceLock();
-      syncSuperNav();
+      applyShellMode();
       return platCtx;
     }
 
     function syncSuperNav() {
+      // legado: label Gestão no workspace; shell usa nav Plataforma
       const btn = $('btn-view-gestao');
       if (!btn) return;
       const lab = btn.querySelector('.nav-label');
-      if (platCtx && platCtx.is_super_gestor) {
-        if (lab) lab.textContent = 'Campanhas';
-        btn.title = 'Frota de campanhas (super gestor)';
-      } else {
-        if (lab) lab.textContent = 'Gestão';
-        btn.title = 'Gestão da campanha';
-      }
+      if (lab) lab.textContent = 'Gestão';
+      btn.title = 'Gestão da campanha';
     }
 
     function showSeletor(vinculos) {
@@ -1623,15 +1710,47 @@
         });
         $('seletor-screen').classList.add('hidden');
         $('app-screen').classList.remove('hidden');
+        shellMode = 'workspace';
+        gestaoUiMode = 'campanha';
         syncCampanhaChip();
         syncWorkspaceLock();
-        gestaoUiMode = 'campanha';
+        applyShellMode();
         await initAppWorkspace();
         setView(platCtx.is_super_gestor ? 'gestao' : 'chat');
       } catch (e) {
         $('seletor-err').textContent = e.message;
         if ($('plat-err')) $('plat-err').textContent = e.message;
       }
+    }
+
+    async function operarCampanha(campanhaId) {
+      await entrarCampanhaUi(campanhaId);
+    }
+
+    function administrarCampanha(campanhaId, nome) {
+      adminCampanhaId = campanhaId;
+      adminCampanhaNome = nome || campanhaId;
+      shellMode = 'plataforma';
+      gestaoUiMode = 'plataforma';
+      applyShellMode();
+      setView('gestao');
+      setPlatTab('visao');
+    }
+
+    async function voltarPlataformaShell() {
+      try {
+        platCtx = await api('/gestao/plataforma/sair', { method: 'POST', body: '{}' });
+      } catch (_) {
+        await refreshPlatCtx();
+      }
+      shellMode = 'plataforma';
+      gestaoUiMode = 'plataforma';
+      syncCampanhaChip();
+      syncWorkspaceLock();
+      applyShellMode();
+      setView('gestao');
+      await loadPlataformaFrota();
+      setPlatTab('visao');
     }
 
     async function initAppWorkspace() {
@@ -1680,14 +1799,23 @@
         const superG = !!platCtx.is_super_gestor;
 
         if (superG) {
-          // Super gestor: home = frota de campanhas (nunca cair direto no Chat/Amapá legado)
+          // Super: shell de plataforma (sem tools). Sair de campanha ativa residual.
+          try {
+            platCtx = await api('/gestao/plataforma/sair', { method: 'POST', body: '{}' });
+          } catch (_) {}
+          await refreshPlatCtx();
           $('app-screen').classList.remove('hidden');
+          shellMode = 'plataforma';
           gestaoUiMode = 'plataforma';
+          applyShellMode();
           await initAppWorkspace();
-          syncSuperNav();
           setView('gestao');
+          setPlatTab('visao');
           return;
         }
+
+        shellMode = 'workspace';
+        applyShellMode();
 
         if (vinculos.length === 0) {
           $('app-screen').classList.remove('hidden');
@@ -2266,18 +2394,25 @@
       if ((wh === 'chat' || wh === 'radar' || wh === 'paineis' || wh === 'mcps') && !temCampanhaAtiva()) {
         syncWorkspaceLock();
         wh = 'gestao';
-        gestaoUiMode = (platCtx && platCtx.is_super_gestor) ? 'plataforma' : 'campanha';
+        if (platCtx && platCtx.is_super_gestor) {
+          shellMode = 'plataforma';
+          gestaoUiMode = 'plataforma';
+          applyShellMode();
+        } else {
+          gestaoUiMode = 'campanha';
+        }
       }
       const chat = wh === 'chat';
       const radar = wh === 'radar';
       const gestao = wh === 'gestao';
       const paineis = wh === 'paineis';
       const mcps = wh === 'mcps';
-      $('btn-view-chat').classList.toggle('on', chat);
-      $('btn-view-radar').classList.toggle('on', radar);
-      $('btn-view-gestao').classList.toggle('on', gestao);
-      $('btn-view-paineis').classList.toggle('on', paineis);
-      $('btn-view-mcps').classList.toggle('on', mcps);
+      if ($('btn-view-chat')) $('btn-view-chat').classList.toggle('on', chat);
+      if ($('btn-view-radar')) $('btn-view-radar').classList.toggle('on', radar);
+      if ($('btn-view-gestao')) $('btn-view-gestao').classList.toggle('on', gestao && shellMode === 'workspace');
+      if ($('btn-view-plataforma')) $('btn-view-plataforma').classList.toggle('on', gestao && shellMode === 'plataforma');
+      if ($('btn-view-paineis')) $('btn-view-paineis').classList.toggle('on', paineis);
+      if ($('btn-view-mcps')) $('btn-view-mcps').classList.toggle('on', mcps);
       $('chat-view').classList.toggle('off', !chat);
       $('radar-view').classList.toggle('on', radar);
       $('gestao-view').classList.toggle('on', gestao);
@@ -2291,10 +2426,30 @@
     $('btn-view-chat').addEventListener('click', () => setView('chat'));
     $('btn-view-radar').addEventListener('click', () => setView('radar'));
     $('btn-view-gestao').addEventListener('click', () => {
-      // Super: Gestão = sempre a frota (criar/listar/entrar). Wizard só depois de Entrar.
-      if (platCtx && platCtx.is_super_gestor) gestaoUiMode = 'plataforma';
+      if (shellMode === 'plataforma') return;
+      gestaoUiMode = 'campanha';
       setView('gestao');
     });
+    if ($('btn-view-plataforma')) {
+      $('btn-view-plataforma').addEventListener('click', () => {
+        shellMode = 'plataforma';
+        gestaoUiMode = 'plataforma';
+        applyShellMode();
+        setView('gestao');
+        setPlatTab('visao');
+      });
+    }
+    if ($('btn-voltar-plataforma-ws')) {
+      $('btn-voltar-plataforma-ws').addEventListener('click', () => voltarPlataformaShell());
+    }
+    if ($('btn-admin-todas')) {
+      $('btn-admin-todas').addEventListener('click', () => {
+        adminCampanhaId = null;
+        adminCampanhaNome = null;
+        syncAdminFilterBar();
+        setPlatTab(document.querySelector('#plat-tabs button.on')?.getAttribute('data-plat-tab') || 'visao');
+      });
+    }
     $('btn-view-paineis').addEventListener('click', () => setView('paineis'));
     $('btn-view-mcps').addEventListener('click', () => setView('mcps'));
     document.querySelectorAll('[data-goto-gestao]').forEach(a => {
@@ -2433,40 +2588,59 @@
       ).join('');
     }
 
-    async function loadPlataformaFrota() {
+    async function loadPlataformaShell() {
       if ($('plat-err')) $('plat-err').textContent = '';
       $('gestao-plataforma').classList.remove('hidden');
       $('gestao-campanha-panel').classList.add('hidden');
       if ($('plat-criar-wrap')) $('plat-criar-wrap').style.display = (platCtx && platCtx.is_super_gestor) ? '' : 'none';
       if ($('plat-tabs')) $('plat-tabs').style.display = (platCtx && platCtx.is_super_gestor) ? 'flex' : 'none';
-      setPlatTab('frota');
+      syncAdminFilterBar();
+      const tab = document.querySelector('#plat-tabs button.on')?.getAttribute('data-plat-tab') || 'visao';
+      await setPlatTab(tab);
+    }
+    async function loadPlataformaFrota() {
+      await loadPlataformaShell();
+    }
+
+    async function renderFrotaLista() {
+      if ($('plat-err')) $('plat-err').textContent = '';
       try {
         const d = await api('/gestao/plataforma/campanhas');
         const box = $('plat-lista');
-        const itens = d.itens || [];
+        let itens = d.itens || [];
+        if (adminCampanhaId) itens = itens.filter(c => c.campanha_id === adminCampanhaId);
         if (!itens.length) {
           box.innerHTML = '<p class="hint">Nenhuma campanha ainda. Crie a primeira acima.</p>';
           return;
         }
         box.innerHTML = itens.map(c => {
           const mods = (c.modulos || []).map(m => '<em>' + esc(typeof m === 'string' ? m : m) + '</em>').join('');
-          return '<div class="plat-card" data-cid="' + esc(c.campanha_id) + '">' +
+          const qmax = c.quota_perguntas_max;
+          const qused = c.quota_perguntas_used || 0;
+          const qlab = qmax != null
+            ? ('<em class="' + (qused >= qmax ? 'quota-alert' : '') + '">quota ' + qused + '/' + qmax + '</em>')
+            : '';
+          return '<div class="plat-card" data-cid="' + esc(c.campanha_id) + '" data-nome="' + esc(c.nome) + '">' +
             '<h4>' + esc(c.nome) + '</h4>' +
             '<div class="plat-meta">' +
             '<em>' + esc(c.ambiente_status || '—') + '</em>' +
             (c.sg_uf ? '<em>' + esc(c.sg_uf) + '</em>' : '') +
             (c.nm_urna ? '<em>' + esc(c.nm_urna) + '</em>' : '') +
             '<em>' + (c.membros_count || 0) + ' membros</em>' +
-            mods +
+            qlab + mods +
             '</div>' +
-            '<div class="gestao-actions">' +
-            '<button type="button" class="primary plat-entrar">Entrar</button>' +
+            '<div class="plat-cta">' +
+            '<button type="button" class="primary plat-operar">Operar</button>' +
+            '<button type="button" class="secondary plat-admin">Administrar</button>' +
             '</div></div>';
         }).join('');
-        box.querySelectorAll('.plat-entrar').forEach(btn => {
+        box.querySelectorAll('.plat-operar').forEach(btn => {
+          btn.onclick = () => operarCampanha(btn.closest('.plat-card').getAttribute('data-cid'));
+        });
+        box.querySelectorAll('.plat-admin').forEach(btn => {
           btn.onclick = () => {
-            const cid = btn.closest('.plat-card').getAttribute('data-cid');
-            entrarCampanhaUi(cid);
+            const card = btn.closest('.plat-card');
+            administrarCampanha(card.getAttribute('data-cid'), card.getAttribute('data-nome'));
           };
         });
       } catch (e) {
@@ -2474,55 +2648,187 @@
       }
     }
 
-    function setPlatTab(tab) {
+    async function setPlatTab(tab) {
       document.querySelectorAll('#plat-tabs [data-plat-tab]').forEach(b => {
         b.classList.toggle('on', b.getAttribute('data-plat-tab') === tab);
       });
-      $('plat-panel-frota').classList.toggle('hidden', tab !== 'frota');
-      $('plat-panel-auditoria').classList.toggle('hidden', tab !== 'auditoria');
-      if (tab === 'auditoria') loadAuditoria();
+      const panels = ['visao', 'frota', 'quotas', 'conversas', 'eventos'];
+      panels.forEach(p => {
+        const el = $('plat-panel-' + p);
+        if (el) el.classList.toggle('hidden', p !== tab);
+      });
+      if (tab === 'visao') await loadVisaoGeral();
+      if (tab === 'frota') await renderFrotaLista();
+      if (tab === 'quotas') await loadQuotasUi();
+      if (tab === 'conversas') await loadConversasUi();
+      if (tab === 'eventos') await loadEventosUi();
     }
     document.querySelectorAll('#plat-tabs [data-plat-tab]').forEach(b => {
       b.addEventListener('click', () => setPlatTab(b.getAttribute('data-plat-tab')));
     });
 
-    async function loadAuditoria() {
+    async function loadVisaoGeral() {
       if (!platCtx || !platCtx.is_super_gestor) return;
-      $('aud-err').textContent = '';
+      if ($('aud-err')) $('aud-err').textContent = '';
       const dias = parseInt(($('aud-dias') && $('aud-dias').value) || '7', 10) || 7;
       try {
-        const [resumo, inter, ev] = await Promise.all([
-          api('/gestao/plataforma/auditoria/resumo?dias=' + dias),
-          api('/gestao/plataforma/auditoria/interacoes?limite=40'),
-          api('/gestao/plataforma/eventos?limite=40'),
-        ]);
+        const q = '?dias=' + dias + adminQs().replace(/^&/, '&');
+        const resumo = await api('/gestao/plataforma/auditoria/resumo' + q);
         $('aud-kpis').innerHTML =
           '<div><span>Perguntas</span><b>' + (resumo.perguntas_total_periodo || 0) + '</b></div>' +
           '<div><span>Usuários ativos</span><b>' + (resumo.usuarios_ativos_periodo || 0) + '</b></div>' +
           '<div><span>Eventos</span><b>' + (resumo.eventos_periodo || 0) + '</b></div>' +
           '<div><span>Tools negadas</span><b>' + (resumo.tools_negadas || 0) + '</b></div>' +
           '<div><span>Tools top</span><b>' + esc((resumo.tools_top || []).slice(0, 3).map(t => t[0] + '(' + t[1] + ')').join(', ') || '—') + '</b></div>';
-
-        $('aud-usuarios').innerHTML = (resumo.por_usuario || []).slice(0, 30).map(u =>
+        let camps = resumo.por_campanha || [];
+        if (adminCampanhaId) camps = camps.filter(c => c.campanha_id === adminCampanhaId);
+        $('aud-campanhas').innerHTML = camps.map(c =>
           '<div class="membro-row">' +
-          '<b>' + esc(u.nome || u.email) + '</b>' +
-          '<span>' + esc(u.email) + ' · ' + esc(u.campanha_ativa || 'sem campanha') +
-          ' · ' + u.perguntas_periodo + ' perguntas' +
-          (u.quota_max != null ? ' · quota ' + u.quota_used + '/' + u.quota_max : '') +
-          '</span></div>'
-        ).join('') || '<p class="hint">Sem usuários.</p>';
+          '<b>' + esc(c.nome) + '</b>' +
+          '<span>' + esc(c.ambiente_status || '') + ' · ' + (c.membros || 0) + ' membros · ' +
+          (c.perguntas_periodo || 0) + ' perguntas</span>' +
+          '<div class="plat-cta">' +
+          '<button type="button" class="primary" data-op="' + esc(c.campanha_id) + '">Operar</button>' +
+          '<button type="button" class="secondary" data-ad="' + esc(c.campanha_id) + '" data-nome="' + esc(c.nome) + '">Administrar</button>' +
+          '</div></div>'
+        ).join('') || '<p class="hint">Sem campanhas.</p>';
+        $('aud-campanhas').querySelectorAll('[data-op]').forEach(b => {
+          b.onclick = () => operarCampanha(b.getAttribute('data-op'));
+        });
+        $('aud-campanhas').querySelectorAll('[data-ad]').forEach(b => {
+          b.onclick = () => administrarCampanha(b.getAttribute('data-ad'), b.getAttribute('data-nome'));
+        });
+      } catch (e) {
+        if ($('aud-err')) $('aud-err').textContent = e.message;
+      }
+    }
 
+    async function loadQuotasUi() {
+      if ($('quota-err')) $('quota-err').textContent = '';
+      try {
+        const d = await api('/gestao/plataforma/quotas?' + adminQs().replace(/^&/, ''));
+        $('quota-campanhas').innerHTML = (d.campanhas || []).map(c => {
+          const used = c.quota_perguntas_used || 0;
+          const max = c.quota_perguntas_max;
+          const alert = max != null && used >= Math.floor(max * 0.8);
+          return '<div class="membro-row" data-cid="' + esc(c.campanha_id) + '">' +
+            '<b>' + esc(c.nome) + '</b>' +
+            '<span class="' + (alert ? 'quota-alert' : '') + '">uso ' + used +
+            (max != null ? ' / ' + max : ' (ilimitado)') + '</span>' +
+            '<div class="plat-toolbar" style="margin:0">' +
+            '<input type="number" min="0" placeholder="limite" class="q-camp-max" value="' + (max != null ? max : '') + '" style="width:100px" />' +
+            '<button type="button" class="primary q-camp-save" style="padding:8px 12px;border:0;border-radius:8px;background:var(--brand);color:#fff;cursor:pointer">Salvar</button>' +
+            '</div></div>';
+        }).join('') || '<p class="hint">Sem campanhas.</p>';
+        $('quota-campanhas').querySelectorAll('.q-camp-save').forEach(btn => {
+          btn.onclick = async () => {
+            const row = btn.closest('.membro-row');
+            const cid = row.getAttribute('data-cid');
+            const raw = row.querySelector('.q-camp-max').value;
+            const quota_perguntas_max = raw === '' ? 0 : parseInt(raw, 10);
+            try {
+              await api('/gestao/plataforma/campanhas/' + cid + '/quota', {
+                method: 'PATCH',
+                body: JSON.stringify({ quota_perguntas_max }),
+              });
+              await loadQuotasUi();
+            } catch (e) { $('quota-err').textContent = e.message; }
+          };
+        });
+        $('quota-usuarios').innerHTML = (d.usuarios || []).map(u => {
+          const used = u.quota_used || 0;
+          const max = u.quota_max;
+          const alert = max != null && used >= Math.floor(max * 0.8);
+          return '<div class="membro-row" data-uid="' + esc(u.usuario_id) + '">' +
+            '<b>' + esc(u.nome || u.email) + '</b>' +
+            '<span>' + esc(u.email) + ' · ' + esc(u.campanha_nome || '—') +
+            ' · <span class="' + (alert ? 'quota-alert' : '') + '">' + used +
+            (max != null ? '/' + max : ' ilim.') + '</span></span>' +
+            '<div class="plat-toolbar" style="margin:0">' +
+            '<input type="number" min="0" placeholder="limite" class="q-user-max" value="' + (max != null ? max : '') + '" style="width:100px" />' +
+            '<button type="button" class="primary q-user-save" style="padding:8px 12px;border:0;border-radius:8px;background:var(--brand);color:#fff;cursor:pointer">Salvar</button>' +
+            '<button type="button" class="secondary q-user-reset" style="padding:8px 12px;border-radius:8px;border:1px solid var(--line);cursor:pointer">Zerar uso</button>' +
+            '</div></div>';
+        }).join('') || '<p class="hint">Sem usuários.</p>';
+        $('quota-usuarios').querySelectorAll('.q-user-save').forEach(btn => {
+          btn.onclick = async () => {
+            const row = btn.closest('.membro-row');
+            const uid = row.getAttribute('data-uid');
+            const raw = row.querySelector('.q-user-max').value;
+            const quota_max = raw === '' ? 0 : parseInt(raw, 10);
+            try {
+              await api('/gestao/plataforma/usuarios/' + uid + '/quota', {
+                method: 'PATCH',
+                body: JSON.stringify({ quota_max }),
+              });
+              await loadQuotasUi();
+            } catch (e) { $('quota-err').textContent = e.message; }
+          };
+        });
+        $('quota-usuarios').querySelectorAll('.q-user-reset').forEach(btn => {
+          btn.onclick = async () => {
+            const uid = btn.closest('.membro-row').getAttribute('data-uid');
+            try {
+              await api('/gestao/plataforma/usuarios/' + uid + '/quota', {
+                method: 'PATCH',
+                body: JSON.stringify({ reset_used: true }),
+              });
+              await loadQuotasUi();
+            } catch (e) { $('quota-err').textContent = e.message; }
+          };
+        });
+      } catch (e) {
+        if ($('quota-err')) $('quota-err').textContent = e.message;
+      }
+    }
+
+    async function loadConversasUi() {
+      if ($('conv-err')) $('conv-err').textContent = '';
+      try {
+        const qs = '?limite=40' + adminQs();
+        const [sess, inter] = await Promise.all([
+          api('/gestao/plataforma/auditoria/sessoes' + qs),
+          api('/gestao/plataforma/auditoria/interacoes' + qs),
+        ]);
+        $('conv-sessoes').innerHTML = (sess.itens || []).map(s =>
+          '<div class="membro-row" data-sid="' + esc(s.sessao_id) + '" style="cursor:pointer">' +
+          '<b>' + esc(s.titulo || 'Sem título') + '</b>' +
+          '<span>' + esc(s.usuario_email || '') + ' · ' + esc(s.campanha_nome || '—') +
+          ' · ' + (s.num_mensagens || 0) + ' msgs · ' + esc(s.atualizado_em || '') + '</span></div>'
+        ).join('') || '<p class="hint">Sem sessões.</p>';
+        $('conv-sessoes').querySelectorAll('.membro-row[data-sid]').forEach(row => {
+          row.onclick = () => abrirSessaoAdmin(row.getAttribute('data-sid'));
+        });
         $('aud-interacoes').innerHTML = (inter.itens || []).map(m =>
           '<div class="membro-row">' +
           '<b>' + esc(m.papel) + ' · ' + esc(m.usuario_email || '') + '</b>' +
           '<span>' + esc(m.campanha_nome || '—') + ' · ' + esc(m.criado_em || '') + '</span>' +
-          '<span>' + esc(m.trecho || '') + '</span>' +
-          (m.tools && m.tools.length
-            ? '<span style="opacity:.8">tools: ' + esc(m.tools.map(t => t.tool + (t.erro ? '!' : '')).join(', ')) + '</span>'
-            : '') +
-          '</div>'
-        ).join('') || '<p class="hint">Sem interações no recorte.</p>';
+          '<span>' + esc(m.trecho || '') + '</span></div>'
+        ).join('') || '<p class="hint">Sem interações.</p>';
+      } catch (e) {
+        if ($('conv-err')) $('conv-err').textContent = e.message;
+      }
+    }
 
+    async function abrirSessaoAdmin(sessaoId) {
+      if ($('conv-err')) $('conv-err').textContent = '';
+      try {
+        const d = await api('/gestao/plataforma/auditoria/sessoes/' + sessaoId + '/mensagens');
+        if ($('conv-titulo')) $('conv-titulo').textContent = '· ' + (d.titulo || sessaoId) + ' · ' + (d.usuario_email || '');
+        $('conv-mensagens').innerHTML = (d.mensagens || []).map(m =>
+          '<div class="conv-msg"><span class="papel">' + esc(m.papel) + '</span>' +
+          '<span style="opacity:.7;font-size:0.8rem">' + esc(m.criado_em || '') + '</span>' +
+          '<div style="white-space:pre-wrap;margin-top:4px">' + esc(m.conteudo || '') + '</div></div>'
+        ).join('') || '<p class="hint">Vazia.</p>';
+      } catch (e) {
+        if ($('conv-err')) $('conv-err').textContent = e.message;
+      }
+    }
+
+    async function loadEventosUi() {
+      if ($('ev-err')) $('ev-err').textContent = '';
+      try {
+        const ev = await api('/gestao/plataforma/eventos?limite=80' + adminQs());
         $('aud-eventos').innerHTML = (ev.itens || []).map(e =>
           '<div class="membro-row">' +
           '<b>' + esc(e.acao) + '</b>' +
@@ -2530,16 +2836,20 @@
           ' · ' + esc(e.ocorrido_em || '') + '</span></div>'
         ).join('') || '<p class="hint">Sem eventos.</p>';
       } catch (e) {
-        $('aud-err').textContent = e.message;
+        if ($('ev-err')) $('ev-err').textContent = e.message;
       }
     }
-    if ($('aud-refresh')) $('aud-refresh').addEventListener('click', () => loadAuditoria());
+
+    async function loadAuditoria() {
+      await loadVisaoGeral();
+    }
+    if ($('aud-refresh')) $('aud-refresh').addEventListener('click', () => loadVisaoGeral());
     if ($('aud-sugerir')) $('aud-sugerir').addEventListener('click', async () => {
-      $('aud-err').textContent = 'Gerando sugestões…';
-      $('aud-sugestoes').innerHTML = '';
+      if ($('aud-err')) $('aud-err').textContent = 'Gerando sugestões…';
+      if ($('aud-sugestoes')) $('aud-sugestoes').innerHTML = '';
       const dias = parseInt(($('aud-dias') && $('aud-dias').value) || '7', 10) || 7;
       try {
-        const d = await api('/gestao/plataforma/auditoria/sugerir?dias=' + dias + '&usar_llm=true', {
+        const d = await api('/gestao/plataforma/auditoria/sugerir?dias=' + dias + adminQs() + '&usar_llm=true', {
           method: 'POST',
           body: '{}',
         });
@@ -2576,15 +2886,7 @@
     });
 
     async function voltarFrota() {
-      try {
-        platCtx = await api('/gestao/plataforma/sair', { method: 'POST', body: '{}' });
-      } catch (_) {
-        await refreshPlatCtx();
-      }
-      syncCampanhaChip();
-      syncWorkspaceLock();
-      gestaoUiMode = 'plataforma';
-      await loadPlataformaFrota();
+      await voltarPlataformaShell();
     }
     if ($('btn-voltar-frota')) $('btn-voltar-frota').addEventListener('click', () => voltarFrota());
     if ($('btn-trocar-campanha')) $('btn-trocar-campanha').addEventListener('click', async () => {
@@ -2681,14 +2983,17 @@
     async function loadGestao() {
       if ($('gestao-err')) $('gestao-err').textContent = '';
       await refreshPlatCtx();
-      syncSuperNav();
-      // Super gestor: aba Gestão sempre abre a frota (exceto se acabou de Entrar nesta sessão)
-      if (platCtx && platCtx.is_super_gestor && gestaoUiMode !== 'campanha') {
+      // Shell plataforma: nunca mostrar wizard
+      if (shellMode === 'plataforma' && platCtx && platCtx.is_super_gestor) {
         gestaoUiMode = 'plataforma';
+        await loadPlataformaShell();
+        return;
       }
       if (gestaoUiMode === 'plataforma' || (platCtx && platCtx.is_super_gestor && !temCampanhaAtiva())) {
         gestaoUiMode = 'plataforma';
-        await loadPlataformaFrota();
+        shellMode = 'plataforma';
+        applyShellMode();
+        await loadPlataformaShell();
         return;
       }
       $('gestao-plataforma').classList.add('hidden');
