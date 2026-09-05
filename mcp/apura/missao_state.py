@@ -41,17 +41,17 @@ _CMD_APROVADO = re.compile(r"^\s*aprovado\s*[.!]*\s*$", re.I)
 _CMD_ENVIADO = re.compile(r"^\s*enviado\s*[.!]*\s*$", re.I)
 _CMD_CONCLUIDO = re.compile(r"^\s*conclu[ií]do\s*[.!]*\s*$", re.I)
 _CMD_ATIVAR = re.compile(
-    r"ativar\s+(?:protocolo\s+)?ar[iy](?:\s+eleitoral)?",
+    r"ativar\s+(?:protocolo\s+)?ai?ry(?:\s+eleitoral)?",
     re.I,
 )
 _CMD_DESATIVAR = re.compile(
-    r"desativar\s+(?:protocolo\s+)?ar[iy]",
+    r"desativar\s+(?:protocolo\s+)?ai?ry",
     re.I,
 )
 _CMD_ADD_MATRIZ = re.compile(r"adicionar\s+a\s+matriz", re.I)
-_CMD_LEMBRETE = re.compile(r"ar[iy],?\s*lembrete\s+de\s+protocolo", re.I)
+_CMD_LEMBRETE = re.compile(r"ai?ry,?\s*lembrete\s+de\s+protocolo", re.I)
 _CMD_CRIACAO = re.compile(
-    r"ativar\s+ar[iy]\s+cria[cç][aã]o|modo\s+cria[cç][aã]o|pack\s+cria[cç][aã]o",
+    r"ativar\s+ai?ry\s+cria[cç][aã]o|modo\s+cria[cç][aã]o|pack\s+cria[cç][aã]o",
     re.I,
 )
 
