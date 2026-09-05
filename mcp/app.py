@@ -43,6 +43,12 @@ def _startup_gestao_schema() -> None:
     except Exception as exc:
         # Não derruba o boot — endpoints re-tentam no 1º acesso
         print(f"[startup] ensure_schema Gestão: {exc}")
+    try:
+        from mapa.schema import ensure_schema as ensure_mapa
+
+        ensure_mapa()
+    except Exception as exc:
+        print(f"[startup] ensure_schema Mapa: {exc}")
 
 
 @app.exception_handler(Exception)

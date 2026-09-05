@@ -29,6 +29,7 @@ def _ensure() -> None:
     try:
         ensure_schema()
     except Exception as exc:
+        # Mensagem limpa; deadlock raro após advisory lock + retry
         raise HTTPException(503, f"Falha ao preparar Mapa ({exc})") from exc
 
 
