@@ -23,12 +23,14 @@ from gestao.routes import router as gestao_router
 from gestao.routes_plataforma import router as gestao_plataforma_router
 import mcp_packs
 from radar.routes import router as radar_router
+from mapa.routes import router as mapa_router
 
 app = FastAPI(title="Inteligência Eleitoral Brasil", version="0.1")
 app.include_router(apura_router)
 app.include_router(gestao_router)
 app.include_router(gestao_plataforma_router)
 app.include_router(radar_router)
+app.include_router(mapa_router)
 
 
 @app.on_event("startup")

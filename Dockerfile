@@ -13,6 +13,8 @@ COPY sql/patch_gestao.sql /app/sql/patch_gestao.sql
 COPY sql/patch_gestao_v2.sql /app/sql/patch_gestao_v2.sql
 COPY sql/patch_gestao_v3.sql /app/sql/patch_gestao_v3.sql
 COPY sql/patch_gestao_v4.sql /app/sql/patch_gestao_v4.sql
+COPY sql/patch_gestao_v5.sql /app/sql/patch_gestao_v5.sql
+COPY sql/patch_mapa.sql /app/sql/patch_mapa.sql
 COPY sql/patch_partido_linha.sql /app/sql/patch_partido_linha.sql
 COPY sql/patch_acervo.sql /app/sql/patch_acervo.sql
 COPY sql/patch_analitico.sql /app/sql/patch_analitico.sql
@@ -25,6 +27,7 @@ COPY sql/api.sql /app/sql/api.sql
 COPY mcp/radar_client.py /app/radar_client.py
 COPY mcp/clima_motores.py /app/clima_motores.py
 COPY mcp/radar /app/radar
+COPY mcp/mapa /app/mapa
 COPY sql/patch_radar.sql /app/sql/patch_radar.sql
 COPY sql/patch_radar_v2.sql /app/sql/patch_radar_v2.sql
 COPY mcp/seed /app/seed

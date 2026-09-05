@@ -14,7 +14,7 @@ import psycopg
 
 from gestao.store import CARGOS, UFS, get_status
 
-MODULOS_DEFAULT = ("chat", "radar", "clima", "dados_mcp", "gestao_campanha")
+MODULOS_DEFAULT = ("chat", "radar", "clima", "dados_mcp", "gestao_campanha", "mapa")
 
 
 def _slug(nome: str) -> str:

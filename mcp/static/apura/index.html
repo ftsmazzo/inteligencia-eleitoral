@@ -7,6 +7,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <style>
     :root {
       --bg: #eef1f6; --surface: #fff; --surface-2: #f6f8fb; --ink: #0c1222; --muted: #5c6478; --muted-2: #8a92a5;
@@ -295,8 +296,42 @@
       display: inline-block; font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
       background: var(--brand-light); color: var(--brand); margin-bottom: 12px; text-transform: uppercase;
     }
-    #radar-view, #gestao-view, #paineis-view, #mcps-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
-    #radar-view.on, #gestao-view.on, #paineis-view.on, #mcps-view.on { display: flex; }
+    #radar-view, #gestao-view, #paineis-view, #mcps-view, #mapa-view { display: none; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
+    #radar-view.on, #gestao-view.on, #paineis-view.on, #mcps-view.on, #mapa-view.on { display: flex; }
+    #mapa-view .mapa-layout { display: flex; flex: 1; min-height: 0; gap: 0; }
+    #mapa-view .mapa-canvas { flex: 1; min-width: 0; min-height: 320px; }
+    #mapa-canvas { width: 100%; height: 100%; background: #dce6ef; }
+    #mapa-view .mapa-side {
+      width: 320px; max-width: 42vw; border-left: 1px solid var(--line);
+      background: var(--surface); display: flex; flex-direction: column; min-height: 0;
+    }
+    #mapa-view .mapa-side h3 { margin: 0; padding: 16px 16px 8px; font-size: 1rem; }
+    #mapa-view .mapa-side .sub { padding: 0 16px 12px; color: var(--muted); font-size: .85rem; }
+    #mapa-view .mapa-toolbar {
+      display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 12px;
+    }
+    #mapa-view .mapa-toolbar button {
+      border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px;
+      padding: 8px 10px; font: inherit; cursor: pointer; color: var(--ink);
+    }
+    #mapa-view .mapa-toolbar button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+    #mapa-view .mapa-nota-box { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+    #mapa-view .mapa-nota-box textarea {
+      flex: 1; min-height: 120px; resize: vertical; border: 1px solid var(--line);
+      border-radius: 10px; padding: 10px; font: inherit; background: var(--surface-2); color: var(--ink);
+    }
+    #mapa-view .mapa-nota-box .row-actions { display: flex; gap: 8px; }
+    #mapa-view .mapa-nota-box .row-actions button {
+      flex: 1; padding: 10px; border: 0; border-radius: 10px; font: inherit; cursor: pointer;
+    }
+    #mapa-view #mapa-salvar { background: var(--brand); color: #fff; }
+    #mapa-view #mapa-limpar-nota { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+    #mapa-view .mapa-caravana-list { padding: 0 16px 16px; overflow: auto; max-height: 180px; font-size: .85rem; }
+    #mapa-view .mapa-caravana-list .item {
+      border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px;
+      display: flex; justify-content: space-between; gap: 8px; align-items: center;
+    }
+    #mapa-view .mapa-err { color: var(--danger); padding: 0 16px 8px; font-size: .85rem; }
     .mcps-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 48px; }
     .mcps-hero h3 { font-family: Fraunces, serif; font-size: 1.55rem; color: var(--brand); margin-bottom: 6px; }
     .mcps-hero p { color: var(--muted); max-width: 640px; line-height: 1.5; margin-bottom: 8px; }
@@ -969,6 +1004,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M12 12v9"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
           Radar
         </button>
+        <button type="button" id="btn-view-mapa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l-6-3V4l6 3 6-3 6 3v11l-6-3-6 3z"/><path d="M9 7v11M15 4v11"/></svg>
+          Mapa
+        </button>
         <button type="button" id="btn-view-paineis">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
           Painéis
@@ -1376,6 +1415,38 @@
         <div class="paineis-body" id="paineis-body"><p class="hint">Carregando…</p></div>
       </div>
 
+      <div id="mapa-view">
+        <div class="ambiente-banner" id="banner-mapa" style="margin:16px 20px 0">Ambiente em configuração — complete a <a data-goto-gestao>Gestão</a>.</div>
+        <div class="workspace-lock" id="lock-mapa">Entre em uma campanha na <a data-goto-gestao>Gestão</a> para usar o Mapa.</div>
+        <div class="mapa-layout">
+          <div class="mapa-canvas"><div id="mapa-canvas"></div></div>
+          <aside class="mapa-side">
+            <h3>Mapa · Amapá</h3>
+            <div class="sub" id="mapa-sel">Clique em uma cidade para notas. Modo carreata: adicione pontos na ordem.</div>
+            <div class="mapa-toolbar">
+              <button type="button" class="on" id="mapa-modo-nota">Notas</button>
+              <button type="button" id="mapa-modo-caravana">Carreata</button>
+              <button type="button" id="mapa-add-ponto" class="hidden">+ Ponto</button>
+              <button type="button" id="mapa-salvar-caravana" class="hidden">Salvar rota</button>
+              <button type="button" id="mapa-limpar-pontos" class="hidden">Limpar pontos</button>
+            </div>
+            <p class="mapa-err" id="mapa-err"></p>
+            <div class="mapa-nota-box" id="mapa-nota-panel">
+              <strong id="mapa-cidade-nome">Nenhuma cidade</strong>
+              <textarea id="mapa-nota-texto" placeholder="Anotações da cidade (mobilização, risco, contato…)"></textarea>
+              <div class="row-actions">
+                <button type="button" id="mapa-salvar">Salvar nota</button>
+                <button type="button" id="mapa-limpar-nota">Apagar</button>
+              </div>
+            </div>
+            <div class="mapa-caravana-list hidden" id="mapa-caravana-panel">
+              <div id="mapa-pontos-live"></div>
+              <div id="mapa-caravanas-salvas"></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
       <div id="mcps-view">
         <div class="mcps-wrap" id="mcps-body">
           <p class="hint">Carregando MCPs da campanha…</p>
@@ -1423,6 +1494,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="/apura/assets/painel.js"></script>
   <script>
     const API = '/apura/api';
@@ -1665,11 +1737,14 @@
       const lock = !temCampanhaAtiva();
       const lc = $('lock-chat');
       const lr = $('lock-radar');
+      const lm = $('lock-mapa');
       if (lc) lc.classList.toggle('on', lock);
       if (lr) lr.classList.toggle('on', lock);
+      if (lm) lm.classList.toggle('on', lock);
       if (lock) {
         if ($('banner-chat')) $('banner-chat').classList.remove('on');
         if ($('banner-radar')) $('banner-radar').classList.remove('on');
+        if ($('banner-mapa')) $('banner-mapa').classList.remove('on');
       }
     }
 
@@ -2470,7 +2545,7 @@
     let candCache = [];
 
     function setView(wh) {
-      if ((wh === 'chat' || wh === 'radar' || wh === 'paineis' || wh === 'mcps') && !temCampanhaAtiva()) {
+      if ((wh === 'chat' || wh === 'radar' || wh === 'mapa' || wh === 'paineis' || wh === 'mcps') && !temCampanhaAtiva()) {
         syncWorkspaceLock();
         wh = 'gestao';
         if (platCtx && platCtx.is_super_gestor) {
@@ -2483,27 +2558,32 @@
       }
       const chat = wh === 'chat';
       const radar = wh === 'radar';
+      const mapa = wh === 'mapa';
       const gestao = wh === 'gestao';
       const paineis = wh === 'paineis';
       const mcps = wh === 'mcps';
       if ($('btn-view-chat')) $('btn-view-chat').classList.toggle('on', chat);
       if ($('btn-view-radar')) $('btn-view-radar').classList.toggle('on', radar);
+      if ($('btn-view-mapa')) $('btn-view-mapa').classList.toggle('on', mapa);
       if ($('btn-view-gestao')) $('btn-view-gestao').classList.toggle('on', gestao && shellMode === 'workspace');
       if ($('btn-view-plataforma')) $('btn-view-plataforma').classList.toggle('on', gestao && shellMode === 'plataforma');
       if ($('btn-view-paineis')) $('btn-view-paineis').classList.toggle('on', paineis);
       if ($('btn-view-mcps')) $('btn-view-mcps').classList.toggle('on', mcps);
       $('chat-view').classList.toggle('off', !chat);
       $('radar-view').classList.toggle('on', radar);
+      if ($('mapa-view')) $('mapa-view').classList.toggle('on', mapa);
       $('gestao-view').classList.toggle('on', gestao);
       $('paineis-view').classList.toggle('on', paineis);
       $('mcps-view').classList.toggle('on', mcps);
       if (radar && temCampanhaAtiva()) loadRadarMeta().then(() => showRadarTab(radarTab));
+      if (mapa && temCampanhaAtiva()) loadMapa();
       if (gestao) loadGestao();
       if (paineis && temCampanhaAtiva()) loadPainel(painelTab);
       if (mcps && temCampanhaAtiva()) loadMcps();
     }
     $('btn-view-chat').addEventListener('click', () => setView('chat'));
     $('btn-view-radar').addEventListener('click', () => setView('radar'));
+    if ($('btn-view-mapa')) $('btn-view-mapa').addEventListener('click', () => setView('mapa'));
     $('btn-view-gestao').addEventListener('click', () => {
       if (shellMode === 'plataforma') return;
       gestaoUiMode = 'campanha';
@@ -4196,6 +4276,223 @@
       bindSort();
       mkChart('ch-scatter', { type: 'scatter', data: { datasets: [{ label: 'Municípios', data: scatter.map(r => ({ x: r.nosso_2022_pct, y: r.taxa_extrema_pct, mun: r.municipio })), backgroundColor: C.brand }] }, options: chartOpts({ plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => (c.raw.mun || '') + ': nosso ' + c.raw.x + '% · extrema ' + c.raw.y + '%' } } }, scales: { x: { title: { display: true, text: 'Nosso % 2022' }, min: 0, max: 100 }, y: { title: { display: true, text: 'Extrema pobreza CadÚnico %' }, min: 0 } } }) });
       mkChart('ch-dor', { type: 'bar', data: { labels: topDor.map(r => r.municipio), datasets: [{ label: 'Extrema pobreza %', data: topDor.map(r => r.taxa_extrema_pct || 0), backgroundColor: C.danger }] }, options: chartOpts({ indexAxis: 'y', plugins: { legend: { display: false } } }) });
+    }
+
+    // ——— Mapa Amapá ———
+    let mapaLeaflet = null;
+    let mapaMarkers = [];
+    let mapaLayerRota = null;
+    let mapaMunis = [];
+    let mapaNotas = {};
+    let mapaModo = 'nota';
+    let mapaSel = null;
+    let mapaPontosDraft = [];
+
+    function mapaSetErr(msg) {
+      const el = $('mapa-err');
+      if (el) el.textContent = msg || '';
+    }
+
+    function mapaSyncModoUi() {
+      const nota = mapaModo === 'nota';
+      if ($('mapa-modo-nota')) $('mapa-modo-nota').classList.toggle('on', nota);
+      if ($('mapa-modo-caravana')) $('mapa-modo-caravana').classList.toggle('on', !nota);
+      if ($('mapa-nota-panel')) $('mapa-nota-panel').classList.toggle('hidden', !nota);
+      if ($('mapa-caravana-panel')) $('mapa-caravana-panel').classList.toggle('hidden', nota);
+      ['mapa-add-ponto', 'mapa-salvar-caravana', 'mapa-limpar-pontos'].forEach(id => {
+        if ($(id)) $(id).classList.toggle('hidden', nota);
+      });
+      if ($('mapa-sel')) {
+        $('mapa-sel').textContent = nota
+          ? 'Clique em uma cidade para notas. Tudo fica salvo na campanha.'
+          : 'Clique nas cidades na ordem da carreata, depois Salvar rota.';
+      }
+    }
+
+    function mapaRenderPontosLive() {
+      const box = $('mapa-pontos-live');
+      if (!box) return;
+      if (!mapaPontosDraft.length) {
+        box.innerHTML = '<p class="hint">Nenhum ponto ainda.</p>';
+        return;
+      }
+      box.innerHTML = '<b>Rota em montagem</b>' + mapaPontosDraft.map((p, i) =>
+        '<div class="item"><span>' + (i + 1) + '. ' + esc(p.nome || p.cod_ibge) + '</span></div>'
+      ).join('');
+    }
+
+    async function mapaLoadCaravanas() {
+      const box = $('mapa-caravanas-salvas');
+      if (!box) return;
+      try {
+        const d = await api('/mapa/caravanas');
+        const itens = d.linhas || [];
+        if (!itens.length) {
+          box.innerHTML = '<p class="hint" style="margin-top:8px">Nenhuma carreata salva.</p>';
+          return;
+        }
+        box.innerHTML = '<b style="display:block;margin:8px 0">Salvas</b>' + itens.map(c =>
+          '<div class="item" data-cid="' + esc(c.id) + '">' +
+          '<span>' + esc(c.nome) + ' · ' + ((c.pontos || []).length) + ' pts</span>' +
+          '<button type="button" data-del="' + esc(c.id) + '">Apagar</button></div>'
+        ).join('');
+        box.querySelectorAll('[data-del]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              await api('/mapa/caravanas/' + btn.getAttribute('data-del'), { method: 'DELETE' });
+              await mapaLoadCaravanas();
+            } catch (e) { mapaSetErr(e.message); }
+          });
+        });
+      } catch (e) {
+        box.innerHTML = '<p class="hint">' + esc(e.message) + '</p>';
+      }
+    }
+
+    function mapaAbrirCidade(m) {
+      mapaSel = m;
+      if ($('mapa-cidade-nome')) $('mapa-cidade-nome').textContent = m.nome + ' · ' + m.cod_ibge;
+      const nota = mapaNotas[m.cod_ibge];
+      if ($('mapa-nota-texto')) $('mapa-nota-texto').value = nota ? (nota.texto || '') : '';
+      if (mapaModo === 'caravana') {
+        const exists = mapaPontosDraft.some(p => p.cod_ibge === m.cod_ibge);
+        if (!exists) {
+          mapaPontosDraft.push({
+            cod_ibge: m.cod_ibge,
+            nome: m.nome,
+            lat: m.lat,
+            lng: m.lng,
+            ordem: mapaPontosDraft.length,
+          });
+          mapaRenderPontosLive();
+          mapaDesenharDraft();
+        }
+      }
+    }
+
+    function mapaDesenharDraft() {
+      if (!mapaLeaflet) return;
+      if (mapaLayerRota) {
+        mapaLeaflet.removeLayer(mapaLayerRota);
+        mapaLayerRota = null;
+      }
+      if (mapaPontosDraft.length >= 2) {
+        const latlngs = mapaPontosDraft.map(p => [p.lat, p.lng]);
+        mapaLayerRota = L.polyline(latlngs, { color: '#c98a1c', weight: 4, dashArray: '6 8' }).addTo(mapaLeaflet);
+      }
+    }
+
+    async function loadMapa() {
+      mapaSetErr('');
+      if (typeof L === 'undefined') {
+        mapaSetErr('Leaflet não carregou — verifique a rede/CDN.');
+        return;
+      }
+      try {
+        const [mun, notas] = await Promise.all([
+          api('/mapa/municipios?uf=AP'),
+          api('/mapa/notas'),
+        ]);
+        mapaMunis = mun.linhas || [];
+        mapaNotas = {};
+        (notas.linhas || []).forEach(n => { mapaNotas[n.cod_ibge] = n; });
+        if (!mapaLeaflet) {
+          mapaLeaflet = L.map('mapa-canvas').setView([1.0, -51.5], 7);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap',
+          }).addTo(mapaLeaflet);
+        }
+        mapaMarkers.forEach(mk => mapaLeaflet.removeLayer(mk));
+        mapaMarkers = [];
+        mapaMunis.forEach(m => {
+          const temNota = !!(mapaNotas[m.cod_ibge] && (mapaNotas[m.cod_ibge].texto || '').trim());
+          const mk = L.circleMarker([m.lat, m.lng], {
+            radius: temNota ? 9 : 7,
+            color: temNota ? '#0d4f4a' : '#5c6478',
+            fillColor: temNota ? '#12665f' : '#c5cdd8',
+            fillOpacity: 0.9,
+            weight: 2,
+          }).addTo(mapaLeaflet);
+          mk.bindTooltip(m.nome + (temNota ? ' · com nota' : ''));
+          mk.on('click', () => mapaAbrirCidade(m));
+          mapaMarkers.push(mk);
+        });
+        if (mapaMunis.length) {
+          const group = L.featureGroup(mapaMarkers);
+          mapaLeaflet.fitBounds(group.getBounds().pad(0.2));
+        }
+        setTimeout(() => mapaLeaflet.invalidateSize(), 80);
+        mapaSyncModoUi();
+        mapaRenderPontosLive();
+        await mapaLoadCaravanas();
+      } catch (e) {
+        mapaSetErr(e.message || String(e));
+      }
+    }
+
+    if ($('mapa-modo-nota')) {
+      $('mapa-modo-nota').addEventListener('click', () => { mapaModo = 'nota'; mapaSyncModoUi(); });
+    }
+    if ($('mapa-modo-caravana')) {
+      $('mapa-modo-caravana').addEventListener('click', () => { mapaModo = 'caravana'; mapaSyncModoUi(); });
+    }
+    if ($('mapa-salvar')) {
+      $('mapa-salvar').addEventListener('click', async () => {
+        if (!mapaSel) { mapaSetErr('Selecione uma cidade no mapa.'); return; }
+        try {
+          const d = await api('/mapa/notas/' + mapaSel.cod_ibge, {
+            method: 'PUT',
+            body: JSON.stringify({ texto: $('mapa-nota-texto').value || '' }),
+          });
+          mapaNotas[mapaSel.cod_ibge] = d.item;
+          mapaSetErr('');
+          await loadMapa();
+        } catch (e) { mapaSetErr(e.message); }
+      });
+    }
+    if ($('mapa-limpar-nota')) {
+      $('mapa-limpar-nota').addEventListener('click', async () => {
+        if (!mapaSel) return;
+        try {
+          await api('/mapa/notas/' + mapaSel.cod_ibge, { method: 'DELETE' });
+          delete mapaNotas[mapaSel.cod_ibge];
+          if ($('mapa-nota-texto')) $('mapa-nota-texto').value = '';
+          await loadMapa();
+        } catch (e) { mapaSetErr(e.message); }
+      });
+    }
+    if ($('mapa-limpar-pontos')) {
+      $('mapa-limpar-pontos').addEventListener('click', () => {
+        mapaPontosDraft = [];
+        mapaRenderPontosLive();
+        mapaDesenharDraft();
+      });
+    }
+    if ($('mapa-salvar-caravana')) {
+      $('mapa-salvar-caravana').addEventListener('click', async () => {
+        if (mapaPontosDraft.length < 2) {
+          mapaSetErr('Precisa de pelo menos 2 pontos.');
+          return;
+        }
+        try {
+          const nome = window.prompt('Nome da carreata', 'Carreata ' + new Date().toLocaleDateString('pt-BR')) || 'Carreata';
+          const d = await api('/mapa/caravanas', {
+            method: 'POST',
+            body: JSON.stringify({ nome, pontos: mapaPontosDraft, calcular_rota: true }),
+          });
+          if (d.item && d.item.rota_geojson && mapaLeaflet) {
+            if (mapaLayerRota) mapaLeaflet.removeLayer(mapaLayerRota);
+            mapaLayerRota = L.geoJSON(d.item.rota_geojson, {
+              style: { color: '#0d4f4a', weight: 5 },
+            }).addTo(mapaLeaflet);
+          }
+          mapaPontosDraft = [];
+          mapaRenderPontosLive();
+          await mapaLoadCaravanas();
+          mapaSetErr('');
+        } catch (e) { mapaSetErr(e.message); }
+      });
     }
 
     if (jwt) {
