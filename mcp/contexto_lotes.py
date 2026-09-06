@@ -711,16 +711,75 @@ _IDEB_PACKS = [
 ]
 
 
+def _load_ideb_from_seed(conn: psycopg.Connection, id_ind: str) -> int:
+    """Carga IDEB a partir de mcp/seed/<id>.csv.gz (evita bloqueio INEP na VPS)."""
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / f"{id_ind}.csv.gz"
+    if not path.exists():
+        return 0
+    cods = {r[0] for r in conn.execute("SELECT cod_ibge FROM ref.municipio")}
+    rows: list[tuple] = []
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                cod = int(rec["cod_ibge"])
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if cod not in cods:
+                continue
+            rows.append((ano, cod, id_ind, val, "inep_ideb_seed"))
+    if not rows:
+        return 0
+    _upsert_indicador_mun(
+        conn, id_ind, rows, "br_mun_educacao_ideb", "L7", "educacao",
+        "INEP IDEB 2021 (seed)", f"rede Pública; {id_ind}; seed gzip; ausência ≠ zero",
+        online_min=3000,
+    )
+    return len(rows)
+
+
+def _ideb_col_index(header: tuple) -> int | None:
+    for i, h in enumerate(header):
+        hs = str(h or "").upper()
+        if "OBSERVADO" in hs:
+            return i
+        if "IDEB" in hs and "META" not in hs:
+            return i
+    # fallback: última coluna não-nula do header
+    for i in range(len(header) - 1, -1, -1):
+        if header[i]:
+            return i
+    return None
+
+
 def _load_ideb_mun(conn: psycopg.Connection) -> None:
     print("[lotes] IDEB mun…")
+    total = 0
+    # 1) seed local (preferencial — funciona na VPS sem INEP)
+    for id_ind, _url, _member in _IDEB_PACKS:
+        n = _load_ideb_from_seed(conn, id_ind)
+        if n:
+            print(f"  {id_ind} seed ok {n}")
+            total += n
+            conn.commit()
+    if total >= 3000:
+        print(f"[lotes] IDEB via seed total={total}")
+        return
+
+    # 2) fallback download INEP
     try:
         from openpyxl import load_workbook
     except Exception as exc:
-        raise RuntimeError(f"openpyxl indisponível: {exc}") from exc
+        raise RuntimeError(f"openpyxl indisponível e seed insuficiente: {exc}") from exc
     cods = {r[0] for r in conn.execute("SELECT cod_ibge FROM ref.municipio")}
-    total = 0
     for id_ind, url, member in _IDEB_PACKS:
-        print(f"  {id_ind}…")
+        if _count_ind(conn, id_ind, "mun") >= 3000:
+            continue
+        print(f"  {id_ind} download…")
         blob = _fetch_timeout(url, timeout=180)
         with zipfile.ZipFile(io.BytesIO(blob)) as zf:
             names = [n for n in zf.namelist() if n.lower().endswith(".xlsx")]
@@ -731,17 +790,16 @@ def _load_ideb_mun(conn: psycopg.Connection) -> None:
         wb = load_workbook(io.BytesIO(xdata), read_only=True, data_only=True)
         ws = wb.active
         rows: list[tuple] = []
-        header_seen = False
+        ideb_i: int | None = None
         for row in ws.iter_rows(values_only=True):
             if not row or not row[0]:
                 continue
             if row[0] == "SG_UF":
-                header_seen = True
+                ideb_i = _ideb_col_index(row)
                 continue
-            if not header_seen:
+            if ideb_i is None:
                 continue
-            rede = str(row[3] or "").strip()
-            if rede != "Pública":
+            if str(row[3] or "").strip() != "Pública":
                 continue
             try:
                 cod = int(row[1])
@@ -749,8 +807,8 @@ def _load_ideb_mun(conn: psycopg.Connection) -> None:
                 continue
             if cod not in cods:
                 continue
-            ideb = row[14] if len(row) > 14 else None
-            if ideb in (None, "", "-"):
+            ideb = row[ideb_i] if ideb_i < len(row) else None
+            if ideb in (None, "", "-", "ND"):
                 continue
             try:
                 val = float(str(ideb).replace(",", "."))
@@ -772,9 +830,57 @@ def _load_ideb_mun(conn: psycopg.Connection) -> None:
 _SIGA_RESOURCE = "11ec447d-698d-4ab8-977f-b424d5deee6a"
 
 
+def _load_siga_from_seed(conn: psycopg.Connection) -> int:
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / "energia_potencia_siga.csv.gz"
+    if not path.exists():
+        return 0
+    idx = _mun_index(conn)
+    agg: dict[int, float] = defaultdict(float)
+    unmatched = 0
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            uf = str(rec.get("sg_uf") or "").upper()
+            nome = str(rec.get("nome_mun") or "")
+            try:
+                pot = float(rec.get("potencia_kw") or 0)
+            except ValueError:
+                continue
+            cod = idx.get((uf, _fold_nome(nome)))
+            if cod is None:
+                unmatched += 1
+                continue
+            agg[cod] += pot
+    if not agg:
+        return 0
+    rows = [(2026, cod, "energia_potencia_kw", float(v), "aneel_siga_seed") for cod, v in agg.items()]
+    _upsert_indicador_mun(
+        conn, "energia_potencia_kw", rows, "br_mun_energia_potencia_instalada", "L3", "energia",
+        "ANEEL SIGA (seed)", f"potência fiscalizada kW; unmatched={unmatched}; ausência ≠ zero",
+        online_min=500,
+    )
+    _upsert_status(
+        conn, "br_mun_energia_consumo", "L3", "energia", "parcial", "municipio", None, None,
+        "EPE", "fila CSV EPE consumo; potência SIGA já online",
+        preserve_better=True,
+    )
+    _upsert_status(
+        conn, "br_mun_energia_geracao_distribuida", "L3", "energia", "parcial", "municipio", None, None,
+        "ANEEL GD", "zip MMGD ~100MB; staging agregado na fila",
+        preserve_better=True,
+    )
+    print(f"[lotes] SIGA seed ok mun={len(rows)} unmatched={unmatched}")
+    return len(rows)
+
+
 def _load_siga_potencia_mun(conn: psycopg.Connection) -> None:
     """ANEEL SIGA — potência fiscalizada (kW) agregada por município (usinas em Operação)."""
     print("[lotes] ANEEL SIGA potência…")
+    n = _load_siga_from_seed(conn)
+    if n >= 500:
+        return
     idx = _mun_index(conn)
     agg: dict[int, float] = defaultdict(float)
     unmatched = 0
@@ -833,14 +939,15 @@ def _load_siga_potencia_mun(conn: psycopg.Connection) -> None:
         "ANEEL SIGA", f"potência fiscalizada kW; unmatched={unmatched}; ausência ≠ zero",
         online_min=500,
     )
-    # consumo / GD / curtailment ainda na fila (arquivos pesados ou outra fonte)
     _upsert_status(
         conn, "br_mun_energia_consumo", "L3", "energia", "parcial", "municipio", None, None,
         "EPE", "fila CSV EPE consumo; potência SIGA já online",
+        preserve_better=True,
     )
     _upsert_status(
         conn, "br_mun_energia_geracao_distribuida", "L3", "energia", "parcial", "municipio", None, None,
         "ANEEL GD", "zip MMGD ~100MB; staging agregado na fila",
+        preserve_better=True,
     )
     print(f"[lotes] SIGA ok mun={len(rows)} unmatched={unmatched}")
 
@@ -905,6 +1012,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("pia", _load_pia_uf, "pia_unidades_locais", "uf", 20),
         ("pib_uf", _load_pib_uf, "pib_uf_mil", "uf", 20),
         ("pop_uf", _load_pop_uf_agregados, "pop_uf_estimativa", "uf", 20),
+        ("ideb", _load_ideb_mun, "educ_ideb_ai_pub", "mun", 3000),
+        ("siga", _load_siga_potencia_mun, "energia_potencia_kw", "mun", 500),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -914,23 +1023,16 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
             fn(conn)
         except Exception as exc:
             print(f"[lotes] sync {label} fail {exc}")
-            _upsert_status(
-                conn,
-                {
-                    "pnad": "br_uf_pnad",
-                    "pia": "br_uf_industria_pia",
-                    "pib_uf": "br_uf_industria_contas_regionais",
-                    "pop_uf": "br_uf_populacao",
-                }[label],
-                {"pnad": "L1", "pia": "L1", "pib_uf": "L1", "pop_uf": "L6"}[label],
-                {"pnad": "economia", "pia": "industria", "pib_uf": "industria", "pop_uf": "demografia"}[label],
-                "erro",
-                "uf",
-                None,
-                None,
-                "boot-sync",
-                str(exc)[:200],
-            )
+            id_map = {
+                "pnad": ("br_uf_pnad", "L1", "economia", "uf"),
+                "pia": ("br_uf_industria_pia", "L1", "industria", "uf"),
+                "pib_uf": ("br_uf_industria_contas_regionais", "L1", "industria", "uf"),
+                "pop_uf": ("br_uf_populacao", "L6", "demografia", "uf"),
+                "ideb": ("br_mun_educacao_ideb", "L7", "educacao", "municipio"),
+                "siga": ("br_mun_energia_potencia_instalada", "L3", "energia", "municipio"),
+            }
+            id_br, lote, tema, gran = id_map[label]
+            _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
 
 
 def _mark_remaining_explicit(conn: psycopg.Connection) -> None:
