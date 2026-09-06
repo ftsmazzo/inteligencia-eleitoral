@@ -4,6 +4,7 @@ Tudo aqui é nivel=indicio ou artefato — nunca cifra TSE.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -14,7 +15,8 @@ import httpx
 import psycopg
 
 _OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
-_OPENROUTER_IMG = "https://openrouter.ai/api/v1/chat/completions"
+_OPENROUTER_IMAGES = "https://openrouter.ai/api/v1/images"
+_MAX_B64 = 5_500_000  # ~4 MB arquivo
 
 
 def _key() -> str:
@@ -105,20 +107,52 @@ async def pesquisar_web(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _strip_b64(raw: str) -> tuple[str, str | None]:
+    """Retorna (base64 puro, mime se data-URL)."""
+    s = (raw or "").strip()
+    mime = None
+    if s.startswith("data:") and ";base64," in s:
+        head, _, b64 = s.partition(";base64,")
+        mime = head[5:] if head.startswith("data:") else None
+        return b64.strip(), mime
+    return s, None
+
+
+def _audio_format(mime: str | None, nome: str = "") -> str:
+    m = (mime or "").lower()
+    n = (nome or "").lower()
+    for fmt, keys in (
+        ("mp3", ("mpeg", "mp3")),
+        ("wav", ("wav", "wave")),
+        ("ogg", ("ogg", "opus")),
+        ("m4a", ("m4a", "mp4", "aac")),
+        ("webm", ("webm",)),
+        ("flac", ("flac",)),
+    ):
+        if any(k in m for k in keys) or any(n.endswith(f".{k}") for k in keys):
+            return fmt
+    return "mp3"
+
+
 async def ler_pdf(params: dict[str, Any]) -> dict[str, Any]:
-    """Lê PDF via OpenRouter: file + plugin mistral-ocr + Ministral (ou override)."""
+    """Lê PDF via OpenRouter: file + plugin mistral-ocr + Ministral (URL, data-URL ou base64)."""
     from apura import modelos as catalogo_modelos
 
     url = (params.get("url") or "").strip()
     texto = (params.get("texto") or "").strip()
+    file_b64 = (params.get("file_base64") or params.get("data_base64") or "").strip()
     pergunta = (params.get("pergunta") or "Resuma os pontos relevantes para a campanha.").strip()
-    if not url and not texto:
-        return {"status": "vazio", "mensagem": "informe url ou texto do PDF", "nivel": "indicio"}
+    if not url and not texto and not file_b64:
+        return {
+            "status": "vazio",
+            "mensagem": "informe url, anexo (file_base64) ou texto do PDF",
+            "nivel": "indicio",
+        }
 
     model = catalogo_modelos.modelo_pdf()
     engine = catalogo_modelos.pdf_engine()
 
-    if texto and not url:
+    if texto and not url and not file_b64:
         body: dict[str, Any] = {
             "model": model,
             "messages": [
@@ -131,8 +165,24 @@ async def ler_pdf(params: dict[str, Any]) -> dict[str, Any]:
             "temperature": 0.2,
         }
     else:
-        # API de arquivo OpenRouter — OCR Mistral extrai texto/imagens do PDF
-        filename = (params.get("filename") or url.rsplit("/", 1)[-1] or "documento.pdf")[:120]
+        filename = (params.get("filename") or params.get("nome") or "").strip()
+        if file_b64:
+            b64, mime = _strip_b64(file_b64)
+            if len(b64) > _MAX_B64:
+                return {
+                    "status": "vazio",
+                    "mensagem": "PDF anexo acima do limite (~4 MB)",
+                    "nivel": "indicio",
+                }
+            mime = mime or (params.get("mime") or "application/pdf")
+            file_data = f"data:{mime};base64,{b64}"
+            if not filename:
+                filename = "anexo.pdf"
+        else:
+            file_data = url
+            if not filename:
+                filename = url.rsplit("/", 1)[-1] or "documento.pdf"
+        filename = filename[:120]
         if not filename.lower().endswith(".pdf"):
             filename = f"{filename}.pdf"
         body = {
@@ -152,10 +202,7 @@ async def ler_pdf(params: dict[str, Any]) -> dict[str, Any]:
                         {"type": "text", "text": pergunta},
                         {
                             "type": "file",
-                            "file": {
-                                "filename": filename,
-                                "file_data": url,
-                            },
+                            "file": {"filename": filename, "file_data": file_data},
                         },
                     ],
                 },
@@ -187,9 +234,20 @@ async def ler_pdf(params: dict[str, Any]) -> dict[str, Any]:
 
 async def ler_imagem(params: dict[str, Any]) -> dict[str, Any]:
     url = (params.get("url") or params.get("image_url") or "").strip()
+    file_b64 = (params.get("file_base64") or params.get("data_base64") or "").strip()
     pergunta = (params.get("pergunta") or "Descreva o que é relevante para a campanha.").strip()
+    if file_b64 and not url:
+        b64, mime = _strip_b64(file_b64)
+        if len(b64) > _MAX_B64:
+            return {"status": "vazio", "mensagem": "imagem acima do limite (~4 MB)", "nivel": "indicio"}
+        mime = mime or (params.get("mime") or "image/jpeg")
+        url = f"data:{mime};base64,{b64}"
     if not url:
-        return {"status": "vazio", "mensagem": "url da imagem obrigatória", "nivel": "indicio"}
+        return {
+            "status": "vazio",
+            "mensagem": "url ou anexo (file_base64) da imagem obrigatório",
+            "nivel": "indicio",
+        }
     body = {
         "model": _model_vision(),
         "messages": [
@@ -222,33 +280,88 @@ async def ler_imagem(params: dict[str, Any]) -> dict[str, Any]:
 
 
 async def transcrever_audio(params: dict[str, Any]) -> dict[str, Any]:
+    """Transcreve áudio via input_audio (base64) ou baixa URL e envia em base64."""
     from apura import modelos as catalogo_modelos
 
     url = (params.get("url") or "").strip()
-    if not url:
-        return {"status": "vazio", "mensagem": "url do áudio obrigatória", "nivel": "indicio"}
-    # OpenRouter não unifica whisper; tentamos modelo multimodal com URL
+    file_b64 = (params.get("file_base64") or params.get("data_base64") or "").strip()
+    mime = (params.get("mime") or "").strip() or None
+    nome = (params.get("filename") or params.get("nome") or "").strip()
+    pergunta = (
+        params.get("pergunta")
+        or "Transcreva em português BR e resuma pontos úteis para campanha. Se não ouvir, diga lacuna."
+    ).strip()
+
+    b64 = ""
+    if file_b64:
+        b64, mime_from = _strip_b64(file_b64)
+        mime = mime or mime_from
+    elif url.startswith("data:") and ";base64," in url:
+        b64, mime_from = _strip_b64(url)
+        mime = mime or mime_from
+    elif url.startswith("http://") or url.startswith("https://"):
+        try:
+            async with httpx.AsyncClient(timeout=90.0, follow_redirects=True) as client:
+                ar = await client.get(url)
+            if ar.status_code >= 400:
+                return {
+                    "status": "vazio",
+                    "mensagem": f"não foi possível baixar o áudio ({ar.status_code})",
+                    "nivel": "indicio",
+                }
+            raw = ar.content
+            if len(raw) > 4_000_000:
+                return {
+                    "status": "vazio",
+                    "mensagem": "áudio remoto acima de 4 MB",
+                    "nivel": "indicio",
+                }
+            b64 = base64.b64encode(raw).decode("ascii")
+            mime = mime or (ar.headers.get("content-type") or "").split(";")[0].strip() or None
+        except Exception as exc:
+            return {
+                "status": "vazio",
+                "mensagem": f"falha ao baixar áudio: {exc}",
+                "nivel": "indicio",
+            }
+    else:
+        return {
+            "status": "vazio",
+            "mensagem": "informe anexo (file_base64) ou url http(s) do áudio",
+            "nivel": "indicio",
+        }
+
+    if not b64 or len(b64) > _MAX_B64:
+        return {
+            "status": "vazio",
+            "mensagem": "áudio vazio ou acima do limite (~4 MB)",
+            "nivel": "indicio",
+        }
+
+    fmt = _audio_format(mime, nome)
+    model = catalogo_modelos.modelo_audio()
     body = {
-        "model": catalogo_modelos.modelo_audio(),
+        "model": model,
         "messages": [
             {
                 "role": "user",
-                "content": (
-                    f"Transcreva o áudio em {url} (português BR se possível) e resuma "
-                    "pontos úteis para campanha. Se não conseguir ouvir, diga lacuna."
-                ),
+                "content": [
+                    {"type": "text", "text": pergunta},
+                    {
+                        "type": "input_audio",
+                        "input_audio": {"data": b64, "format": fmt},
+                    },
+                ],
             }
         ],
+        "temperature": 0.1,
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=180.0) as client:
         r = await client.post(_OPENROUTER, headers=_headers(), json=body)
     if r.status_code >= 400:
         return {
             "status": "vazio",
-            "mensagem": (
-                "transcrição indisponível neste ambiente — envie o texto do áudio "
-                f"ou configure APURA_AUDIO_MODEL ({r.status_code})"
-            ),
+            "mensagem": f"transcrição indisponível ({r.status_code})",
             "nivel": "indicio",
             "nota_metodologica": (r.text or "")[:400],
         }
@@ -256,95 +369,140 @@ async def transcrever_audio(params: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": "ok" if text.strip() else "vazio",
         "nivel": "indicio",
-        "itens": [{"resumo": text[:8000], "fonte": "audio"}],
-        "nota_metodologica": "Áudio = indício.",
+        "itens": [{"resumo": text[:8000], "fonte": f"audio:{model}", "format": fmt}],
+        "nota_metodologica": "Áudio = indício (input_audio OpenRouter).",
     }
+
+
+def _extrair_imagem_resposta(data: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Retorna (data_url ou https url, nota)."""
+    items = data.get("data")
+    if isinstance(items, list) and items:
+        first = items[0] if isinstance(items[0], dict) else {}
+        b64 = first.get("b64_json") or first.get("b64")
+        if b64:
+            mime = first.get("mime_type") or "image/png"
+            return f"data:{mime};base64,{b64}", "images_api"
+        u = first.get("url")
+        if u:
+            return str(u), "images_api_url"
+    # fallback chat modalities
+    msg = ((data.get("choices") or [{}])[0].get("message") or {}) if data.get("choices") else {}
+    images = msg.get("images") or []
+    if images and isinstance(images[0], dict):
+        iu = (images[0].get("image_url") or {}).get("url") or images[0].get("url")
+        if iu:
+            return str(iu), "chat_modalities"
+    content = msg.get("content")
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and part.get("type") in ("image_url", "output_image"):
+                iu = (part.get("image_url") or {}).get("url") or part.get("url")
+                if iu:
+                    return str(iu), "chat_content"
+    return None, None
 
 
 async def gerar_imagem(params: dict[str, Any]) -> dict[str, Any]:
+    """Gera imagem real via OpenRouter POST /api/v1/images."""
     prompt = (params.get("prompt") or "").strip()
     if not prompt:
         return {"status": "vazio", "mensagem": "prompt obrigatório", "nivel": "artefato"}
-    ctx = (params.get("contexto_campanha") or "")[:800]
-    full = prompt if not ctx else f"{prompt}\n\nContexto campanha: {ctx}"
-    body = {
-        "model": _model_image(),
-        "messages": [
-            {
-                "role": "user",
-                "content": (
-                    "Gere uma descrição detalhada de imagem de campanha (storyboard) "
-                    "pronta para produção, e se o modelo suportar URL de imagem, inclua. "
-                    f"Pedido: {full}"
-                ),
-            }
-        ],
+    ctx = (params.get("contexto_campanha") or "")[:600]
+    full = prompt if not ctx else f"{prompt}\n\nContexto de campanha (não invente cifra): {ctx}"
+    aspect = (params.get("aspect_ratio") or "16:9").strip()
+    model = _model_image()
+    body: dict[str, Any] = {
+        "model": model,
+        "prompt": full[:4000],
+        "aspect_ratio": aspect,
+        "n": 1,
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        r = await client.post(_OPENROUTER_IMG, headers=_headers(), json=body)
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        r = await client.post(_OPENROUTER_IMAGES, headers=_headers(), json=body)
     if r.status_code >= 400:
+        # fallback: storyboard texto para não quebrar fluxo
+        story = {
+            "model": _model_vision(),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        "A geração de imagem falhou. Entregue um storyboard detalhado "
+                        f"(cenário, luz, texto na peça) para produção. Pedido: {full}"
+                    ),
+                }
+            ],
+        }
+        async with httpx.AsyncClient(timeout=90.0) as client2:
+            r2 = await client2.post(_OPENROUTER, headers=_headers(), json=story)
+        text = ""
+        if r2.status_code < 400:
+            text = (r2.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
         return {
-            "status": "vazio",
-            "mensagem": f"geração de imagem indisponível ({r.status_code})",
+            "status": "parcial" if text.strip() else "vazio",
             "nivel": "artefato",
+            "itens": [{"descricao": text[:8000]}] if text.strip() else [],
+            "mensagem": f"API de imagem indisponível ({r.status_code}) — storyboard em texto",
             "nota_metodologica": (r.text or "")[:400],
         }
-    msg = (r.json().get("choices") or [{}])[0].get("message", {}) or {}
-    text = msg.get("content") or ""
-    return {
-        "status": "ok" if text.strip() else "vazio",
+
+    data = r.json()
+    image_url, via = _extrair_imagem_resposta(data)
+    if not image_url:
+        return {
+            "status": "vazio",
+            "mensagem": "API de imagem não retornou bytes/URL",
+            "nivel": "artefato",
+            "nota_metodologica": json.dumps(data)[:400],
+        }
+    # Não persistir b64 gigante no tool_log resumido — UI pega do done.imagem
+    item: dict[str, Any] = {"fonte": f"imagem:{model}", "via": via, "prompt": prompt[:500]}
+    out: dict[str, Any] = {
+        "status": "ok",
         "nivel": "artefato",
-        "itens": [{"descricao": text[:8000]}],
-        "nota_metodologica": "Artefato gerado — não é dado oficial.",
+        "itens": [item],
+        "image_url": image_url if image_url.startswith("http") else None,
+        "image_data_url": image_url if image_url.startswith("data:") else None,
+        "nota_metodologica": "Artefato visual gerado — não é dado oficial.",
     }
+    return out
 
 
 async def gerar_mapa_html(params: dict[str, Any]) -> dict[str, Any]:
-    from apura import modelos as catalogo_modelos
+    """Plano/mapa estratégico HTML via template determinístico (bem feito, estável)."""
+    from apura.plano_html import enriquecer_params_do_ctx, montar_plano_html
 
-    titulo = (params.get("titulo") or "Mapa estratégico").strip()[:120]
+    titulo = (params.get("titulo") or "Plano estratégico").strip()[:120]
     eixos = (params.get("eixos") or params.get("conteudo") or "").strip()
     if not eixos:
-        return {"status": "vazio", "mensagem": "informe eixos/conteudo do mapa", "nivel": "artefato"}
-    ctx = (params.get("contexto_campanha") or "")[:1500]
-    body = {
-        "model": catalogo_modelos.modelo_mapa_html(),
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Gere um único documento HTML5 autocontido (CSS inline) com um mapa "
-                    "estratégico visual de campanha: blocos, setas em CSS, legendas. "
-                    "Sem scripts externos. Sem inventar cifras — use só o que o usuário passou."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"Título: {titulo}\nContexto:\n{ctx}\n\nEixos:\n{eixos[:6000]}",
-            },
-        ],
-        "temperature": 0.4,
-    }
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        r = await client.post(_OPENROUTER, headers=_headers(), json=body)
-    if r.status_code >= 400:
         return {
             "status": "vazio",
-            "mensagem": f"mapa HTML indisponível ({r.status_code})",
+            "mensagem": "informe eixos/conteudo do plano (linhas Título: detalhe)",
             "nivel": "artefato",
         }
-    text = (r.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
-    m = re.search(r"<html[\s\S]*</html>", text, re.I)
-    html = m.group(0) if m else text
-    if not html.strip():
-        return {"status": "vazio", "mensagem": "modelo não retornou HTML", "nivel": "artefato"}
+    p = enriquecer_params_do_ctx(params, params.get("contexto_campanha") or "")
+    html = montar_plano_html(
+        titulo=titulo,
+        eixos_raw=eixos[:8000],
+        nosso=(p.get("nosso") or "")[:80],
+        rival=(p.get("rival") or "")[:80],
+        contexto=(p.get("contexto") or p.get("contexto_campanha") or "")[:1200],
+        leituras=(p.get("leituras") or "")[:2000],
+        proximo=(p.get("proximo") or p.get("proximo_passo") or "")[:800],
+    )
     return {
         "status": "ok",
         "nivel": "artefato",
         "html": html[:100000],
         "titulo": titulo,
-        "nota_metodologica": "Mapa estratégico gerado — artefato, não urna.",
+        "nota_metodologica": "Plano HTML template Apura — artefato, não urna.",
     }
+
+
+async def gerar_plano_html(params: dict[str, Any]) -> dict[str, Any]:
+    """Alias explícito de gerar_mapa_html (plano estratégico visual)."""
+    return await gerar_mapa_html(params)
 
 
 def operacional_contato(params: dict[str, Any], *, campanha_id: str | None = None) -> dict[str, Any]:
@@ -528,6 +686,7 @@ LOCAL_METHODS = frozenset(
         "transcrever_audio",
         "gerar_imagem",
         "gerar_mapa_html",
+        "gerar_plano_html",
         "consultar_memoria",
         "operacional_contato",
         "operacional_tarefa",
@@ -553,7 +712,7 @@ async def executar_local(
         return await transcrever_audio(p)
     if method == "gerar_imagem":
         return await gerar_imagem(p)
-    if method == "gerar_mapa_html":
+    if method in ("gerar_mapa_html", "gerar_plano_html"):
         return await gerar_mapa_html(p)
     if method == "consultar_memoria":
         return await consultar_memoria_campanha(p, campanha_id=campanha_id)

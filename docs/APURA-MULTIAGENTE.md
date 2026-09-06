@@ -18,8 +18,10 @@ Cada papel usa a IA que combina com a tarefa — **não** GPT-4o/4o-mini genéri
 | Consultor (texto) | `anthropic/claude-haiku-4.5` | Resposta curta, Anthropic barato |
 | Web | `perplexity/sonar` (+ `sonar-pro` no Ary) | Busca nativa |
 | PDF / OCR | `mistralai/ministral-14b-2512` + engine `mistral-ocr` | OCR Mistral + LLM visão barato |
+| Áudio | `google/gemini-2.5-flash` (`input_audio`) | Transcrição por anexo/URL |
+| Imagem | `google/gemini-2.5-flash-image` via `POST /api/v1/images` | Artefato visual real |
+| Plano HTML | template `plano_html.py` | Artefato estável (não LLM livre) |
 | PDF / visão genérica | `google/gemini-2.5-flash` (só visão) | Multimodal econômico |
-| Imagem | `google/gemini-2.5-flash-image` | Geração/descrição |
 | Radar / governança | Flash / Flash-lite | Volume, baixo risco |
 
 Overrides (EasyPanel): `APURA_ORCHESTRATOR_MODEL`, `APURA_WRITER_MODEL`, `APURA_ARY_*`, `APURA_WEB_MODEL`, etc. **Remova** defaults antigos `openai/gpt-4o*` se ainda estiverem setados — env força e anula o catálogo.

@@ -601,13 +601,19 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "ler_pdf",
-            "description": "Lê/resume PDF por URL ou texto colado. Indício — não inventa cifra.",
+            "description": (
+                "Lê/resume PDF por anexo_idx (mensagem), URL, file_base64 ou texto. "
+                "Indício — não inventa cifra."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "anexo_idx": {"type": "integer", "description": "Índice do anexo da mensagem"},
                     "url": {"type": "string"},
+                    "file_base64": {"type": "string"},
                     "texto": {"type": "string"},
                     "pergunta": {"type": "string"},
+                    "filename": {"type": "string"},
                 },
             },
         },
@@ -616,14 +622,15 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "ler_imagem",
-            "description": "Descreve imagem por URL (visão). Indício.",
+            "description": "Descreve imagem por anexo_idx, URL ou file_base64 (visão). Indício.",
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "anexo_idx": {"type": "integer"},
                     "url": {"type": "string"},
+                    "file_base64": {"type": "string"},
                     "pergunta": {"type": "string"},
                 },
-                "required": ["url"],
             },
         },
     },
@@ -631,11 +638,16 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "transcrever_audio",
-            "description": "Transcreve/resume áudio por URL. Indício.",
+            "description": "Transcreve/resume áudio por anexo_idx, file_base64 ou URL http(s). Indício.",
             "parameters": {
                 "type": "object",
-                "properties": {"url": {"type": "string"}},
-                "required": ["url"],
+                "properties": {
+                    "anexo_idx": {"type": "integer"},
+                    "url": {"type": "string"},
+                    "file_base64": {"type": "string"},
+                    "pergunta": {"type": "string"},
+                    "filename": {"type": "string"},
+                },
             },
         },
     },
@@ -643,11 +655,18 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "gerar_imagem",
-            "description": "Gera brief/descrição de imagem de campanha (artefato).",
+            "description": (
+                "Gera imagem real de campanha (artefato visual via OpenRouter Images). "
+                "Use para peça, mockup, capa — não inventa cifra."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "prompt": {"type": "string"},
+                    "aspect_ratio": {
+                        "type": "string",
+                        "description": "ex. 16:9, 1:1, 9:16",
+                    },
                     "contexto_campanha": {"type": "string"},
                 },
                 "required": ["prompt"],
@@ -658,13 +677,40 @@ MCP_TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "gerar_mapa_html",
-            "description": "Gera mapa estratégico visual em HTML autocontido (artefato).",
+            "description": (
+                "Gera plano/mapa estratégico visual em HTML autocontido (artefato). "
+                "Passe eixos em linhas 'Título: detalhe'. Alias: gerar_plano_html."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "titulo": {"type": "string"},
                     "eixos": {"type": "string"},
                     "conteudo": {"type": "string"},
+                    "nosso": {"type": "string"},
+                    "rival": {"type": "string"},
+                    "leituras": {"type": "string"},
+                    "proximo": {"type": "string"},
+                    "contexto_campanha": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gerar_plano_html",
+            "description": "Alias de gerar_mapa_html — plano estratégico HTML bem formatado.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "titulo": {"type": "string"},
+                    "eixos": {"type": "string"},
+                    "conteudo": {"type": "string"},
+                    "nosso": {"type": "string"},
+                    "rival": {"type": "string"},
+                    "leituras": {"type": "string"},
+                    "proximo": {"type": "string"},
                     "contexto_campanha": {"type": "string"},
                 },
             },
@@ -777,6 +823,7 @@ TOOL_TO_MCP: dict[str, str] = {
     "transcrever_audio": "transcrever_audio",
     "gerar_imagem": "gerar_imagem",
     "gerar_mapa_html": "gerar_mapa_html",
+    "gerar_plano_html": "gerar_plano_html",
     "consultar_memoria": "consultar_memoria",
     "operacional_contato": "operacional_contato",
     "operacional_tarefa": "operacional_tarefa",

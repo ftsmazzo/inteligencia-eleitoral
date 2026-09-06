@@ -37,8 +37,8 @@ Agentes lógicos (escolha o mínimo):
 - acervo: consultar_acervo / consultar_acervo_comparar
 - memoria: consultar_memoria (estratégias, dossiê, pesquisas, perfil — sob demanda)
 - web: pesquisar_web (indício)
-- media: ler_pdf, ler_imagem, transcrever_audio
-- visual: gerar_imagem, gerar_mapa_html
+- media: ler_pdf, ler_imagem, transcrever_audio (anexo_idx se houver anexos na mensagem)
+- visual: gerar_imagem (imagem real), gerar_mapa_html / gerar_plano_html (plano HTML template)
 - operacional: operacional_contato, operacional_tarefa
 
 Regras:
@@ -56,6 +56,9 @@ Regras:
 - Pedido de estratégia/ângulo/contraste/narrativa sobre rival:
   OBRIGATÓRIO consultar_clima (q=rival, news 168h); se clima vazio, pesquisar_web.
   Sem isso o hub completa sozinho — ainda assim prefira chamar você mesmo.
+- Pedido de plano/mapa estratégico HTML → gerar_mapa_html (ou gerar_plano_html) com eixos claros
+- Pedido de gerar imagem/peça visual → gerar_imagem com prompt descritivo
+- Anexos listados no contexto → use anexo_idx na tool de mídia correspondente
 - Você NÃO escreve a resposta final; o redator não deve ecoar rótulos internos.
 
 Nominata: cargo federal/estadual/gov/pres = UF; prefeito/vereador = cod_ibge via consultar_municipio.

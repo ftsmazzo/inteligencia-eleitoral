@@ -52,9 +52,11 @@ WEB_ARY = "perplexity/sonar-pro"
 PDF = "mistralai/ministral-14b-2512"
 PDF_ENGINE = "mistral-ocr"  # file-parser: melhor em scan/imagens; ~$2/1k páginas
 VISAO = "google/gemini-2.5-flash"
-AUDIO = "openai/gpt-4o-audio-preview"  # niche; override se houver melhor
+# Áudio: Gemini Flash aceita input_audio (base64); Whisper-only não roda por URL
+AUDIO = "google/gemini-2.5-flash"
 IMAGEM = "google/gemini-2.5-flash-image"
-MAPA_HTML = REDATOR_PADRAO  # HTML estratégico = prosa estruturada
+# Plano/mapa HTML: template Python determinístico (não LLM) — ver plano_html.py
+MAPA_HTML = "template"
 GOVERNANCA = "google/gemini-2.5-flash-lite"
 RADAR = "google/gemini-2.5-flash"
 TRIAGEM = "deepseek/deepseek-v4-flash"

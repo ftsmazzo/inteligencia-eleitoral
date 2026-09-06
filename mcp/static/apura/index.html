@@ -220,6 +220,28 @@
     .composer .btn-send:hover:not(:disabled) { background: var(--brand-dark); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
     .composer .btn-send svg { width: 18px; height: 18px; }
     .composer .btn-send:disabled { opacity: .4; cursor: not-allowed; }
+    .composer .btn-attach {
+      flex-shrink: 0; width: 40px; height: 40px; border: none; border-radius: 10px;
+      background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center;
+    }
+    .composer .btn-attach:hover { color: var(--brand); background: var(--brand-light); }
+    .composer .btn-attach svg { width: 18px; height: 18px; }
+    .anexos-preview {
+      display: flex; flex-wrap: wrap; gap: 8px; max-width: 760px; margin: 0 auto 8px;
+    }
+    .anexo-chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
+      border-radius: 999px; background: var(--surface); border: 1px solid var(--line);
+      font-size: 0.8rem; color: var(--ink);
+    }
+    .anexo-chip button {
+      border: none; background: transparent; cursor: pointer; color: var(--muted);
+      font-size: 1rem; line-height: 1; padding: 0 2px;
+    }
+    .artefato-box { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; background: var(--surface-2); }
+    .artefato-box summary { cursor: pointer; padding: 10px 14px; font-weight: 650; font-size: 0.85rem; color: var(--brand); background: var(--brand-light); }
+    .artefato-frame { width: 100%; min-height: 480px; border: none; background: var(--surface); display: block; }
+    .artefato-img { display: block; max-width: 100%; height: auto; margin: 0 auto; padding: 8px; }
     .hint { text-align: center; font-size: 0.75rem; color: var(--muted); margin-top: 10px; }
     .modo-narrativa {
       display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 0.82rem; color: var(--muted);
@@ -1118,13 +1140,18 @@
           <input type="checkbox" id="modo-narrativa" />
           <span>Modo narrativa — cruza fato + acervo + clima</span>
         </label>
+        <div class="anexos-preview" id="anexos-preview" hidden></div>
         <div class="composer-inner">
-          <textarea id="input-msg" rows="1" placeholder="Pergunte sobre eleições, candidatos, votos, contexto…"></textarea>
+          <button type="button" class="btn-attach" id="btn-attach" title="Anexar PDF, áudio ou imagem" aria-label="Anexar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <input type="file" id="input-anexo" accept=".pdf,application/pdf,audio/*,image/*" hidden />
+          <textarea id="input-msg" rows="1" placeholder="Pergunte sobre eleições, candidatos, votos… ou anexe PDF/áudio/imagem"></textarea>
           <button type="button" class="btn btn-send" id="btn-send" disabled title="Enviar" aria-label="Enviar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
           </button>
         </div>
-        <p class="hint">Inclua ano, cargo e lugar. Números vêm da base oficial — sem estimativa.</p>
+        <p class="hint">Inclua ano, cargo e lugar. Anexe PDF/áudio/imagem (até 4 MB). Peça plano HTML ou gerar imagem quando quiser artefato.</p>
       </div>
       </div>
 
@@ -2391,6 +2418,46 @@
       bubble.appendChild(box);
     }
 
+    function appendMapaHtml(bubble, html) {
+      const box = document.createElement('details');
+      box.className = 'artefato-box';
+      box.open = true;
+      const sum = document.createElement('summary');
+      sum.textContent = 'Plano estratégico HTML';
+      const frame = document.createElement('iframe');
+      frame.className = 'artefato-frame';
+      frame.srcdoc = html;
+      frame.title = 'Plano Apura';
+      box.appendChild(sum);
+      box.appendChild(frame);
+      bubble.appendChild(box);
+    }
+
+    function appendImagem(bubble, img) {
+      if (!img) return;
+      const src = img.url || img.data_url;
+      if (!src && img.omitida) {
+        const p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = img.nota || 'Imagem gerada (não guardada no histórico).';
+        bubble.appendChild(p);
+        return;
+      }
+      if (!src) return;
+      const box = document.createElement('details');
+      box.className = 'artefato-box';
+      box.open = true;
+      const sum = document.createElement('summary');
+      sum.textContent = 'Imagem gerada';
+      const el = document.createElement('img');
+      el.className = 'artefato-img';
+      el.src = src;
+      el.alt = img.prompt || 'Artefato Apura';
+      box.appendChild(sum);
+      box.appendChild(el);
+      bubble.appendChild(box);
+    }
+
     function appendMsg(papel, texto, id, dados) {
       const wrap = document.createElement('div');
       wrap.className = 'msg ' + papel;
@@ -2427,6 +2494,12 @@
       }
       if (papel === 'assistant' && dados?.relatorio_html) {
         appendRelatorio(bubble, dados.relatorio_html);
+      }
+      if (papel === 'assistant' && dados?.mapa_html) {
+        appendMapaHtml(bubble, dados.mapa_html);
+      }
+      if (papel === 'assistant' && dados?.imagem) {
+        appendImagem(bubble, dados.imagem);
       }
       wrap.appendChild(bubble);
       $('messages').appendChild(wrap);
@@ -2476,9 +2549,13 @@
       if (rest <= 0) el.classList.add('esgotado');
     }
 
+    let anexosPendentes = [];
+
     function syncSendBtn() {
       const esgotado = $('user-quota')?.classList.contains('esgotado');
-      $('btn-send').disabled = !appReady || !input.value.trim() || streaming || !!esgotado;
+      const temTexto = !!(input && input.value.trim());
+      const temAnexo = anexosPendentes.length > 0;
+      $('btn-send').disabled = !appReady || (!temTexto && !temAnexo) || streaming || !!esgotado;
     }
 
     input.addEventListener('input', () => {
@@ -2493,9 +2570,84 @@
 
     $('btn-send').addEventListener('click', enviar);
 
+    function tipoAnexo(file) {
+      const m = (file.type || '').toLowerCase();
+      const n = (file.name || '').toLowerCase();
+      if (m === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
+      if (m.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|webm|flac)$/.test(n)) return 'audio';
+      if (m.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/.test(n)) return 'imagem';
+      return null;
+    }
+
+    function renderAnexosPreview() {
+      const box = $('anexos-preview');
+      if (!box) return;
+      if (!anexosPendentes.length) {
+        box.hidden = true;
+        box.innerHTML = '';
+        syncSendBtn();
+        return;
+      }
+      box.hidden = false;
+      box.innerHTML = anexosPendentes.map((a, i) =>
+        '<span class="anexo-chip">' + a.tipo.toUpperCase() + ' · ' +
+        (a.nome || 'arquivo').replace(/[<>&]/g, '') +
+        ' <button type="button" data-rm="' + i + '" aria-label="Remover">×</button></span>'
+      ).join('');
+      box.querySelectorAll('[data-rm]').forEach(btn => {
+        btn.onclick = () => {
+          anexosPendentes.splice(+btn.getAttribute('data-rm'), 1);
+          renderAnexosPreview();
+        };
+      });
+      syncSendBtn();
+    }
+
+    function fileToAnexo(file) {
+      return new Promise((resolve, reject) => {
+        const tipo = tipoAnexo(file);
+        if (!tipo) return reject(new Error('Use PDF, áudio ou imagem'));
+        if (file.size > 4 * 1024 * 1024) return reject(new Error('Arquivo acima de 4 MB'));
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = String(reader.result || '');
+          const b64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+          resolve({
+            tipo,
+            nome: file.name || 'anexo',
+            mime: file.type || '',
+            data_base64: b64
+          });
+        };
+        reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    if ($('btn-attach') && $('input-anexo')) {
+      $('btn-attach').addEventListener('click', () => $('input-anexo').click());
+      $('input-anexo').addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []);
+        e.target.value = '';
+        for (const f of files) {
+          if (anexosPendentes.length >= 2) {
+            $('app-err').textContent = 'Máximo 2 anexos por mensagem.';
+            break;
+          }
+          try {
+            anexosPendentes.push(await fileToAnexo(f));
+          } catch (err) {
+            $('app-err').textContent = err.message;
+          }
+        }
+        renderAnexosPreview();
+      });
+    }
+
     async function enviar() {
       const text = input.value.trim();
-      if (!text || streaming) return;
+      const anexosEnvio = anexosPendentes.slice();
+      if ((!text && !anexosEnvio.length) || streaming) return;
       if (!appReady) {
         $('app-err').textContent = 'Aguarde o chat carregar ou recarregue a página.';
         return;
@@ -2505,6 +2657,8 @@
       $('app-err').textContent = '';
       input.value = '';
       input.style.height = 'auto';
+      anexosPendentes = [];
+      renderAnexosPreview();
       try {
         await garantirSessao();
       } catch (err) {
@@ -2515,7 +2669,8 @@
       }
       $('messages').querySelector('.welcome-msg')?.remove();
       if (!$('messages').children.length) $('messages').innerHTML = '';
-      appendMsg('user', text);
+      const labelUser = text || ('[Anexo] ' + anexosEnvio.map(a => a.nome).join(', '));
+      appendMsg('user', labelUser);
       showTyping('pensando');
 
       let assistantBubble = null;
@@ -2527,8 +2682,9 @@
           headers: authHeaders(),
           body: JSON.stringify({
             sessao_id: sessaoId,
-            mensagem: text,
-            modo_narrativa: $('modo-narrativa').checked
+            mensagem: text || labelUser,
+            modo_narrativa: $('modo-narrativa').checked,
+            anexos: anexosEnvio
           })
         });
         if (!r.ok) {
@@ -2591,10 +2747,12 @@
               if (last) {
                 const dados = last.dados || {};
                 if (payload.relatorio_html) dados.relatorio_html = payload.relatorio_html;
+                if (payload.mapa_html) dados.mapa_html = payload.mapa_html;
+                if (payload.imagem) dados.imagem = payload.imagem;
                 appendMsg('assistant', last.conteudo, last.id, dados);
               }
               if ($('chat-titulo').textContent === 'Nova conversa') {
-                $('chat-titulo').textContent = text.slice(0, 60) + (text.length > 60 ? '…' : '');
+                $('chat-titulo').textContent = labelUser.slice(0, 60) + (labelUser.length > 60 ? '…' : '');
               }
             }
           }

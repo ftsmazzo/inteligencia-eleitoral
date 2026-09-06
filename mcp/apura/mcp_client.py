@@ -153,15 +153,23 @@ async def chamar_mcp(
 
 
 def resumir_resultado(result: Any, max_chars: int = 12000) -> str:
-    # Remove url_raw monstro antes de mandar ao redator (evita colar no chat).
-    if isinstance(result, dict) and isinstance(result.get("itens"), list):
+    # Remove url_raw / base64 monstro antes de mandar ao redator (evita colar no chat).
+    if isinstance(result, dict):
         limpo = dict(result)
-        itens = []
-        for it in limpo["itens"]:
-            if isinstance(it, dict):
-                it = {k: v for k, v in it.items() if k != "url_raw"}
-            itens.append(it)
-        limpo["itens"] = itens
+        for k in ("image_data_url", "file_base64", "data_base64"):
+            if k in limpo and limpo[k]:
+                limpo[k] = f"[omitido {len(str(limpo[k]))} chars]"
+        if isinstance(limpo.get("itens"), list):
+            itens = []
+            for it in limpo["itens"]:
+                if isinstance(it, dict):
+                    it = {
+                        kk: vv
+                        for kk, vv in it.items()
+                        if kk not in ("url_raw", "image_data_url", "file_base64")
+                    }
+                itens.append(it)
+            limpo["itens"] = itens
         result = limpo
     text = json.dumps(result, ensure_ascii=False, default=str)
     if len(text) <= max_chars:

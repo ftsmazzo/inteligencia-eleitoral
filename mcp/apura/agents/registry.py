@@ -45,7 +45,7 @@ TOOLS_CLIMA = frozenset({"consultar_clima"})
 TOOLS_ACERVO = frozenset({"consultar_acervo", "consultar_acervo_comparar"})
 TOOLS_WEB = frozenset({"pesquisar_web"})
 TOOLS_MEDIA = frozenset({"ler_pdf", "ler_imagem", "transcrever_audio"})
-TOOLS_VISUAL = frozenset({"gerar_imagem", "gerar_mapa_html"})
+TOOLS_VISUAL = frozenset({"gerar_imagem", "gerar_mapa_html", "gerar_plano_html"})
 TOOLS_MEMORIA = frozenset({"consultar_memoria"})
 TOOLS_OPERACIONAL = frozenset({"operacional_contato", "operacional_tarefa"})
 

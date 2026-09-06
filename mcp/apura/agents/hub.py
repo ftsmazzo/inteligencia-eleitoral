@@ -321,6 +321,108 @@ def _ctx_para_orquestrador(campanha_ctx: str, *, soft: int = 9000) -> str:
     return raw[:soft]
 
 
+def _resumo_anexos(anexos: list[dict[str, Any]] | None) -> str:
+    if not anexos:
+        return ""
+    linhas = []
+    for i, a in enumerate(anexos):
+        tipo = (a.get("tipo") or "arquivo").strip().lower()
+        nome = (a.get("nome") or a.get("filename") or f"anexo-{i}")[:80]
+        mime = (a.get("mime") or "")[:60]
+        linhas.append(f"[{i}] {nome} (tipo={tipo}" + (f", mime={mime}" if mime else "") + ")")
+    return (
+        "ANEXOS DESTA MENSAGEM (obrigatório usar a tool de mídia com anexo_idx):\n"
+        + "\n".join(linhas)
+        + "\nPDF→ler_pdf | áudio→transcrever_audio | imagem→ler_imagem. "
+        "Não peça URL se o anexo já está listado."
+    )
+
+
+def _injetar_anexo(
+    name: str,
+    args: dict[str, Any],
+    anexos: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Resolve anexo_idx (ou primeiro anexo compatível) em file_base64/mime/filename."""
+    out = dict(args or {})
+    if not anexos:
+        return out
+    idx = out.get("anexo_idx")
+    media_tools = {"ler_pdf", "ler_imagem", "transcrever_audio"}
+    if name not in media_tools:
+        return out
+    if out.get("file_base64") or out.get("data_base64") or (
+        (out.get("url") or "").startswith(("http://", "https://", "data:"))
+    ):
+        return out
+
+    escolhido: dict[str, Any] | None = None
+    if idx is not None:
+        try:
+            i = int(idx)
+            if 0 <= i < len(anexos):
+                escolhido = anexos[i]
+        except (TypeError, ValueError):
+            escolhido = None
+    if escolhido is None:
+        prefer = {
+            "ler_pdf": ("pdf", "application/pdf"),
+            "ler_imagem": ("imagem", "image/"),
+            "transcrever_audio": ("audio", "audio/"),
+        }.get(name, ("", ""))
+        tipo_pref, mime_pref = prefer
+        for a in anexos:
+            t = (a.get("tipo") or "").lower()
+            m = (a.get("mime") or "").lower()
+            n = (a.get("nome") or "").lower()
+            if tipo_pref == "pdf" and (t == "pdf" or m == "application/pdf" or n.endswith(".pdf")):
+                escolhido = a
+                break
+            if tipo_pref == "imagem" and (t in ("imagem", "image") or m.startswith("image/")):
+                escolhido = a
+                break
+            if tipo_pref == "audio" and (t in ("audio", "áudio") or m.startswith("audio/")):
+                escolhido = a
+                break
+        if escolhido is None and len(anexos) == 1:
+            escolhido = anexos[0]
+    if not escolhido:
+        return out
+
+    b64 = (escolhido.get("data_base64") or escolhido.get("file_base64") or "").strip()
+    if b64:
+        out["file_base64"] = b64
+    out.setdefault("filename", (escolhido.get("nome") or escolhido.get("filename") or "anexo")[:120])
+    out.setdefault("nome", out["filename"])
+    if escolhido.get("mime"):
+        out.setdefault("mime", escolhido["mime"])
+    out.pop("anexo_idx", None)
+    return out
+
+
+def _result_para_log(result: Any) -> Any:
+    """Copia o result sem base64 gigante (persistência / tool_log)."""
+    if not isinstance(result, dict):
+        return result
+    out = dict(result)
+    for k in ("image_data_url", "file_base64", "data_base64"):
+        if k in out and out[k]:
+            out[k] = f"[omitido {len(str(out[k]))} chars]"
+    return out
+
+
+def _imagem_para_done(result: dict[str, Any]) -> dict[str, Any] | None:
+    url = (result.get("image_url") or "").strip()
+    data = (result.get("image_data_url") or "").strip()
+    if url.startswith("http"):
+        return {"url": url, "prompt": ((result.get("itens") or [{}])[0] or {}).get("prompt")}
+    if data.startswith("data:") and len(data) < 1_500_000:
+        return {"data_url": data, "prompt": ((result.get("itens") or [{}])[0] or {}).get("prompt")}
+    if data:
+        return {"omitida": True, "nota": "imagem gerada (grande demais para histórico)"}
+    return None
+
+
 async def executar_hub(
     historico: list[dict[str, str]],
     mcp_token: str,
@@ -329,6 +431,7 @@ async def executar_hub(
     campanha_ctx: str = "",
     politica: dict[str, Any] | None = None,
     missao_state: MissaoState | None = None,
+    anexos: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[str]:
     """Gera eventos SSE: status, token, done, error. Inclui missao_state no done.dados."""
     from apura.perfil_policy import filtrar_mcp_tools, resumo_politica, tool_permitida
@@ -392,6 +495,12 @@ async def executar_hub(
             "pesquis",
             "pdf",
             "mapa",
+            "plano",
+            "imagem",
+            "áudio",
+            "audio",
+            "anexo",
+            "transcrev",
         )
     )
     so_protocolo = (
@@ -413,6 +522,9 @@ async def executar_hub(
             "Números oficiais só via tools. Rival = bloco identidade (não ecoar rótulos ao usuário).\n"
             f"{_ctx_para_orquestrador(campanha_ctx)}"
         )
+    ax_txt = _resumo_anexos(anexos)
+    if ax_txt:
+        orch_system = f"{orch_system}\n\n{ax_txt}"
     slug = pol.get("perfil_slug")
     if slug and not pol.get("bypass"):
         orch_system = (
@@ -457,6 +569,14 @@ async def executar_hub(
         else:
             orch_messages: list[dict[str, Any]] = [{"role": "system", "content": orch_system}]
             orch_messages.extend(_historico_orquestrador(historico))
+            # Se só anexo sem texto útil, reforça no último user
+            if anexos and pergunta.strip() in ("", ".", "-"):
+                orch_messages.append(
+                    {
+                        "role": "user",
+                        "content": "Analise o(s) anexo(s) listados com a tool de mídia adequada.",
+                    }
+                )
             campanha_id = pol.get("campanha_id")
             usuario_id = pol.get("usuario_id")
 
@@ -488,6 +608,9 @@ async def executar_hub(
                             args = {}
                         if name == "consultar_clima":
                             args = _enriquecer_clima_params(args, campanha_ctx, pergunta)
+                        args = _injetar_anexo(name, args, anexos)
+                        if name in ("gerar_mapa_html", "gerar_plano_html") and campanha_ctx:
+                            args.setdefault("contexto_campanha", campanha_ctx[:1500])
                         if not tool_permitida(pol, name):
                             result = {
                                 "erro": "tool_negada_pelo_perfil",
@@ -515,7 +638,21 @@ async def executar_hub(
                             campanha_id=campanha_id,
                             usuario_id=usuario_id,
                         )
-                        tool_log.append({"tool": name, "params": args, "result": result})
+                        # params no log sem base64
+                        params_log = {
+                            k: (f"[omitido {len(str(v))} chars]" if k in ("file_base64", "data_base64") and v else v)
+                            for k, v in args.items()
+                        }
+                        entry: dict[str, Any] = {
+                            "tool": name,
+                            "params": params_log,
+                            "result": _result_para_log(result),
+                        }
+                        if name == "gerar_imagem" and isinstance(result, dict):
+                            img_done = _imagem_para_done(result)
+                            if img_done:
+                                entry["_imagem_done"] = img_done
+                        tool_log.append(entry)
                         orch_messages.append(
                             {
                                 "role": "tool",
@@ -567,7 +704,7 @@ async def executar_hub(
                     {
                         "tool": name,
                         "params": args,
-                        "result": result,
+                        "result": _result_para_log(result),
                         "forcado": extra.get("motivo"),
                     }
                 )
@@ -603,7 +740,7 @@ async def executar_hub(
                         {
                             "tool": "pesquisar_web",
                             "params": args,
-                            "result": result,
+                            "result": _result_para_log(result),
                             "forcado": "playbook_clima_vazio_web",
                         }
                     )
@@ -645,12 +782,36 @@ async def executar_hub(
         if _pediu_relatorio_html(pergunta) and tool_log:
             titulo = pergunta[:80] or "Relatório Apura"
             done["relatorio_html"] = exportar_html(dados, full, titulo)
-        # Mapa HTML gerado pela tool
+        # Artefatos visuais das tools
         for tr in tool_log:
-            if tr.get("tool") == "gerar_mapa_html" and isinstance(tr.get("result"), dict):
-                html = tr["result"].get("html")
+            tool_name = tr.get("tool")
+            res = tr.get("result") if isinstance(tr.get("result"), dict) else None
+            if not res:
+                continue
+            if tool_name in ("gerar_mapa_html", "gerar_plano_html"):
+                html = res.get("html")
                 if html:
                     done["mapa_html"] = html
+                    dados["mapa_html"] = html
+            if tool_name == "gerar_imagem":
+                # result no log já omitiu data_url — re-ler do raw não dá; guardar no SSE
+                # Hub precisa do result original. Guardamos side-channel em tr["_imagem"]
+                pass
+        # Reextrai imagem do tool_log se ainda houver url http; data_url vem de side-channel
+        for tr in tool_log:
+            if tr.get("tool") != "gerar_imagem":
+                continue
+            side = tr.get("_imagem_done")
+            if isinstance(side, dict):
+                done["imagem"] = side
+                dados["imagem"] = side
+                break
+            res = tr.get("result") if isinstance(tr.get("result"), dict) else {}
+            img = _imagem_para_done(res)  # type: ignore[arg-type]
+            if img:
+                done["imagem"] = img
+                dados["imagem"] = img
+                break
         yield _sse("done", done)
 
     except RuntimeError as exc:

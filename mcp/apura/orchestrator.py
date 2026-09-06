@@ -16,8 +16,9 @@ async def executar_chat(
     campanha_ctx: str = "",
     politica: dict[str, Any] | None = None,
     missao_state: MissaoState | None = None,
+    anexos: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[str]:
-    """Gera eventos SSE: status, token, done (opcional relatorio_html), error."""
+    """Gera eventos SSE: status, token, done (opcional relatorio_html/mapa/imagem), error."""
     async for chunk in executar_hub(
         historico,
         mcp_token,
@@ -26,5 +27,6 @@ async def executar_chat(
         campanha_ctx=campanha_ctx,
         politica=politica,
         missao_state=missao_state,
+        anexos=anexos,
     ):
         yield chunk

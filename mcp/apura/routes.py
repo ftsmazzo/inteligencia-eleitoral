@@ -11,7 +11,7 @@ from typing import Any, Iterator
 import psycopg
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from apura.auth import (
     alterar_senha,
@@ -148,10 +148,24 @@ class SessaoPatchIn(BaseModel):
     fixada: bool | None = None
 
 
+class AnexoIn(BaseModel):
+    tipo: str = Field(max_length=20)  # pdf | audio | imagem
+    nome: str = Field(default="", max_length=120)
+    mime: str = Field(default="", max_length=80)
+    data_base64: str = Field(min_length=32, max_length=5_500_000)
+
+
 class ChatIn(BaseModel):
     sessao_id: str
-    mensagem: str = Field(min_length=1, max_length=8000)
+    mensagem: str = Field(default="", max_length=8000)
     modo_narrativa: bool = False
+    anexos: list[AnexoIn] = Field(default_factory=list, max_length=2)
+
+    @model_validator(mode="after")
+    def _texto_ou_anexo(self) -> ChatIn:
+        if not (self.mensagem or "").strip() and not self.anexos:
+            raise ValueError("informe mensagem ou anexo")
+        return self
 
 
 class ExportIn(BaseModel):
@@ -447,15 +461,19 @@ async def chat(
                 raise HTTPException(404, "Conversa não encontrada")
             quota_info = consumir_pergunta_demo(conn, uid)
             _registrar_ultima_sessao(conn, uid, body.sessao_id)
+            msg_user = (body.mensagem or "").strip()
+            if not msg_user and body.anexos:
+                nomes = ", ".join((a.nome or a.tipo or "anexo")[:40] for a in body.anexos)
+                msg_user = f"[Anexo] {nomes}"
             conn.execute(
                 """
                 INSERT INTO ctl.apura_mensagem (sessao_id, papel, conteudo)
                 VALUES (%s::uuid, 'user', %s)
                 """,
-                (body.sessao_id, body.mensagem.strip()),
+                (body.sessao_id, msg_user),
             )
             if ok[0] == "Nova conversa":
-                titulo = body.mensagem.strip()[:60] + ("…" if len(body.mensagem.strip()) > 60 else "")
+                titulo = msg_user[:60] + ("…" if len(msg_user) > 60 else "")
                 conn.execute(
                     "UPDATE ctl.apura_sessao SET titulo = %s, atualizado_em = now() WHERE id = %s::uuid",
                     (titulo, body.sessao_id),
@@ -568,6 +586,15 @@ async def chat(
     async def stream_and_save() -> Any:
         final_content = ""
         final_dados = None
+        anexos_payload = [
+            {
+                "tipo": a.tipo.strip().lower(),
+                "nome": a.nome,
+                "mime": a.mime,
+                "data_base64": a.data_base64,
+            }
+            for a in (body.anexos or [])
+        ]
         async for chunk in executar_chat(
             historico,
             mcp_token,
@@ -576,6 +603,7 @@ async def chat(
             campanha_ctx,
             politica,
             missao_state,
+            anexos=anexos_payload or None,
         ):
             yield chunk
             if chunk.startswith("event: done"):
@@ -592,7 +620,19 @@ async def chat(
                         base = dict(final_dados) if isinstance(final_dados, dict) else {}
                         base["mapa_html"] = payload["mapa_html"]
                         final_dados = base
+                    if payload.get("imagem"):
+                        base = dict(final_dados) if isinstance(final_dados, dict) else {}
+                        base["imagem"] = payload["imagem"]
+                        final_dados = base
         if final_content:
+            if isinstance(final_dados, dict) and isinstance(final_dados.get("tool_results"), list):
+                limpos = []
+                for tr in final_dados["tool_results"]:
+                    if isinstance(tr, dict):
+                        tr = {k: v for k, v in tr.items() if k != "_imagem_done"}
+                    limpos.append(tr)
+                final_dados = dict(final_dados)
+                final_dados["tool_results"] = limpos
             with _db() as conn:
                 conn.execute(
                     """
