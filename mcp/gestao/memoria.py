@@ -156,7 +156,7 @@ def _norm_nome(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip().upper())
 
 
-def _add_nome(dest: list[str], seen: set[str], nome: str, *, limite: int = 8) -> None:
+def _add_nome(dest: list[str], seen: set[str], nome: str, *, limite: int = 8, nosso: str = "") -> None:
     nm = (nome or "").strip()
     if not nm or nm.startswith("@"):
         return
@@ -165,11 +165,22 @@ def _add_nome(dest: list[str], seen: set[str], nome: str, *, limite: int = 8) ->
     key = _norm_nome(nm)
     if len(key) < 3 or key in seen or len(dest) >= limite:
         return
+    if nosso:
+        n_key = _norm_nome(nosso)
+        # evita listar o próprio candidato como "rival" (ex.: Carlos Cley vs Cley)
+        if key == n_key or key in n_key or n_key in key:
+            return
+        tok_n = set(n_key.split())
+        tok = set(key.split())
+        if tok and tok <= tok_n:
+            return
     seen.add(key)
     dest.append(nm)
 
 
-def _rivais_de_radar(conn: psycopg.Connection, campanha_id: str) -> tuple[list[str], list[str]]:
+def _rivais_de_radar(
+    conn: psycopg.Connection, campanha_id: str, *, nosso: str = ""
+) -> tuple[list[str], list[str]]:
     rivais: list[str] = []
     handles: list[str] = []
     seen_r: set[str] = set()
@@ -191,7 +202,7 @@ def _rivais_de_radar(conn: psycopg.Connection, campanha_id: str) -> tuple[list[s
         if is_own:
             continue
         if papel == "adversario" or a.get("kind") in ("adversario", "pessoa"):
-            _add_nome(rivais, seen_r, a.get("nome") or "")
+            _add_nome(rivais, seen_r, a.get("nome") or "", nosso=nosso)
     return rivais, handles
 
 
@@ -203,16 +214,14 @@ def _rivais_de_redes(conn: psycopg.Connection, campanha_id: str, nosso: str) -> 
             if (p.get("papel") or "").lower() == "proprio":
                 continue
             nm = (p.get("nm_urna") or p.get("nome") or "").strip()
-            if nosso and _norm_nome(nm) == _norm_nome(nosso):
-                continue
-            _add_nome(out, seen, nm)
+            _add_nome(out, seen, nm, nosso=nosso)
     return out
 
 
-def _rivais_de_rotulos(conn: psycopg.Connection, campanha_id: str) -> list[str]:
+def _rivais_de_rotulos(conn: psycopg.Connection, campanha_id: str, *, nosso: str = "") -> list[str]:
     """Extrai rivais rotulados em dossiê / estratégias (linha ou meta)."""
     out: list[str] = []
-    seen: set[str] = set()
+    seen: set[str] = {_norm_nome(nosso)} if nosso else set()
     near = re.compile(
         r"(?:rival|advers[aá]rio[sa]?|oponente)[^\n]{0,48}?"
         r"([A-ZÁÉÍÓÚÂÊÔÃÕ][\wÁ-ú''\-]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕ][\wÁ-ú''\-]+){0,3})",
@@ -223,10 +232,10 @@ def _rivais_de_rotulos(conn: psycopg.Connection, campanha_id: str) -> list[str]:
         for ln in (blob or "").splitlines():
             m = _RIVAL_LABEL.search(ln.strip())
             if m:
-                _add_nome(out, seen, m.group(1), limite=6)
+                _add_nome(out, seen, m.group(1), limite=6, nosso=nosso)
                 continue
             for m2 in near.finditer(ln):
-                _add_nome(out, seen, m2.group(1), limite=6)
+                _add_nome(out, seen, m2.group(1), limite=6, nosso=nosso)
 
     for tipo in ("estrategias", "dossie"):
         for b in listar(conn, campanha_id, tipo=tipo, limite=5):
@@ -235,13 +244,18 @@ def _rivais_de_rotulos(conn: psycopg.Connection, campanha_id: str) -> list[str]:
             for key in ("rival", "rivais", "adversario", "adversarios"):
                 val = meta.get(key)
                 if isinstance(val, str):
-                    _add_nome(out, seen, val)
+                    _add_nome(out, seen, val, nosso=nosso)
                 elif isinstance(val, list):
                     for item in val:
                         if isinstance(item, str):
-                            _add_nome(out, seen, item)
+                            _add_nome(out, seen, item, nosso=nosso)
                         elif isinstance(item, dict):
-                            _add_nome(out, seen, item.get("nome") or item.get("nm_urna") or "")
+                            _add_nome(
+                                out,
+                                seen,
+                                item.get("nome") or item.get("nm_urna") or "",
+                                nosso=nosso,
+                            )
     for b in listar(conn, campanha_id, limite=40):
         if not (b.get("tipo") or "").startswith("dossie"):
             continue
@@ -275,14 +289,14 @@ def texto_alvos_para_apura(
     seen: set[str] = {_norm_nome(nosso)} if nosso else set()
     handles: list[str] = []
 
-    for nm in _rivais_de_rotulos(conn, campanha_id):
-        _add_nome(rivais, seen, nm)
-    r_radar, h_radar = _rivais_de_radar(conn, campanha_id)
+    for nm in _rivais_de_rotulos(conn, campanha_id, nosso=nosso):
+        _add_nome(rivais, seen, nm, nosso=nosso)
+    r_radar, h_radar = _rivais_de_radar(conn, campanha_id, nosso=nosso)
     for nm in r_radar:
-        _add_nome(rivais, seen, nm)
+        _add_nome(rivais, seen, nm, nosso=nosso)
     handles.extend(h_radar)
     for nm in _rivais_de_redes(conn, campanha_id, nosso):
-        _add_nome(rivais, seen, nm)
+        _add_nome(rivais, seen, nm, nosso=nosso)
 
     tem_estrategias = bool(listar(conn, campanha_id, tipo="estrategias", limite=1))
     tem_dossie = any(
@@ -290,13 +304,14 @@ def texto_alvos_para_apura(
     )
 
     linhas = [
-        "ALVOS CANÔNICOS DA CAMPANHA (identidade da casa — manda sobre nominata/urna histórica):",
+        "IDENTIDADE DA CAMPANHA (uso interno do modelo — NÃO repetir este título ao usuário):",
+        "Fale ao usuário só com: nosso candidato, rival, adversário + nomes próprios.",
     ]
     if nosso:
         linhas.append(f"- Nosso candidato: {nosso}")
     if rivais:
         linhas.append(
-            "- Rival(is) de campanha (use ESTES nomes para \"nosso rival/adversário/eles\"): "
+            "- Rival(is) de campanha (para \"nosso rival/adversário/eles\"): "
             + "; ".join(rivais[:6])
         )
     else:
@@ -312,16 +327,15 @@ def texto_alvos_para_apura(
             if k not in seen_h:
                 seen_h.add(k)
                 uniq.append(h)
-        linhas.append("- Handles / alvos Radar: " + ", ".join(uniq[:10]))
+        linhas.append("- Handles / Radar (interno): " + ", ".join(uniq[:10]))
     linhas.append(
         f"- Memória: dossiê={'sim' if tem_dossie else 'não'} · "
         f"estratégias={'sim' if tem_estrategias else 'não (bloco tipo=estrategias ausente)'}"
     )
     linhas.append(
-        "REGRA DURA: para rival/adversário, NÃO chame nominata/votação só para descobrir "
-        "quem é o alvo. Resolva o nome neste card (ou no dossiê/estratégias/base_redes). "
-        "Só depois consulte urna/clima/web SOBRE esse nome. "
-        "base_concorrentes = lista de urna do cargo (histórica), não define sozinha o rival atual."
+        "REGRA DURA (orquestrador): rival/adversário NÃO se define por nominata/votação antiga. "
+        "Resolva o nome aqui (ou dossiê/estratégias/redes); só depois urna/clima/web SOBRE esse nome. "
+        "base_concorrentes = lista histórica do cargo, não substitui o rival atual."
     )
     return "\n".join(linhas)
 

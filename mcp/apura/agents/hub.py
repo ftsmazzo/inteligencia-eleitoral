@@ -176,7 +176,12 @@ def _system_redator(skills_text: str, campanha_ctx: str, state: MissaoState) -> 
             f"{skills_text.strip()}"
         )
     if campanha_ctx.strip():
-        base = f"{base}\n\n{campanha_ctx.strip()}"
+        base = (
+            f"{base}\n\n"
+            "--- CONTEXTO DA CAMPANHA (interno; NÃO ecoar rótulos como "
+            "'identidade da campanha', 'ESCOPO', 'alvos') ---\n"
+            f"{campanha_ctx.strip()}"
+        )
     return base
 
 
@@ -404,8 +409,8 @@ async def executar_hub(
     if campanha_ctx.strip():
         orch_system = (
             f"{orch_system}\n\n"
-            "Contexto desta campanha (escopo + alvos canônicos + memória). "
-            "Números oficiais só via tools. Rival = ALVOS CANÔNICOS.\n"
+            "Contexto desta campanha (escopo + identidade + memória). "
+            "Números oficiais só via tools. Rival = bloco identidade (não ecoar rótulos ao usuário).\n"
             f"{_ctx_para_orquestrador(campanha_ctx)}"
         )
     slug = pol.get("perfil_slug")
