@@ -428,6 +428,7 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("fiscal_emendas", "br_mun_fiscal_emendas", "L4", "fiscal"),
         ("seguranca_feminicidios", "br_mun_seguranca_mulher", "L5", "seguranca"),
         ("seguranca_roubo_total", "br_mun_seguranca_patrimonial", "L5", "seguranca"),
+        ("fiscal_execucao_federal_pago", "br_nac_fiscal_execucao_federal", "L4", "fiscal"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -692,6 +693,22 @@ def _load_l0_refs(conn: psycopg.Connection) -> None:
             n_g, "2026", "seed metadado", "mandatos federais públicos (metadado)",
         )
     print(f"[lotes] l0 refs dic={n_dic} gestoes={n_g}")
+
+
+def _load_execucao_federal_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "fiscal_execucao_federal_uf.csv.gz",
+        "fiscal_execucao_federal_pago",
+        "br_nac_fiscal_execucao_federal",
+        "L4",
+        "fiscal",
+        "Portal Transparência despesas 202412",
+        "valor pago federal por UF do localizador; ausência ≠ zero",
+        status="online",
+        gran="uf",
+    )
+    print(f"[lotes] execucao federal seed={n}")
 
 
 def _load_irrigacao_from_seed(conn: psycopg.Connection) -> None:
@@ -1518,6 +1535,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("emendas", _load_emendas_from_seed, "fiscal_emendas", "mun", 3000),
         ("feminicidios", _load_feminicidios_from_seed, "seguranca_feminicidios", "uf", 20),
         ("roubo", _load_roubo_from_seed, "seguranca_roubo_total", "uf", 20),
+        ("exec_fed", _load_execucao_federal_from_seed, "fiscal_execucao_federal_pago", "uf", 20),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1553,6 +1571,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "emendas": ("br_mun_fiscal_emendas", "L4", "fiscal", "municipio"),
                 "feminicidios": ("br_mun_seguranca_mulher", "L5", "seguranca", "uf"),
                 "roubo": ("br_mun_seguranca_patrimonial", "L5", "seguranca", "uf"),
+                "exec_fed": ("br_nac_fiscal_execucao_federal", "L4", "fiscal", "uf"),
             }
             if label in id_map:
                 id_br, lote, tema, gran = id_map[label]
