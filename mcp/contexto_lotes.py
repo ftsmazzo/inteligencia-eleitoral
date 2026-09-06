@@ -415,6 +415,8 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("agro_irrigacao_ha", "br_mun_agro_irrigacao", "L2", "agro"),
         ("saude_nascidos_vivos", "br_mun_saude_sinasc", "L7", "saude"),
         ("saude_obitos", "br_mun_saude_sim", "L7", "saude"),
+        ("vab_industria_mil", "br_uf_industria_contas_regionais", "L1", "industria"),
+        ("agro_credito_rural_vl", "br_mun_agro_credito_rural", "L2", "agro"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -437,6 +439,7 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
                 "br_mun_educacao_censo_escolar",
                 "br_mun_saude_sinasc",
                 "br_mun_saude_sim",
+                "br_mun_agro_credito_rural",
             ) and n < 1000:
                 _upsert_status(
                     conn, id_br, lote, tema, "parcial", "uf", n, row[1],
@@ -543,6 +546,38 @@ def _load_obitos_from_seed(conn: psycopg.Connection) -> None:
         gran="uf",
     )
     print(f"[lotes] obitos seed={n}")
+
+
+def _load_vab_industria_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "vab_industria_uf.csv.gz",
+        "vab_industria_mil",
+        "br_uf_industria_contas_regionais",
+        "L1",
+        "industria",
+        "IBGE SIDRA 5938",
+        "VAB indústria (contas regionais)",
+        status="online",
+        gran="uf",
+    )
+    print(f"[lotes] vab industria seed={n}")
+
+
+def _load_credito_rural_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "agro_credito_rural_uf.csv.gz",
+        "agro_credito_rural_vl",
+        "br_mun_agro_credito_rural",
+        "L2",
+        "agro",
+        "BCB SICOR RegiaoUF",
+        "UF valor crédito rural; mun SICOR na fila",
+        status="parcial",
+        gran="uf",
+    )
+    print(f"[lotes] credito rural seed={n}")
 
 
 def _load_uf_seed_csv(
@@ -1227,7 +1262,11 @@ def _load_l3_l8(conn: psycopg.Connection) -> None:
         ("br_uf_seguranca_letalidade", "L5", "seguranca", "FBSP Anuário", "UF anuário na fila"),
         ("br_mun_educacao_censo_escolar", "L7", "educacao", "INEP Censo Escolar", "fila microdados"),
         ("br_mun_saude_cnes", "L7", "saude", "DATASUS CNES", "fila CNES"),
-        ("br_por_portos_movimentacao", "L8", "turismo", "ANTAQ", "fila ANTAQ"),
+        ("br_por_portos_movimentacao", "L8", "turismo", "ANTAQ", "API/anuario ANTAQ indisponível no boot; sem inventar"),
+        ("br_mun_mineracao_producao", "L8", "mineracao", "ANM AMB/CFEM", "portal ANM 404/SSL no boot; sem inventar"),
+        ("br_mun_mineracao_processos", "L8", "mineracao", "ANM SIGMINE", "fila processos minerários"),
+        ("br_mun_mineracao_beneficiamento", "L8", "mineracao", "ANM AMB", "fila produção beneficiada"),
+        ("br_mun_energia_geracao_distribuida", "L3", "energia", "ANEEL GD", "zip MMGD ~100MB; staging na fila"),
     ):
         id_br, lote, tema, fonte, nota = args
         gran = "municipio" if "_mun_" in id_br else ("porto" if "_por_" in id_br else "uf")
@@ -1253,6 +1292,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("irrig", _load_irrigacao_from_seed, "agro_irrigacao_ha", "mun", 3000),
         ("sinasc", _load_sinasc_from_seed, "saude_nascidos_vivos", "uf", 20),
         ("obitos", _load_obitos_from_seed, "saude_obitos", "uf", 20),
+        ("vab_ind", _load_vab_industria_from_seed, "vab_industria_mil", "uf", 20),
+        ("credito", _load_credito_rural_from_seed, "agro_credito_rural_vl", "uf", 20),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1275,6 +1316,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "irrig": ("br_mun_agro_irrigacao", "L2", "agro", "municipio"),
                 "sinasc": ("br_mun_saude_sinasc", "L7", "saude", "uf"),
                 "obitos": ("br_mun_saude_sim", "L7", "saude", "uf"),
+                "vab_ind": ("br_uf_industria_contas_regionais", "L1", "industria", "uf"),
+                "credito": ("br_mun_agro_credito_rural", "L2", "agro", "uf"),
             }
             id_br, lote, tema, gran = id_map[label]
             _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
