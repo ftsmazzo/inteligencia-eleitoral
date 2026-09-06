@@ -412,6 +412,9 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("energia_potencia_kw", "br_mun_energia_potencia_instalada", "L3", "energia"),
         ("fiscal_seguranca_empenhada", "br_uf_seguranca_gasto", "L5", "seguranca"),
         ("educ_freq_6_17", "br_mun_educacao_censo_escolar", "L7", "educacao"),
+        ("agro_irrigacao_ha", "br_mun_agro_irrigacao", "L2", "agro"),
+        ("saude_nascidos_vivos", "br_mun_saude_sinasc", "L7", "saude"),
+        ("saude_obitos", "br_mun_saude_sim", "L7", "saude"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -428,8 +431,13 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
             n = int(row[0] or 0)
             if n <= 0:
                 continue
-            # SICONFI / censo escolar: só UF no momento → parcial honesto
-            if id_br in ("br_mun_fiscal_siconfi", "br_mun_educacao_censo_escolar") and n < 1000:
+            # só UF no momento → parcial honesto
+            if id_br in (
+                "br_mun_fiscal_siconfi",
+                "br_mun_educacao_censo_escolar",
+                "br_mun_saude_sinasc",
+                "br_mun_saude_sim",
+            ) and n < 1000:
                 _upsert_status(
                     conn, id_br, lote, tema, "parcial", "uf", n, row[1],
                     "reconciliado", f"indicador {id_ind} UF presente; mun na fila",
@@ -449,6 +457,92 @@ def _fetch_timeout(url: str, timeout: int = 60) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
+
+
+def _load_mun_seed_csv(
+    conn: psycopg.Connection,
+    filename: str,
+    id_ind: str,
+    id_br: str,
+    lote: str,
+    tema: str,
+    fonte: str,
+    nota: str,
+    *,
+    online_min: int = 1000,
+) -> int:
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / filename
+    if not path.exists():
+        return 0
+    cods = {r[0] for r in conn.execute("SELECT cod_ibge FROM ref.municipio")}
+    rows: list[tuple] = []
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                cod = int(rec["cod_ibge"])
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if cod not in cods:
+                continue
+            rows.append((ano, cod, id_ind, val, "seed_csv"))
+    if not rows:
+        return 0
+    _upsert_indicador_mun(
+        conn, id_ind, rows, id_br, lote, tema, fonte, nota, online_min=online_min,
+    )
+    return len(rows)
+
+
+def _load_irrigacao_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_mun_seed_csv(
+        conn,
+        "agro_irrigacao_ha.csv.gz",
+        "agro_irrigacao_ha",
+        "br_mun_agro_irrigacao",
+        "L2",
+        "agro",
+        "ANA Atlas Irrigação 2021",
+        "área total irrigada (ha); ausência ≠ zero",
+        online_min=3000,
+    )
+    print(f"[lotes] irrigacao seed={n}")
+
+
+def _load_sinasc_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "saude_nascidos_vivos_uf.csv.gz",
+        "saude_nascidos_vivos",
+        "br_mun_saude_sinasc",
+        "L7",
+        "saude",
+        "IBGE SIDRA 2612",
+        "UF nascidos vivos; mun SIM/SINASC na fila",
+        status="parcial",
+        gran="uf",
+    )
+    print(f"[lotes] sinasc seed={n}")
+
+
+def _load_obitos_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "saude_obitos_uf.csv.gz",
+        "saude_obitos",
+        "br_mun_saude_sim",
+        "L7",
+        "saude",
+        "IBGE SIDRA 2685",
+        "UF óbitos; mun SIM na fila",
+        status="parcial",
+        gran="uf",
+    )
+    print(f"[lotes] obitos seed={n}")
 
 
 def _load_uf_seed_csv(
@@ -650,11 +744,18 @@ def _load_l2(conn: psycopg.Connection) -> None:
             print(f"[lotes] falha {id_ind}: {exc}")
             _upsert_status(conn, id_br, "L2", tema, "erro", "municipio", None, None, "IBGE SIDRA", str(exc)[:200])
             conn.commit()
-    _upsert_status(
-        conn, "br_mun_agro_irrigacao", "L2", "agro", "parcial", "municipio", None, None,
-        "ANA Atlas Irrigação", "planilha Atlas nacional na fila (sem inventar área)",
-        preserve_better=True,
-    )
+    n_irrig = _count_ind(conn, "agro_irrigacao_ha", "mun")
+    if n_irrig < 1000:
+        _upsert_status(
+            conn, "br_mun_agro_irrigacao", "L2", "agro", "parcial", "municipio", None, None,
+            "ANA Atlas Irrigação", "planilha Atlas nacional na fila (sem inventar área)",
+            preserve_better=True,
+        )
+    else:
+        _upsert_status(
+            conn, "br_mun_agro_irrigacao", "L2", "agro", "online", "municipio", n_irrig, None,
+            "ANA Atlas Irrigação 2021", "área total irrigada (ha) já carregada",
+        )
     _upsert_status(
         conn, "br_mun_agro_credito_rural", "L2", "agro", "parcial", "municipio", None, None,
         "BCB SICOR", "fonte nacional; carga SICOR na fila",
@@ -1149,6 +1250,9 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("siconfi", _load_siconfi_from_seed, "fiscal_rreo_anexo1_soma", "uf", 20),
         ("seg_gasto", _load_seguranca_gasto_from_seed, "fiscal_seguranca_empenhada", "uf", 20),
         ("educ_freq", _load_educ_freq_uf, "educ_freq_6_17", "uf", 20),
+        ("irrig", _load_irrigacao_from_seed, "agro_irrigacao_ha", "mun", 3000),
+        ("sinasc", _load_sinasc_from_seed, "saude_nascidos_vivos", "uf", 20),
+        ("obitos", _load_obitos_from_seed, "saude_obitos", "uf", 20),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1168,6 +1272,9 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "siconfi": ("br_mun_fiscal_siconfi", "L4", "fiscal", "uf"),
                 "seg_gasto": ("br_uf_seguranca_gasto", "L5", "seguranca", "uf"),
                 "educ_freq": ("br_mun_educacao_censo_escolar", "L7", "educacao", "uf"),
+                "irrig": ("br_mun_agro_irrigacao", "L2", "agro", "municipio"),
+                "sinasc": ("br_mun_saude_sinasc", "L7", "saude", "uf"),
+                "obitos": ("br_mun_saude_sim", "L7", "saude", "uf"),
             }
             id_br, lote, tema, gran = id_map[label]
             _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
