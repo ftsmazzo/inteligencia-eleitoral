@@ -576,10 +576,16 @@ def ensure_contexto_lotes(background: bool = True) -> None:
         with psycopg.connect(url, autocommit=True) as conn:
             _run_sql_file(conn, _SQL_DIR / "patch_contexto_lotes.sql")
             n = _seed_catalog(conn)
-            _mark_pib_comex_counts(conn)
             print(f"[lotes] checklist seed={n}")
+        # reconcile síncrono — checklist não fica 57x 'carregando' se a thread atrasar
+        with psycopg.connect(url) as conn:
+            _sync_nucleo_from_db(conn)
+            _mark_pib_comex_counts(conn)
+            _reconcile_from_indicadores(conn)
+            _mark_remaining_explicit(conn)
+        print("[lotes] checklist reconciliado (sync)")
     except Exception as exc:
-        print(f"[lotes] seed sync falhou: {exc}")
+        print(f"[lotes] seed/reconcile sync falhou: {exc}")
 
     if background:
         t = threading.Thread(target=_worker, name="contexto-lotes", daemon=True)
