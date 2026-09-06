@@ -420,7 +420,9 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("agro_credito_rural_vl", "br_mun_agro_credito_rural", "L2", "agro"),
         ("fiscal_fpm", "br_mun_fiscal_transferencias", "L4", "fiscal"),
         ("fiscal_fundeb", "br_mun_fiscal_transferencias", "L4", "fiscal"),
+        ("fiscal_itr", "br_mun_fiscal_transferencias", "L4", "fiscal"),
         ("pop_mun_estimativa", "br_mun_estimativas", "L6", "demografia"),
+        ("energia_gd_potencia_kw", "br_mun_energia_geracao_distribuida", "L3", "energia"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -548,6 +550,36 @@ def _load_pop_mun_from_seed(conn: psycopg.Connection) -> None:
         online_min=3000,
     )
     print(f"[lotes] pop mun seed={n}")
+
+
+def _load_itr_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_mun_seed_csv(
+        conn,
+        "fiscal_itr_mun.csv.gz",
+        "fiscal_itr",
+        "br_mun_fiscal_transferencias",
+        "L4",
+        "fiscal",
+        "Tesouro Transparente ITR",
+        "ITR anual agregado; ausência ≠ zero",
+        online_min=3000,
+    )
+    print(f"[lotes] itr seed={n}")
+
+
+def _load_gd_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_mun_seed_csv(
+        conn,
+        "energia_gd_potencia_mun.csv.gz",
+        "energia_gd_potencia_kw",
+        "br_mun_energia_geracao_distribuida",
+        "L3",
+        "energia",
+        "ANEEL GD",
+        "potência instalada GD (kW) por mun; ausência ≠ zero",
+        online_min=3000,
+    )
+    print(f"[lotes] gd seed={n}")
 
 
 def _load_irrigacao_from_seed(conn: psycopg.Connection) -> None:
@@ -1363,6 +1395,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("fpm", _load_fpm_from_seed, "fiscal_fpm", "mun", 3000),
         ("fundeb", _load_fundeb_from_seed, "fiscal_fundeb", "mun", 3000),
         ("pop_mun", _load_pop_mun_from_seed, "pop_mun_estimativa", "mun", 3000),
+        ("itr", _load_itr_from_seed, "fiscal_itr", "mun", 3000),
+        ("gd", _load_gd_from_seed, "energia_gd_potencia_kw", "mun", 3000),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1391,6 +1425,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "fpm": ("br_mun_fiscal_transferencias", "L4", "fiscal", "municipio"),
                 "fundeb": ("br_mun_fiscal_transferencias", "L4", "fiscal", "municipio"),
                 "pop_mun": ("br_mun_estimativas", "L6", "demografia", "municipio"),
+                "itr": ("br_mun_fiscal_transferencias", "L4", "fiscal", "municipio"),
+                "gd": ("br_mun_energia_geracao_distribuida", "L3", "energia", "municipio"),
             }
             id_br, lote, tema, gran = id_map[label]
             _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
