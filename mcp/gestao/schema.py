@@ -42,6 +42,7 @@ def ensure_schema() -> None:
     patch_v3 = _find_sql("patch_gestao_v3.sql")
     patch_v4 = _find_sql("patch_gestao_v4.sql")
     patch_v5 = _find_sql("patch_gestao_v5.sql")
+    patch_v6 = _find_sql("patch_gestao_v6.sql")
     if not patch_gestao:
         raise RuntimeError("Schema Gestão indisponível")
     if not patch_v3:
@@ -57,4 +58,6 @@ def ensure_schema() -> None:
             conn.execute(patch_v4.read_text(encoding="utf-8"))
         if patch_v5:
             conn.execute(patch_v5.read_text(encoding="utf-8"))
+        if patch_v6:
+            conn.execute(patch_v6.read_text(encoding="utf-8"))
     _READY = True

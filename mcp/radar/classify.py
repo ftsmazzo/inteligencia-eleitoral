@@ -27,12 +27,12 @@ PROMPT_MIX = (
 
 
 def _model() -> str:
-    return (
-        os.environ.get("RADAR_CLASSIFY_MODEL")
-        or os.environ.get("APURA_ORCHESTRATOR_MODEL")
-        or os.environ.get("APURA_MODEL")
-        or "openai/gpt-4o-mini"
-    )
+    forced = (os.environ.get("RADAR_CLASSIFY_MODEL") or "").strip()
+    if forced:
+        return forced
+    from apura import modelos as catalogo_modelos
+
+    return catalogo_modelos.modelo_radar()
 
 
 def _key() -> str:

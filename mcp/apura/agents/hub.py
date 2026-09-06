@@ -29,6 +29,7 @@ from apura.prompt import (
     VOZ_OPERACIONAL,
     VOZ_REDATOR,
 )
+from apura import modelos as catalogo_modelos
 from apura.tools import MCP_TOOLS
 
 _OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
@@ -39,33 +40,22 @@ _RELATORIO_RE = re.compile(
 )
 
 
-def _orchestrator_model() -> str:
-    return (
-        os.environ.get("APURA_ORCHESTRATOR_MODEL")
-        or os.environ.get("APURA_MODEL")
-        or "openai/gpt-4o-mini"
-    )
+def _orchestrator_model(perfil_slug: str | None = None) -> str:
+    return catalogo_modelos.orquestrador(perfil_slug=perfil_slug)
 
 
-def _writer_model() -> str:
-    return os.environ.get("APURA_WRITER_MODEL") or "openai/gpt-4o"
+def _writer_model(perfil_slug: str | None = None) -> str:
+    return catalogo_modelos.redator(perfil_slug=perfil_slug)
 
 
 def _ary_orchestrator_model() -> str:
-    """Modelo robusto com Ary ativo (tool-calling forte)."""
-    return (
-        os.environ.get("APURA_ARY_ORCHESTRATOR_MODEL")
-        or "openai/gpt-4o"
-    )
+    """Ary ativo: Gemini Pro — tool-calling forte sem gastar Sonnet no roteamento."""
+    return catalogo_modelos.orquestrador(ary=True)
 
 
 def _ary_writer_model() -> str:
-    """Redator robusto com Ary ativo."""
-    return (
-        os.environ.get("APURA_ARY_WRITER_MODEL")
-        or os.environ.get("APURA_WRITER_MODEL")
-        or "openai/gpt-4o"
-    )
+    """Ary ativo: Claude Sonnet 5 — prosa e reflexão complexa."""
+    return catalogo_modelos.redator(ary=True)
 
 
 def _openrouter_key() -> str:
@@ -307,11 +297,12 @@ async def executar_hub(
     from apura.perfil_policy import filtrar_mcp_tools, resumo_politica, tool_permitida
 
     pergunta = _ultima_pergunta(historico)
+    slug_pol = (politica or {}).get("perfil_slug") if politica else None
     pol = politica or {
         "bypass": True,
         "tools": set(),
-        "modelo_orquestrador": _orchestrator_model(),
-        "modelo_redator": _writer_model(),
+        "modelo_orquestrador": _orchestrator_model("estrategista"),
+        "modelo_redator": _writer_model("estrategista"),
         "fonte": "sem_politica",
     }
     state = missao_state or MissaoState(perfil=(pol.get("perfil_slug") or "analista"))
@@ -326,8 +317,9 @@ async def executar_hub(
     cmd = detectar_comando(pergunta)
     state = aplicar_comando(state, cmd, pergunta)
 
-    orch_model = (pol.get("modelo_orquestrador") or _orchestrator_model()).strip()
-    writer_model = (pol.get("modelo_redator") or _writer_model()).strip()
+    slug = pol.get("perfil_slug") or slug_pol
+    orch_model = (pol.get("modelo_orquestrador") or _orchestrator_model(slug)).strip()
+    writer_model = (pol.get("modelo_redator") or _writer_model(slug)).strip()
     if state.usa_protocolo_airy:
         orch_model = _ary_orchestrator_model().strip()
         writer_model = _ary_writer_model().strip()

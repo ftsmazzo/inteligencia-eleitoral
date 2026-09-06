@@ -156,38 +156,40 @@ VALUES
   (
     'consultor_minimo',
     'Consultor mínimo',
-    'Leitura leve: catálogo, município, nominata. Modelos baratos.',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4o-mini',
+    'Leitura leve: catálogo, município, nominata. Orch Lite + Haiku.',
+    'google/gemini-2.5-flash-lite',
+    'anthropic/claude-haiku-4.5',
     true
   ),
   (
     'analista',
     'Analista',
-    'Cifras TSE, contexto social/MDS, Parlamento, cruzamentos. Sem acervo/clima.',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4o',
+    'Cifras TSE, contexto social/MDS, Parlamento, cruzamentos. Sem acervo/clima. Flash + Sonnet 4.6.',
+    'google/gemini-2.5-flash',
+    'anthropic/claude-sonnet-4.6',
     true
   ),
   (
     'estrategista',
     'Estrategista',
-    'Analista + acervo + clima. Modelos mais capazes.',
-    'anthropic/claude-sonnet-4',
-    'openai/gpt-4o',
+    'Analista + acervo + clima. Pro no roteamento; Sonnet no texto final.',
+    'google/gemini-2.5-pro',
+    'anthropic/claude-sonnet-4.6',
     true
   ),
   (
     'coordenador',
     'Coordenador',
     'Mesmas tools do estrategista; poder extra é gestão da campanha (papel_campanha).',
-    'anthropic/claude-sonnet-4',
-    'openai/gpt-4o',
+    'google/gemini-2.5-pro',
+    'anthropic/claude-sonnet-4.6',
     true
   )
 ON CONFLICT (slug) DO UPDATE SET
   nome = EXCLUDED.nome,
   descricao = EXCLUDED.descricao,
+  modelo_orquestrador = EXCLUDED.modelo_orquestrador,
+  modelo_redator = EXCLUDED.modelo_redator,
   atualizado_em = now();
 
 -- Tools por perfil (reaplicável)

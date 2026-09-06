@@ -34,19 +34,27 @@ def _headers() -> dict[str, str]:
 
 
 def _model_web() -> str:
-    return os.environ.get("APURA_WEB_MODEL") or "perplexity/sonar"
+    from apura import modelos as catalogo_modelos
+
+    return catalogo_modelos.modelo_web()
 
 
 def _model_pdf() -> str:
-    return os.environ.get("APURA_PDF_MODEL") or "mistralai/mistral-small"
+    from apura import modelos as catalogo_modelos
+
+    return catalogo_modelos.modelo_pdf()
 
 
 def _model_vision() -> str:
-    return os.environ.get("APURA_VISION_MODEL") or "openai/gpt-4o"
+    from apura import modelos as catalogo_modelos
+
+    return catalogo_modelos.modelo_visao()
 
 
 def _model_image() -> str:
-    return os.environ.get("APURA_IMAGE_MODEL") or "google/gemini-2.0-flash-exp:free"
+    from apura import modelos as catalogo_modelos
+
+    return catalogo_modelos.modelo_imagem()
 
 
 def _db_url() -> str | None:
@@ -98,53 +106,65 @@ async def pesquisar_web(params: dict[str, Any]) -> dict[str, Any]:
 
 
 async def ler_pdf(params: dict[str, Any]) -> dict[str, Any]:
+    """Lê PDF via OpenRouter: file + plugin mistral-ocr + Ministral (ou override)."""
+    from apura import modelos as catalogo_modelos
+
     url = (params.get("url") or "").strip()
     texto = (params.get("texto") or "").strip()
     pergunta = (params.get("pergunta") or "Resuma os pontos relevantes para a campanha.").strip()
     if not url and not texto:
         return {"status": "vazio", "mensagem": "informe url ou texto do PDF", "nivel": "indicio"}
-    content: Any
-    if url:
-        content = [
-            {"type": "text", "text": pergunta},
-            {"type": "text", "text": f"Documento em URL: {url}. Extraia e responda com base nele."},
-        ]
-        # Alguns modelos aceitam file URL; enviamos instrução + fetch texto curto se possível
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                fr = await client.get(url)
-            if fr.status_code < 400 and "text" in (fr.headers.get("content-type") or ""):
-                content.append({"type": "text", "text": fr.text[:50000]})
-            elif fr.status_code < 400:
-                content.append(
-                    {
-                        "type": "text",
-                        "text": (
-                            f"(binário {fr.headers.get('content-type')}; "
-                            f"{len(fr.content)} bytes — peça ao usuário colar trechos se o modelo não ler)"
-                        ),
-                    }
-                )
-        except Exception as exc:
-            return {
-                "status": "vazio",
-                "mensagem": f"não foi possível baixar o PDF: {exc}",
-                "nivel": "indicio",
-            }
+
+    model = catalogo_modelos.modelo_pdf()
+    engine = catalogo_modelos.pdf_engine()
+
+    if texto and not url:
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Leia o documento. Indício apenas. Sem inventar cifras de urna.",
+                },
+                {"role": "user", "content": f"{pergunta}\n\n---\n{texto[:50000]}"},
+            ],
+            "temperature": 0.2,
+        }
     else:
-        content = f"{pergunta}\n\n---\n{texto[:50000]}"
-    body = {
-        "model": _model_pdf(),
-        "messages": [
-            {
-                "role": "system",
-                "content": "Leia o documento. Indício apenas. Sem inventar cifras de urna.",
-            },
-            {"role": "user", "content": content},
-        ],
-        "temperature": 0.2,
-    }
-    async with httpx.AsyncClient(timeout=120.0) as client:
+        # API de arquivo OpenRouter — OCR Mistral extrai texto/imagens do PDF
+        filename = (params.get("filename") or url.rsplit("/", 1)[-1] or "documento.pdf")[:120]
+        if not filename.lower().endswith(".pdf"):
+            filename = f"{filename}.pdf"
+        body = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Você analisa documentos de campanha (PDF). "
+                        "Indício apenas. Sem inventar cifras de urna. "
+                        "Cite trechos quando possível."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": pergunta},
+                        {
+                            "type": "file",
+                            "file": {
+                                "filename": filename,
+                                "file_data": url,
+                            },
+                        },
+                    ],
+                },
+            ],
+            "plugins": [{"id": "file-parser", "pdf": {"engine": engine}}],
+            "temperature": 0.2,
+        }
+
+    async with httpx.AsyncClient(timeout=180.0) as client:
         r = await client.post(_OPENROUTER, headers=_headers(), json=body)
     if r.status_code >= 400:
         return {
@@ -157,9 +177,11 @@ async def ler_pdf(params: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": "ok" if text.strip() else "vazio",
         "nivel": "indicio",
-        "itens": [{"resumo": text[:12000], "fonte": "pdf"}],
+        "itens": [{"resumo": text[:12000], "fonte": f"pdf:{model}", "engine": engine}],
         "mensagem": None if text.strip() else "sem conteúdo extraído",
-        "nota_metodologica": "Indício de documento — cruzar com oficial se for cifra.",
+        "nota_metodologica": (
+            f"PDF via OpenRouter ({engine} + {model}) — indício; cruzar com oficial se for cifra."
+        ),
     }
 
 
@@ -200,12 +222,14 @@ async def ler_imagem(params: dict[str, Any]) -> dict[str, Any]:
 
 
 async def transcrever_audio(params: dict[str, Any]) -> dict[str, Any]:
+    from apura import modelos as catalogo_modelos
+
     url = (params.get("url") or "").strip()
     if not url:
         return {"status": "vazio", "mensagem": "url do áudio obrigatória", "nivel": "indicio"}
     # OpenRouter não unifica whisper; tentamos modelo multimodal com URL
     body = {
-        "model": os.environ.get("APURA_AUDIO_MODEL") or "openai/gpt-4o-audio-preview",
+        "model": catalogo_modelos.modelo_audio(),
         "messages": [
             {
                 "role": "user",
@@ -276,13 +300,15 @@ async def gerar_imagem(params: dict[str, Any]) -> dict[str, Any]:
 
 
 async def gerar_mapa_html(params: dict[str, Any]) -> dict[str, Any]:
+    from apura import modelos as catalogo_modelos
+
     titulo = (params.get("titulo") or "Mapa estratégico").strip()[:120]
     eixos = (params.get("eixos") or params.get("conteudo") or "").strip()
     if not eixos:
         return {"status": "vazio", "mensagem": "informe eixos/conteudo do mapa", "nivel": "artefato"}
     ctx = (params.get("contexto_campanha") or "")[:1500]
     body = {
-        "model": os.environ.get("APURA_WRITER_MODEL") or "openai/gpt-4o",
+        "model": catalogo_modelos.modelo_mapa_html(),
         "messages": [
             {
                 "role": "system",

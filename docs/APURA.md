@@ -27,18 +27,22 @@ Skill de sistema `SKILL_WAR_ROOM_DEFAULT` — injetada em **toda** conversa (nã
 Acervo RAG: planos 2026 + **glossário** + **playbooks** + notas TSE + fichas 2018/2022.  
 Planos 2018/2022: pipeline `baixar_propostas_governo` + `carregar_propostas_governo` (ver `docs/CARGA-PROPOSTAS-GOVERNO.md`).
 
-## Arquitetura (dois modelos)
+## Arquitetura (modelo por função)
+
+Catálogo: `mcp/apura/modelos.py`. Detalhe em `docs/APURA-MULTIAGENTE.md`.
 
 | Papel | Variável | Padrão | Função |
 |---|---|---|---|
-| **Orquestrador** | `APURA_ORCHESTRATOR_MODEL` | `openai/gpt-4o-mini` | Entende a pergunta, chama tools MCP, compacta JSON |
-| **Redator** | `APURA_WRITER_MODEL` | `openai/gpt-4o` | Responde ao usuário na voz de marketing político (sem chamar MCP) |
+| **Orquestrador** | `APURA_ORCHESTRATOR_MODEL` | `google/gemini-2.5-flash` | Tools MCP, plano, compactação |
+| **Redator** | `APURA_WRITER_MODEL` | `anthropic/claude-sonnet-4.6` | Prosa final (Anthropic) |
+| **Ary orch** | `APURA_ARY_ORCHESTRATOR_MODEL` | `google/gemini-2.5-pro` | Modo Ary — roteamento |
+| **Ary redator** | `APURA_ARY_WRITER_MODEL` | `anthropic/claude-sonnet-5` | Modo Ary — texto complexo |
 | **MCP** | — | — | Postgres `api.*` — **sem IA** |
 
 O redator recebe só a pergunta + dados já consultados (economia de tokens no modelo caro).
 Relatório HTML **inline** aparece quando o usuário pedir (ex.: “monte um relatório em HTML”).
 
-Sugestões OpenRouter para redator: `openai/gpt-4o`, `anthropic/claude-sonnet-4`, `google/gemini-2.5-pro-preview`.
+**Não** use `openai/gpt-4o` / `gpt-4o-mini` como default de redação — GPT só sob demanda explícita.
 
 ## Variáveis de ambiente (EasyPanel · serviço `mcp-api`)
 
@@ -46,9 +50,11 @@ Sugestões OpenRouter para redator: `openai/gpt-4o`, `anthropic/claude-sonnet-4`
 |---|---|---|
 | `OPENROUTER_API_KEY` | Sim | Chave em [openrouter.ai/keys](https://openrouter.ai/keys) |
 | `APURA_JWT_SECRET` | Sim | Segredo para sessões (string longa aleatória) |
-| `APURA_MODEL` | Não | Modelo legado; usado se orchestrator/writer não forem definidos |
-| `APURA_ORCHESTRATOR_MODEL` | Não | Modelo barato para tool calling (padrão: `openai/gpt-4o-mini`) |
-| `APURA_WRITER_MODEL` | Não | Modelo expert para redação (padrão: `openai/gpt-4o`) |
+| `APURA_MODEL` | Não | Legado; só se orch/writer não forem definidos |
+| `APURA_ORCHESTRATOR_MODEL` | Não | Default código: `google/gemini-2.5-flash` — **não** deixe `gpt-4o-mini` no EasyPanel |
+| `APURA_WRITER_MODEL` | Não | Default código: `anthropic/claude-sonnet-4.6` — **não** deixe `gpt-4o` no EasyPanel |
+| `APURA_ARY_ORCHESTRATOR_MODEL` | Não | Default: `google/gemini-2.5-pro` |
+| `APURA_ARY_WRITER_MODEL` | Não | Default: `anthropic/claude-sonnet-5` |
 | `APURA_SITE_URL` | Não | URL pública (header OpenRouter) |
 | `POSTGRES_ADMIN_URL` | Recomendada | Superusuário Postgres para criar tabelas Apura (DDL) |
 | `AGENTE_DATABASE_URL` | Sim | Já usada pelo MCP |

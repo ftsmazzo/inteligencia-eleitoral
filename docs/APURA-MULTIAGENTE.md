@@ -1,11 +1,34 @@
 # Apura · arquitetura multiagente (Trilho A)
 
-Status: Fase 0–4 no código. **Ativar Ary** = modo pleno (modelo robusto + agentes), sem briefing.
+Status: Fase 0–4 no código. **Ativar Ary** = modo pleno (modelos top + agentes), sem briefing.
+
+Catálogo canônico: `mcp/apura/modelos.py` (IDs OpenRouter verificados).
+
+## Princípio de modelos
+
+Cada papel usa a IA que combina com a tarefa — **não** GPT-4o/4o-mini genéricos.
+
+| Função | Modelo | Por quê |
+|--------|--------|---------|
+| Orquestração / tools | `google/gemini-2.5-flash` | Tool-calling forte, barato |
+| Orquestração Ary | `google/gemini-2.5-pro` | Mais cabeça no plano sem gastar Sonnet no roteamento |
+| Texto final / reflexão | `anthropic/claude-sonnet-4.6` | Prosa e julgamento |
+| Texto Ary | `anthropic/claude-sonnet-5` | Reflexão complexa / redator máximo |
+| Consultor (orch) | `google/gemini-2.5-flash-lite` | Triagem leve |
+| Consultor (texto) | `anthropic/claude-haiku-4.5` | Resposta curta, Anthropic barato |
+| Web | `perplexity/sonar` (+ `sonar-pro` no Ary) | Busca nativa |
+| PDF / OCR | `mistralai/ministral-14b-2512` + engine `mistral-ocr` | OCR Mistral + LLM visão barato |
+| PDF / visão genérica | `google/gemini-2.5-flash` (só visão) | Multimodal econômico |
+| Imagem | `google/gemini-2.5-flash-image` | Geração/descrição |
+| Radar / governança | Flash / Flash-lite | Volume, baixo risco |
+
+Overrides (EasyPanel): `APURA_ORCHESTRATOR_MODEL`, `APURA_WRITER_MODEL`, `APURA_ARY_*`, `APURA_WEB_MODEL`, etc. **Remova** defaults antigos `openai/gpt-4o*` se ainda estiverem setados — env força e anula o catálogo.
 
 ## Camadas
 
 | Camada | Onde |
 |--------|------|
+| Catálogo de modelos | `modelos.py` |
 | Política de dados | `prompts/politica_dados.py` |
 | Protocolo Ary / perfis | `prompts/protocolo_airy.py` + `missao_state.py` |
 | Voz redator | `prompts/voz.py` |
@@ -16,19 +39,24 @@ Status: Fase 0–4 no código. **Ativar Ary** = modo pleno (modelo robusto + age
 
 ## Perfis (vínculo no login)
 
-- `consultor_minimo` → **Operacional**
-- `analista` → **Analista**
-- `estrategista` / `coordenador` → **Estrategista** (+ pode Ativar Ary)
+| Slug | Orquestrador | Redator |
+|------|--------------|---------|
+| `consultor_minimo` | Flash Lite | Haiku 4.5 |
+| `analista` | Flash | Sonnet 4.6 |
+| `estrategista` / `coordenador` | Gemini 2.5 Pro | Sonnet 4.6 |
+
+Seeds: `sql/patch_gestao_v3.sql` + `patch_gestao_v6.sql` (UPDATE forçado).
 
 ## Ativar Ary / Airy
 
 No Chat: `Ativar Ary` (também aceita Airy).
 
-- Sobe modelos: `APURA_ARY_ORCHESTRATOR_MODEL` / `APURA_ARY_WRITER_MODEL` (default `openai/gpt-4o`)
+- Orquestrador → `google/gemini-2.5-pro` (`APURA_ARY_ORCHESTRATOR_MODEL`)
+- Redator → `anthropic/claude-sonnet-5` (`APURA_ARY_WRITER_MODEL`)
 - Libera uso pleno dos agentes/tools do perfil
 - **Não** inicia briefing nem questionário
 - Desligar: `Desativar Ary`
 
 ## Schema
 
-`sql/patch_gestao_v5.sql` — contatos, tarefas, tools novas; aplicado em `gestao.schema.ensure_schema`.
+`patch_gestao_v5.sql` — contatos/tarefas; `patch_gestao_v6.sql` — modelos por perfil; ambos em `gestao.schema.ensure_schema`.

@@ -5,26 +5,22 @@ Token mestre (MCP_TOKEN env) = bypass total.
 """
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import psycopg
 
+from apura import modelos as catalogo_modelos
 from apura.tools import MCP_TOOLS, TOOL_TO_MCP
 
 MCP_TO_TOOL: dict[str, str] = {v: k for k, v in TOOL_TO_MCP.items()}
 
 
-def _env_orch() -> str:
-    return (
-        os.environ.get("APURA_ORCHESTRATOR_MODEL")
-        or os.environ.get("APURA_MODEL")
-        or "openai/gpt-4o-mini"
-    )
+def _env_orch(perfil_slug: str | None = None) -> str:
+    return catalogo_modelos.orquestrador(perfil_slug=perfil_slug)
 
 
-def _env_writer() -> str:
-    return os.environ.get("APURA_WRITER_MODEL") or "openai/gpt-4o"
+def _env_writer(perfil_slug: str | None = None) -> str:
+    return catalogo_modelos.redator(perfil_slug=perfil_slug)
 
 
 def _todas_tools() -> set[str]:
@@ -51,8 +47,8 @@ def _perfil_por_slug(conn: psycopg.Connection, slug: str) -> dict[str, Any] | No
         "perfil_id": row[0],
         "perfil_slug": row[1],
         "perfil_nome": row[2],
-        "modelo_orquestrador": row[3] or _env_orch(),
-        "modelo_redator": row[4] or _env_writer(),
+        "modelo_orquestrador": row[3] or _env_orch(row[1]),
+        "modelo_redator": row[4] or _env_writer(row[1]),
         "quota_perguntas_max": row[5],
         "tools": {t[0] for t in tools} or _todas_tools(),
         "fonte": f"perfil:{row[1]}",
@@ -63,10 +59,10 @@ def _perfil_por_slug(conn: psycopg.Connection, slug: str) -> dict[str, Any] | No
 def _politica_plena(*, fonte: str) -> dict[str, Any]:
     return {
         "perfil_id": None,
-        "perfil_slug": None,
+        "perfil_slug": "estrategista",
         "perfil_nome": None,
-        "modelo_orquestrador": _env_orch(),
-        "modelo_redator": _env_writer(),
+        "modelo_orquestrador": _env_orch("estrategista"),
+        "modelo_redator": _env_writer("estrategista"),
         "quota_perguntas_max": None,
         "tools": _todas_tools(),
         "fonte": fonte,
@@ -94,8 +90,8 @@ def politica_do_perfil_id(conn: psycopg.Connection, perfil_id: str) -> dict[str,
         "perfil_id": row[0],
         "perfil_slug": row[1],
         "perfil_nome": row[2],
-        "modelo_orquestrador": row[3] or _env_orch(),
-        "modelo_redator": row[4] or _env_writer(),
+        "modelo_orquestrador": row[3] or _env_orch(row[1]),
+        "modelo_redator": row[4] or _env_writer(row[1]),
         "quota_perguntas_max": row[5],
         "tools": {t[0] for t in tools} or _todas_tools(),
         "fonte": f"perfil:{row[1]}",

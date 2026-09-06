@@ -323,7 +323,9 @@ async def sugerir_boas_praticas(
         out["llm"] = {"ok": False, "erro": "OPENROUTER_API_KEY indisponível — só heurísticas."}
         return out
 
-    model = os.environ.get("APURA_GOVERNANCA_MODEL") or "openai/gpt-4o-mini"
+    from apura import modelos as catalogo_modelos
+
+    model = catalogo_modelos.modelo_governanca()
     payload_ctx = {
         "resumo": out["resumo"],
         "heuristicas": heuristicas,
