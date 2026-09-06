@@ -5,13 +5,20 @@ Critério de pronto: ctl.lote_status cobre 100% do catálogo; nada fica
 """
 from __future__ import annotations
 
+import io
 import json
 import os
+import re
 import threading
+import unicodedata
+import urllib.parse
 import urllib.request
+import zipfile
+from collections import defaultdict
 from pathlib import Path
 
 import psycopg
+from openpyxl import load_workbook
 
 _SQL_DIR = Path(__file__).resolve().parent / "sql"
 _SEED = Path(__file__).resolve().parent / "seed" / "catalogo_brasil.json"
@@ -352,6 +359,12 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("pib_uf_mil", "br_uf_industria_contas_regionais", "L1", "industria"),
         ("pop_uf_estimativa", "br_uf_populacao", "L6", "demografia"),
         ("fiscal_rreo_anexo1_soma", "br_mun_fiscal_siconfi", "L4", "fiscal"),
+        ("pnad_desocupacao_pct", "br_uf_pnad", "L1", "economia"),
+        ("pia_unidades_locais", "br_uf_industria_pia", "L1", "industria"),
+        ("educ_ideb_ai_pub", "br_mun_educacao_ideb", "L7", "educacao"),
+        ("educ_ideb_af_pub", "br_mun_educacao_ideb", "L7", "educacao"),
+        ("educ_ideb_em_pub", "br_mun_educacao_ideb", "L7", "educacao"),
+        ("energia_potencia_kw", "br_mun_energia_potencia_instalada", "L3", "energia"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -461,61 +474,345 @@ def _load_l2(conn: psycopg.Connection) -> None:
     conn.commit()
 
 
-def _load_l3_l8(conn: psycopg.Connection) -> None:
+def _fold_nome(s: str) -> str:
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.upper()
+    s = re.sub(r"[^A-Z0-9 ]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _mun_index(conn: psycopg.Connection) -> dict[tuple[str, str], int]:
+    idx: dict[tuple[str, str], int] = {}
+    for cod, nome, uf in conn.execute(
+        "SELECT cod_ibge, nome, sg_uf FROM ref.municipio"
+    ):
+        if not nome or not uf:
+            continue
+        idx[(str(uf).upper(), _fold_nome(str(nome)))] = int(cod)
+    return idx
+
+
+def _brnum(s: str | None) -> float | None:
+    s = (s or "").strip()
+    if not s or s in ("-", "..", "...", "X"):
+        return None
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif "," in s:
+        s = s.replace(",", ".")
     try:
-        print("[lotes] pib_uf…")
-        payload = _fetch("https://apisidra.ibge.gov.br/values/t/5938/n3/all/v/37/p/last")
-        data = json.loads(payload.decode("utf-8"))
-        rows = []
-        ano = None
-        for row in data[1:]:
-            cod, a, val = row.get("D1C"), row.get("D3C"), row.get("V")
-            if not cod or val in (None, "", "...", "-", "..", "X"):
-                continue
-            sg = COD_TO_SG.get(str(cod).zfill(2))
-            if not sg:
-                continue
-            ano = int(a)
-            rows.append((ano, sg, "pib_uf_mil", float(str(val).replace(",", ".")), "ibge_sidra"))
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM contexto.indicador_uf WHERE id_indicador = %s", ("pib_uf_mil",))
-            with cur.copy(
-                "COPY contexto.indicador_uf (ano, sg_uf, id_indicador, valor, ds_fonte) FROM STDIN"
-            ) as copy:
-                for r in rows:
-                    copy.write_row(r)
-        _upsert_status(
-            conn, "br_uf_industria_contas_regionais", "L1", "industria", "online", "uf",
-            len(rows), str(ano), "IBGE SIDRA 5938", "indicador pib_uf_mil",
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _upsert_indicador_uf(
+    conn: psycopg.Connection,
+    id_ind: str,
+    rows: list[tuple],
+    id_br: str,
+    lote: str,
+    tema: str,
+    fonte: str,
+    nota: str,
+) -> None:
+    if not rows:
+        raise RuntimeError(f"{id_ind} zero")
+    ano_ref = str(max(r[0] for r in rows))
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM contexto.indicador_uf WHERE id_indicador = %s", (id_ind,))
+        with cur.copy(
+            "COPY contexto.indicador_uf (ano, sg_uf, id_indicador, valor, ds_fonte) FROM STDIN"
+        ) as copy:
+            for r in rows:
+                copy.write_row(r)
+    _upsert_status(
+        conn, id_br, lote, tema, "online" if len(rows) >= 20 else "parcial", "uf",
+        len(rows), ano_ref, fonte, nota,
+    )
+
+
+def _upsert_indicador_mun(
+    conn: psycopg.Connection,
+    id_ind: str,
+    rows: list[tuple],
+    id_br: str,
+    lote: str,
+    tema: str,
+    fonte: str,
+    nota: str,
+    online_min: int = 1000,
+) -> None:
+    if not rows:
+        raise RuntimeError(f"{id_ind} zero")
+    ano_ref = str(max(r[0] for r in rows))
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM contexto.indicador_mun WHERE id_indicador = %s AND ano = %s",
+            (id_ind, int(ano_ref)),
         )
-        conn.commit()
-        print(f"[lotes] pib_uf ok {len(rows)}")
-    except Exception as exc:
-        conn.rollback()
-        print(f"[lotes] pib_uf fail {exc}")
+        with cur.copy(
+            "COPY contexto.indicador_mun (ano, cod_ibge, id_indicador, valor, ds_fonte) FROM STDIN"
+        ) as copy:
+            for r in rows:
+                copy.write_row(r)
+    _upsert_status(
+        conn, id_br, lote, tema,
+        "online" if len(rows) >= online_min else "parcial",
+        "municipio", len(rows), ano_ref, fonte, nota,
+    )
 
-    try:
-        _load_pop_uf_agregados(conn)
-        conn.commit()
-    except Exception as exc:
-        conn.rollback()
-        print(f"[lotes] pop_uf fail {exc}")
 
-    try:
-        _load_siconfi_rreo_uf(conn)
+def _load_pib_uf(conn: psycopg.Connection) -> None:
+    print("[lotes] pib_uf…")
+    payload = _fetch("https://apisidra.ibge.gov.br/values/t/5938/n3/all/v/37/p/last")
+    data = json.loads(payload.decode("utf-8"))
+    rows = []
+    for row in data[1:]:
+        cod, a, val = row.get("D1C"), row.get("D3C"), row.get("V")
+        if not cod or val in (None, "", "...", "-", "..", "X"):
+            continue
+        sg = COD_TO_SG.get(str(cod).zfill(2))
+        if not sg:
+            continue
+        rows.append((int(a), sg, "pib_uf_mil", float(str(val).replace(",", ".")), "ibge_sidra"))
+    _upsert_indicador_uf(
+        conn, "pib_uf_mil", rows, "br_uf_industria_contas_regionais", "L1", "industria",
+        "IBGE SIDRA 5938", "indicador pib_uf_mil",
+    )
+    print(f"[lotes] pib_uf ok {len(rows)}")
+
+
+def _load_pnad_uf(conn: psycopg.Connection) -> None:
+    print("[lotes] pnad_desocupacao…")
+    url = "https://apisidra.ibge.gov.br/values/t/4093/n3/all/v/4099/p/last/c2/6794"
+    data = json.loads(_fetch(url).decode("utf-8"))
+    rows = []
+    for row in data[1:]:
+        cod, per, val = row.get("D1C"), row.get("D3C"), row.get("V")
+        if not cod or val in (None, "", "...", "-", "..", "X"):
+            continue
+        sg = COD_TO_SG.get(str(cod).zfill(2))
+        if not sg:
+            continue
+        # trimestre YYYYQN → ano
+        ano = int(str(per)[:4])
+        rows.append((ano, sg, "pnad_desocupacao_pct", float(str(val).replace(",", ".")), "ibge_sidra"))
+    _upsert_indicador_uf(
+        conn, "pnad_desocupacao_pct", rows, "br_uf_pnad", "L1", "economia",
+        "IBGE SIDRA 4093", "taxa desocupação UF (último trimestre)",
+    )
+    print(f"[lotes] pnad ok {len(rows)}")
+
+
+def _load_pia_uf(conn: psycopg.Connection) -> None:
+    print("[lotes] pia_unidades…")
+    url = "https://apisidra.ibge.gov.br/values/t/1849/n3/all/v/706/p/last"
+    data = json.loads(_fetch(url).decode("utf-8"))
+    rows = []
+    for row in data[1:]:
+        cod, a, val = row.get("D1C"), row.get("D3C"), row.get("V")
+        if not cod or val in (None, "", "...", "-", "..", "X"):
+            continue
+        sg = COD_TO_SG.get(str(cod).zfill(2))
+        if not sg:
+            continue
+        rows.append((int(a), sg, "pia_unidades_locais", float(str(val).replace(",", ".")), "ibge_sidra"))
+    _upsert_indicador_uf(
+        conn, "pia_unidades_locais", rows, "br_uf_industria_pia", "L1", "industria",
+        "IBGE SIDRA 1849", "unidades locais industriais UF",
+    )
+    print(f"[lotes] pia ok {len(rows)}")
+
+
+_IDEB_PACKS = [
+    (
+        "educ_ideb_ai_pub",
+        "https://download.inep.gov.br/educacao_basica/portal_ideb/planilhas_para_download/2021/divulgacao_anos_iniciais_municipios_2021.zip",
+        "divulgacao_anos_iniciais_municipios_2021.xlsx",
+    ),
+    (
+        "educ_ideb_af_pub",
+        "https://download.inep.gov.br/educacao_basica/portal_ideb/planilhas_para_download/2021/divulgacao_anos_finais_municipios_2021.zip",
+        "divulgacao_anos_finais_municipios_2021.xlsx",
+    ),
+    (
+        "educ_ideb_em_pub",
+        "https://download.inep.gov.br/educacao_basica/portal_ideb/planilhas_para_download/2021/divulgacao_ensino_medio_municipios_2021.zip",
+        "divulgacao_ensino_medio_municipios_2021.xlsx",
+    ),
+]
+
+
+def _load_ideb_mun(conn: psycopg.Connection) -> None:
+    print("[lotes] IDEB mun…")
+    cods = {r[0] for r in conn.execute("SELECT cod_ibge FROM ref.municipio")}
+    total = 0
+    for id_ind, url, member in _IDEB_PACKS:
+        print(f"  {id_ind}…")
+        blob = _fetch_timeout(url, timeout=180)
+        with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+            names = [n for n in zf.namelist() if n.lower().endswith(".xlsx")]
+            target = member if member in zf.namelist() else (names[0] if names else None)
+            if not target:
+                raise RuntimeError(f"xlsx ausente em {url}")
+            xdata = zf.read(target)
+        wb = load_workbook(io.BytesIO(xdata), read_only=True, data_only=True)
+        ws = wb.active
+        rows: list[tuple] = []
+        header_seen = False
+        for row in ws.iter_rows(values_only=True):
+            if not row or not row[0]:
+                continue
+            if row[0] == "SG_UF":
+                header_seen = True
+                continue
+            if not header_seen:
+                continue
+            rede = str(row[3] or "").strip()
+            if rede != "Pública":
+                continue
+            try:
+                cod = int(row[1])
+            except (TypeError, ValueError):
+                continue
+            if cod not in cods:
+                continue
+            ideb = row[14] if len(row) > 14 else None
+            if ideb in (None, "", "-"):
+                continue
+            try:
+                val = float(str(ideb).replace(",", "."))
+            except ValueError:
+                continue
+            rows.append((2021, cod, id_ind, val, "inep_ideb"))
+        wb.close()
+        _upsert_indicador_mun(
+            conn, id_ind, rows, "br_mun_educacao_ideb", "L7", "educacao",
+            "INEP IDEB 2021", f"rede Pública; {id_ind}; ausência ≠ zero",
+            online_min=3000,
+        )
+        total += len(rows)
         conn.commit()
-    except Exception as exc:
-        conn.rollback()
-        print(f"[lotes] siconfi fail {exc}")
-        _upsert_status(conn, "br_mun_fiscal_siconfi", "L4", "fiscal", "erro", "uf", None, None, "SICONFI", str(exc)[:200])
-        conn.commit()
+        print(f"  {id_ind} ok {len(rows)}")
+    print(f"[lotes] IDEB total linhas {total}")
+
+
+_SIGA_RESOURCE = "11ec447d-698d-4ab8-977f-b424d5deee6a"
+
+
+def _load_siga_potencia_mun(conn: psycopg.Connection) -> None:
+    """ANEEL SIGA — potência fiscalizada (kW) agregada por município (usinas em Operação)."""
+    print("[lotes] ANEEL SIGA potência…")
+    idx = _mun_index(conn)
+    agg: dict[int, float] = defaultdict(float)
+    unmatched = 0
+    offset = 0
+    page = 5000
+    total = None
+    while True:
+        qs = urllib.parse.urlencode(
+            {
+                "resource_id": _SIGA_RESOURCE,
+                "limit": page,
+                "offset": offset,
+                "fields": "SigUFPrincipal,DscFaseUsina,MdaPotenciaFiscalizadaKw,DscMuninicpios",
+            }
+        )
+        url = f"https://dadosabertos.aneel.gov.br/api/3/action/datastore_search?{qs}"
+        data = json.loads(_fetch_timeout(url, timeout=120).decode("utf-8"))
+        if not data.get("success"):
+            raise RuntimeError(str(data.get("error"))[:200])
+        result = data["result"]
+        if total is None:
+            total = int(result.get("total") or 0)
+        recs = result.get("records") or []
+        if not recs:
+            break
+        for rec in recs:
+            fase = str(rec.get("DscFaseUsina") or "")
+            if not fase.startswith("Opera"):
+                continue
+            pot = _brnum(str(rec.get("MdaPotenciaFiscalizadaKw") or ""))
+            if pot is None or pot <= 0:
+                continue
+            uf = str(rec.get("SigUFPrincipal") or "").strip().upper()
+            mun_field = str(rec.get("DscMuninicpios") or "").strip()
+            first = mun_field.split(",")[0].strip() if mun_field else ""
+            nome, uf_m = first, uf
+            if " - " in first:
+                nome, uf2 = first.rsplit(" - ", 1)
+                uf2 = uf2.strip()[:2].upper()
+                if len(uf2) == 2:
+                    uf_m = uf2
+            key = (uf_m, _fold_nome(nome))
+            cod = idx.get(key)
+            if cod is None:
+                unmatched += 1
+                continue
+            agg[cod] += pot
+        offset += len(recs)
+        print(f"  page offset={offset}/{total} agg={len(agg)}")
+        if offset >= total or len(recs) < page:
+            break
+    ano = 2026
+    rows = [(ano, cod, "energia_potencia_kw", float(v), "aneel_siga") for cod, v in agg.items()]
+    _upsert_indicador_mun(
+        conn, "energia_potencia_kw", rows, "br_mun_energia_potencia_instalada", "L3", "energia",
+        "ANEEL SIGA", f"potência fiscalizada kW; unmatched={unmatched}; ausência ≠ zero",
+        online_min=500,
+    )
+    # consumo / GD / curtailment ainda na fila (arquivos pesados ou outra fonte)
+    _upsert_status(
+        conn, "br_mun_energia_consumo", "L3", "energia", "parcial", "municipio", None, None,
+        "EPE", "fila CSV EPE consumo; potência SIGA já online",
+    )
+    _upsert_status(
+        conn, "br_mun_energia_geracao_distribuida", "L3", "energia", "parcial", "municipio", None, None,
+        "ANEEL GD", "zip MMGD ~100MB; staging agregado na fila",
+    )
+    print(f"[lotes] SIGA ok mun={len(rows)} unmatched={unmatched}")
+
+
+def _load_l3_l8(conn: psycopg.Connection) -> None:
+    for fn, label in (
+        (_load_pib_uf, "pib_uf"),
+        (_load_pop_uf_agregados, "pop_uf"),
+        (_load_pnad_uf, "pnad"),
+        (_load_pia_uf, "pia"),
+        (_load_siconfi_rreo_uf, "siconfi"),
+        (_load_ideb_mun, "ideb"),
+        (_load_siga_potencia_mun, "siga"),
+    ):
+        try:
+            fn(conn)
+            conn.commit()
+        except Exception as exc:
+            conn.rollback()
+            print(f"[lotes] {label} fail {exc}")
+            if label == "siconfi":
+                _upsert_status(
+                    conn, "br_mun_fiscal_siconfi", "L4", "fiscal", "erro", "uf", None, None,
+                    "SICONFI", str(exc)[:200],
+                )
+                conn.commit()
+            elif label == "ideb":
+                _upsert_status(
+                    conn, "br_mun_educacao_ideb", "L7", "educacao", "erro", "municipio", None, None,
+                    "INEP IDEB", str(exc)[:200],
+                )
+                conn.commit()
+            elif label == "siga":
+                _upsert_status(
+                    conn, "br_mun_energia_potencia_instalada", "L3", "energia", "erro", "municipio",
+                    None, None, "ANEEL SIGA", str(exc)[:200],
+                )
+                conn.commit()
 
     for args in (
-        ("br_mun_energia_consumo", "L3", "energia", "EPE/ANEEL", "fila CSV EPE"),
-        ("br_mun_energia_geracao_distribuida", "L3", "energia", "ANEEL GD", "fila dados abertos ANEEL"),
-        ("br_uf_mvi", "L5", "seguranca", "FBSP/SIM", "anuário UF na fila"),
         ("br_mun_mvi", "L5", "seguranca", "SIM/DATASUS", "proxy mun na fila"),
-        ("br_mun_educacao_ideb", "L7", "educacao", "INEP IDEB", "fila download INEP"),
+        ("br_uf_seguranca_letalidade", "L5", "seguranca", "FBSP Anuário", "UF anuário na fila"),
         ("br_mun_educacao_censo_escolar", "L7", "educacao", "INEP Censo Escolar", "fila microdados"),
         ("br_mun_saude_cnes", "L7", "saude", "DATASUS CNES", "fila CNES"),
         ("br_por_portos_movimentacao", "L8", "turismo", "ANTAQ", "fila ANTAQ"),
