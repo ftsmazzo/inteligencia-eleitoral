@@ -429,6 +429,7 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("seguranca_feminicidios", "br_mun_seguranca_mulher", "L5", "seguranca"),
         ("seguranca_roubo_total", "br_mun_seguranca_patrimonial", "L5", "seguranca"),
         ("fiscal_execucao_federal_pago", "br_nac_fiscal_execucao_federal", "L4", "fiscal"),
+        ("turismo_pax_origem_uf", "br_aer_turismo_malha_aerea", "L8", "turismo"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -454,6 +455,7 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
                 "br_mun_agro_credito_rural",
                 "br_mun_seguranca_mulher",
                 "br_mun_seguranca_patrimonial",
+                "br_aer_turismo_malha_aerea",
             ) and n < 1000:
                 _upsert_status(
                     conn, id_br, lote, tema, "parcial", "uf", n, row[1],
@@ -709,6 +711,22 @@ def _load_execucao_federal_from_seed(conn: psycopg.Connection) -> None:
         gran="uf",
     )
     print(f"[lotes] execucao federal seed={n}")
+
+
+def _load_malha_aerea_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "turismo_malha_aerea_uf.csv.gz",
+        "turismo_pax_origem_uf",
+        "br_aer_turismo_malha_aerea",
+        "L8",
+        "turismo",
+        "ANAC Dados Estatísticos",
+        "passageiros origem por UF; aeroporto/rota na fila",
+        status="parcial",
+        gran="uf",
+    )
+    print(f"[lotes] malha aerea seed={n}")
 
 
 def _load_irrigacao_from_seed(conn: psycopg.Connection) -> None:
@@ -1536,6 +1554,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("feminicidios", _load_feminicidios_from_seed, "seguranca_feminicidios", "uf", 20),
         ("roubo", _load_roubo_from_seed, "seguranca_roubo_total", "uf", 20),
         ("exec_fed", _load_execucao_federal_from_seed, "fiscal_execucao_federal_pago", "uf", 20),
+        ("malha_aerea", _load_malha_aerea_from_seed, "turismo_pax_origem_uf", "uf", 20),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1572,6 +1591,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "feminicidios": ("br_mun_seguranca_mulher", "L5", "seguranca", "uf"),
                 "roubo": ("br_mun_seguranca_patrimonial", "L5", "seguranca", "uf"),
                 "exec_fed": ("br_nac_fiscal_execucao_federal", "L4", "fiscal", "uf"),
+                "malha_aerea": ("br_aer_turismo_malha_aerea", "L8", "turismo", "uf"),
             }
             if label in id_map:
                 id_br, lote, tema, gran = id_map[label]
