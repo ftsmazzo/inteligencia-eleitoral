@@ -38,15 +38,15 @@ _SIDRA_LOADS = [
         "mun",
     ),
     (
-        "agro_pam_soja_t",
+        "agro_pam_milho_t",
         "br_mun_agro_pam",
         "https://apisidra.ibge.gov.br/values/t/1612/n6/all/v/214/p/last/c81/2711",
         "mun",
     ),
     (
-        "agro_pam_milho_t",
+        "agro_pam_soja_t",
         "br_mun_agro_pam",
-        "https://apisidra.ibge.gov.br/values/t/1612/n6/all/v/214/p/last/c81/2712",
+        "https://apisidra.ibge.gov.br/values/t/1612/n6/all/v/214/p/last/c81/2713",
         "mun",
     ),
     (
@@ -59,6 +59,12 @@ _SIDRA_LOADS = [
         "agro_pam_cana_t",
         "br_mun_agro_pam",
         "https://apisidra.ibge.gov.br/values/t/1612/n6/all/v/214/p/last/c81/2696",
+        "mun",
+    ),
+    (
+        "agro_pam_laranja_t",
+        "br_mun_fruticultura_producao",
+        "https://apisidra.ibge.gov.br/values/t/1612/n6/all/v/214/p/last/c81/2702",
         "mun",
     ),
 ]
@@ -365,22 +371,22 @@ def _mark_remaining_explicit(conn: psycopg.Connection) -> None:
 def _load_l3_l7(conn: psycopg.Connection) -> None:
     """Cargas adicionais SIDRA/UF que cabem no boot."""
     extras = [
-        # PNAD Contínua — taxa desocupação UF (aprox. tabela 4099 / 6381)
-        (
-            "pnad_taxa_desocupacao",
-            "br_uf_pnad",
-            "L1",
-            "economia",
-            "https://apisidra.ibge.gov.br/values/t/6381/n3/all/v/4099/p/last",
-            "uf",
-        ),
-        # Contas Regionais VAB indústria UF — tabela 5938 já é mun; usar 5938 n3
+        # Contas Regionais / PIB UF
         (
             "pib_uf_mil",
             "br_uf_industria_contas_regionais",
             "L1",
             "industria",
             "https://apisidra.ibge.gov.br/values/t/5938/n3/all/v/37/p/last",
+            "uf",
+        ),
+        # Estimativa pop UF
+        (
+            "pop_uf_estimativa",
+            "br_uf_populacao",
+            "L6",
+            "demografia",
+            "https://apisidra.ibge.gov.br/values/t/6579/n3/all/v/9324/p/last",
             "uf",
         ),
     ]
