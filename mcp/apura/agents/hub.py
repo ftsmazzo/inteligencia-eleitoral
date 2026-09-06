@@ -120,6 +120,42 @@ def _ultima_pergunta(historico: list[dict[str, str]]) -> str:
     return ""
 
 
+def _mensagem_so_anexo_ou_vazia(texto: str) -> bool:
+    t = (texto or "").strip()
+    if not t or t in (".", "-"):
+        return True
+    if t.startswith("[Anexo]"):
+        return True
+    if re.match(r"^🎙️?\s*(mensagem de voz|áudio|audio)\b", t, re.I):
+        return True
+    return False
+
+
+def _anexos_audio(anexos: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for a in anexos or []:
+        t = (a.get("tipo") or "").lower()
+        m = (a.get("mime") or "").lower()
+        n = (a.get("nome") or "").lower()
+        if t in ("audio", "áudio") or m.startswith("audio/") or re.search(
+            r"\.(mp3|wav|ogg|m4a|webm|flac)$", n
+        ):
+            out.append(a)
+    return out
+
+
+def _texto_transcricao(result: Any) -> str:
+    if not isinstance(result, dict):
+        return ""
+    for it in result.get("itens") or []:
+        if isinstance(it, dict):
+            for k in ("resumo", "texto", "transcricao", "transcription"):
+                v = (it.get(k) or "").strip()
+                if v:
+                    return v[:8000]
+    return (result.get("mensagem") or "").strip()[:8000]
+
+
 def _historico_redator(historico: list[dict[str, str]]) -> str:
     linhas: list[str] = []
     for h in historico[-8:]:
@@ -357,10 +393,19 @@ def _resumo_anexos(anexos: list[dict[str, Any]] | None) -> str:
         mime = (a.get("mime") or "")[:60]
         linhas.append(f"[{i}] {nome} (tipo={tipo}" + (f", mime={mime}" if mime else "") + ")")
     return (
-        "ANEXOS DESTA MENSAGEM (obrigatório usar a tool de mídia com anexo_idx):\n"
+        "ANEXOS DESTA MENSAGEM (use tool de mídia com anexo_idx se ainda não processado):\n"
         + "\n".join(linhas)
-        + "\nPDF→ler_pdf | áudio→transcrever_audio | imagem→ler_imagem. "
-        "Não peça URL se o anexo já está listado."
+        + "\nPDF→ler_pdf | áudio→transcrever_audio | imagem→ler_imagem."
+        + (
+            "\nÁUDIO = pedido falado: trate a transcrição como a pergunta. "
+            "NÃO peça para digitar 'transcreva'."
+            if any(
+                (a.get("tipo") or "").lower() in ("audio", "áudio")
+                or str(a.get("mime") or "").startswith("audio/")
+                for a in anexos
+            )
+            else ""
+        )
     )
 
 
@@ -609,18 +654,87 @@ async def executar_hub(
             )
             yield _sse("status", {"fase": "protocolo", "etapa": state.etapa, "perfil": state.perfil})
         else:
+            campanha_id = pol.get("campanha_id")
+            usuario_id = pol.get("usuario_id")
+            pergunta_efetiva = pergunta
+
+            # Áudio anexado = pedido falado: transcreve ANTES do orch e usa como pergunta
+            audios = _anexos_audio(anexos)
+            if audios and (pol.get("bypass") or tool_permitida(pol, "transcrever_audio")):
+                yield _sse("status", {"fase": "consultando", "tool": "transcrever_audio", "motivo": "pedido_falado"})
+                args_tx = _injetar_anexo(
+                    "transcrever_audio",
+                    {
+                        "anexo_idx": 0,
+                        "pergunta": (
+                            "Transcreva fielmente em português BR o que a pessoa disse. "
+                            "Se for um pedido/pergunta à campanha, preserve o texto exatamente. "
+                            "Não invente."
+                        ),
+                    },
+                    anexos,
+                )
+                # Prefer first audio anexo explicitly
+                a0 = audios[0]
+                args_tx["file_base64"] = a0.get("data_base64") or a0.get("file_base64") or args_tx.get("file_base64")
+                args_tx["mime"] = a0.get("mime") or args_tx.get("mime")
+                args_tx["filename"] = a0.get("nome") or a0.get("filename") or "voz.webm"
+                result_tx = await chamar_mcp(
+                    "transcrever_audio",
+                    args_tx,
+                    mcp_token,
+                    campanha_id=campanha_id,
+                    usuario_id=usuario_id,
+                )
+                tool_log.append(
+                    {
+                        "tool": "transcrever_audio",
+                        "params": {
+                            k: (
+                                f"[omitido {len(str(v))} chars]"
+                                if k in ("file_base64", "data_base64") and v
+                                else v
+                            )
+                            for k, v in args_tx.items()
+                        },
+                        "result": _result_para_log(result_tx),
+                        "forcado": "pedido_falado",
+                    }
+                )
+                tx = _texto_transcricao(result_tx)
+                if tx:
+                    if _mensagem_so_anexo_ou_vazia(pergunta):
+                        pergunta_efetiva = tx
+                    else:
+                        pergunta_efetiva = f"{pergunta.strip()}\n\n(Pedido falado):\n{tx}"
+                    yield _sse("status", {"fase": "planejando", "transcricao": True})
+
             orch_messages: list[dict[str, Any]] = [{"role": "system", "content": orch_system}]
-            orch_messages.extend(_historico_orquestrador(historico))
-            # Se só anexo sem texto útil, reforça no último user
-            if anexos and pergunta.strip() in ("", ".", "-"):
-                orch_messages.append(
+            hist_orch = _historico_orquestrador(historico)
+            # Substitui última mensagem do user pela pergunta efetiva (transcrição)
+            if hist_orch and hist_orch[-1].get("role") == "user" and pergunta_efetiva != pergunta:
+                hist_orch = hist_orch[:-1]
+                hist_orch.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Pedido do usuário (áudio já transcrito — NÃO chame transcrever_audio de novo):\n"
+                            f"{pergunta_efetiva[:2500]}\n\n"
+                            "Responda esse pedido com as tools necessárias (dados, clima, etc.)."
+                        ),
+                    }
+                )
+            elif anexos and _mensagem_so_anexo_ou_vazia(pergunta) and not audios:
+                hist_orch.append(
                     {
                         "role": "user",
                         "content": "Analise o(s) anexo(s) listados com a tool de mídia adequada.",
                     }
                 )
-            campanha_id = pol.get("campanha_id")
-            usuario_id = pol.get("usuario_id")
+            orch_messages.extend(hist_orch)
+
+            # Usa pergunta efetiva no restante do turno
+            pergunta = pergunta_efetiva
 
             for _ in range(max_rounds):
                 yield _sse(

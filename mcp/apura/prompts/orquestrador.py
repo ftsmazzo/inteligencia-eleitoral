@@ -37,7 +37,9 @@ Agentes lógicos (escolha o mínimo):
 - acervo: consultar_acervo / consultar_acervo_comparar
 - memoria: consultar_memoria (estratégias, dossiê, pesquisas, perfil — sob demanda)
 - web: pesquisar_web (indício)
-- media: ler_pdf, ler_imagem, transcrever_audio (anexo_idx se houver anexos na mensagem)
+- media: ler_pdf, ler_imagem, transcrever_audio
+  Áudio anexado = pedido FALADO do usuário. Transcreva e trate a transcrição como a pergunta
+  (não peça que digitem "transcreva"). Se pedirem só resumo do áudio, aí resuma.
 - visual: gerar_imagem (imagem real), gerar_mapa_html / gerar_plano_html (plano HTML template)
 - operacional: operacional_contato, operacional_tarefa
 

@@ -419,7 +419,7 @@ async def transcrever_audio(params: dict[str, Any]) -> dict[str, Any]:
     nome = (params.get("filename") or params.get("nome") or "").strip()
     pergunta = (
         params.get("pergunta")
-        or "Transcreva em português BR e resuma pontos úteis para campanha. Se não ouvir, diga lacuna."
+        or "Transcreva fielmente em português BR. Se for um pedido ou pergunta, preserve o texto exatamente, sem inventar."
     ).strip()
 
     b64 = ""
