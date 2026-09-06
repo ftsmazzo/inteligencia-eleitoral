@@ -673,6 +673,32 @@ MCP_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "consultar_memoria",
+            "description": (
+                "Lê blocos da memória da campanha sob demanda: estrategias, dossiê, "
+                "pesquisas (dossie_pesquisas), perfil_eleitor, bases. "
+                "Use quando precisar de estratégia/rival/pesquisa além do contexto já injetado. "
+                "Não é cifra de urna."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tipo": {
+                        "type": "string",
+                        "description": (
+                            "estrategias | dossie | dossie_pesquisas | perfil_eleitor | "
+                            "base_concorrentes | base_redes | (vazio = recentes prioritários)"
+                        ),
+                    },
+                    "query": {"type": "string", "description": "filtro textual opcional"},
+                    "limite": {"type": "integer"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "operacional_contato",
             "description": (
                 "Lista ou salva contatos da campanha (ex. telefone do gerente de mobilização). "
@@ -751,6 +777,7 @@ TOOL_TO_MCP: dict[str, str] = {
     "transcrever_audio": "transcrever_audio",
     "gerar_imagem": "gerar_imagem",
     "gerar_mapa_html": "gerar_mapa_html",
+    "consultar_memoria": "consultar_memoria",
     "operacional_contato": "operacional_contato",
     "operacional_tarefa": "operacional_tarefa",
 }

@@ -46,6 +46,7 @@ TOOLS_ACERVO = frozenset({"consultar_acervo", "consultar_acervo_comparar"})
 TOOLS_WEB = frozenset({"pesquisar_web"})
 TOOLS_MEDIA = frozenset({"ler_pdf", "ler_imagem", "transcrever_audio"})
 TOOLS_VISUAL = frozenset({"gerar_imagem", "gerar_mapa_html"})
+TOOLS_MEMORIA = frozenset({"consultar_memoria"})
 TOOLS_OPERACIONAL = frozenset({"operacional_contato", "operacional_tarefa"})
 
 AGENTE_POR_TOOL: dict[str, str] = {}
@@ -56,6 +57,7 @@ for _name, _agent in (
     *[(t, AGENTE_WEB) for t in TOOLS_WEB],
     *[(t, AGENTE_MEDIA) for t in TOOLS_MEDIA],
     *[(t, AGENTE_VISUAL) for t in TOOLS_VISUAL],
+    *[(t, "memoria") for t in TOOLS_MEMORIA],
     *[(t, AGENTE_OPERACIONAL) for t in TOOLS_OPERACIONAL],
 ):
     AGENTE_POR_TOOL[_name] = _agent
@@ -67,6 +69,7 @@ CAMADA_POR_AGENTE = {
     AGENTE_WEB: "indicio_web",
     AGENTE_MEDIA: "indicio_media",
     AGENTE_VISUAL: "artefato_visual",
+    "memoria": "indicio_memoria",
     AGENTE_OPERACIONAL: "operacional",
 }
 

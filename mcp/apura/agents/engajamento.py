@@ -104,6 +104,21 @@ def plano_engajamento_forcado(
         return []
 
     extras: list[dict[str, Any]] = []
+    if tool_ok("consultar_memoria") and "consultar_memoria" not in _tools_usadas(tool_log):
+        extras.append(
+            {
+                "tool": "consultar_memoria",
+                "params": {"tipo": "estrategias", "limite": 3},
+                "motivo": "playbook_estrategia_exige_memoria",
+            }
+        )
+        extras.append(
+            {
+                "tool": "consultar_memoria",
+                "params": {"tipo": "dossie_pesquisas", "limite": 3},
+                "motivo": "playbook_estrategia_exige_pesquisas",
+            }
+        )
     if not clima_ja_consultado(tool_log) and tool_ok("consultar_clima"):
         extras.append(
             {

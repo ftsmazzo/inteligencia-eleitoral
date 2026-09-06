@@ -45,6 +45,7 @@ def compactar_por_camadas(tool_log: list[dict[str, Any]]) -> str:
     ordem = [
         "fato",
         "acervo",
+        "indicio_memoria",
         "indicio_clima",
         "indicio_web",
         "indicio_media",
@@ -54,6 +55,7 @@ def compactar_por_camadas(tool_log: list[dict[str, Any]]) -> str:
     titulos = {
         "fato": "### CAMADA FATO (oficial)",
         "acervo": "### CAMADA ACERVO / PROGRAMA",
+        "indicio_memoria": "### CAMADA MEMÓRIA / ESTRATÉGIAS (contexto campanha)",
         "indicio_clima": "### CAMADA CLIMA (indício — Apify/news)",
         "indicio_web": "### CAMADA WEB (indício)",
         "indicio_media": "### CAMADA MÍDIA (indício)",

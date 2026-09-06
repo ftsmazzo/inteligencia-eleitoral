@@ -494,6 +494,32 @@ def operacional_tarefa(params: dict[str, Any], *, campanha_id: str | None = None
     }
 
 
+async def consultar_memoria_campanha(
+    params: dict[str, Any],
+    *,
+    campanha_id: str | None = None,
+) -> dict[str, Any]:
+    if not campanha_id:
+        return {
+            "status": "vazio",
+            "mensagem": "sem campanha no token — memória indisponível",
+            "nivel": "indicio",
+        }
+    url = _db_url()
+    if not url:
+        return {"status": "vazio", "mensagem": "banco indisponível", "nivel": "indicio"}
+    from gestao import memoria as gestao_memoria
+
+    with psycopg.connect(url) as conn:
+        return gestao_memoria.consultar_para_apura(
+            conn,
+            campanha_id,
+            tipo=(params.get("tipo") or None),
+            query=(params.get("query") or None),
+            limite=int(params.get("limite") or 8),
+        )
+
+
 LOCAL_METHODS = frozenset(
     {
         "pesquisar_web",
@@ -502,6 +528,7 @@ LOCAL_METHODS = frozenset(
         "transcrever_audio",
         "gerar_imagem",
         "gerar_mapa_html",
+        "consultar_memoria",
         "operacional_contato",
         "operacional_tarefa",
     }
@@ -528,6 +555,8 @@ async def executar_local(
         return await gerar_imagem(p)
     if method == "gerar_mapa_html":
         return await gerar_mapa_html(p)
+    if method == "consultar_memoria":
+        return await consultar_memoria_campanha(p, campanha_id=campanha_id)
     if method == "operacional_contato":
         return operacional_contato(p, campanha_id=campanha_id)
     if method == "operacional_tarefa":

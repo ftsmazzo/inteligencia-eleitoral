@@ -3427,7 +3427,8 @@
         '</b></div>' +
         '<div><span>sq TSE</span><b>' + esc(c.sq_candidato || gestaoStatus.sq_candidato || '—') + '</b></div>' +
         '<div><span>Memória</span><b>' + memN + ' blocos · perfil ' + (gestaoStatus.tem_perfil ? 'ok' : 'pendente') +
-        ' · dossiê ' + (gestaoStatus.tem_dossie ? 'ok' : 'pendente') + '</b></div>' +
+        ' · dossiê ' + (gestaoStatus.tem_dossie ? 'ok' : 'pendente') +
+        ' · estratégias ' + (gestaoStatus.tem_estrategias ? 'ok' : 'pendente') + '</b></div>' +
         '<div><span>Equipe</span><b>' + (gestaoStatus.equipe_liberada ? 'liberada' : 'ainda fechada') + '</b></div>' +
         '</div>' +
         '<div class="gestao-actions">' +
@@ -3438,6 +3439,10 @@
         '<div style="margin-top:16px"><label>Dossiê HTML (opcional)</label>' +
         '<input type="file" id="g-dossie" accept=".html,text/html" />' +
         '<div class="gestao-actions"><button type="button" class="secondary" id="g-upload">Inserir dossiê na memória</button></div></div>' +
+        '<div style="margin-top:16px"><label>Estratégias da campanha (rival, eixos, narrativa)</label>' +
+        '<input type="text" id="g-est-rival" placeholder="Rival principal (ex.: Dr. Furlan)" style="width:100%;margin:6px 0" />' +
+        '<textarea id="g-est-corpo" rows="6" placeholder="Rival: …&#10;Eixos: …&#10;O que dizer / não dizer: …&#10;Territórios-prioridade: …" style="width:100%;font:inherit"></textarea>' +
+        '<div class="gestao-actions"><button type="button" class="primary" id="g-est-save">Salvar estratégias</button></div></div>' +
         '<div class="gestao-actions">' +
         '<button type="button" class="secondary" id="g-mem">Ver memória</button>' +
         '<button type="button" class="secondary" id="g-seed">Seed Radar</button>' +
@@ -3520,6 +3525,34 @@
           });
           gestaoStatus = await api('/gestao/status');
           $('gestao-err').textContent = 'Dossiê indexado: ' + (data.blocos || 0) + ' blocos';
+          renderGestaoStep();
+        } catch (e) { $('gestao-err').textContent = e.message; }
+      };
+      (async () => {
+        try {
+          const est = await api('/gestao/estrategias');
+          if (est && est.item) {
+            const meta = est.item.meta || {};
+            if ($('g-est-rival')) $('g-est-rival').value = meta.rival || (meta.rivais && meta.rivais[0]) || '';
+            if ($('g-est-corpo')) $('g-est-corpo').value = est.item.corpo || '';
+          }
+        } catch (e) { /* opcional */ }
+      })();
+      $('g-est-save').onclick = async () => {
+        const corpo = ($('g-est-corpo') && $('g-est-corpo').value) || '';
+        const rival = ($('g-est-rival') && $('g-est-rival').value) || '';
+        if (!corpo.trim()) { $('gestao-err').textContent = 'Escreva as estratégias'; return; }
+        try {
+          const data = await api('/gestao/estrategias', {
+            method: 'POST',
+            body: JSON.stringify({
+              corpo: corpo,
+              rival: rival.trim() || null,
+              titulo: 'Estratégias da campanha',
+            }),
+          });
+          gestaoStatus = (data && data.status) || await api('/gestao/status');
+          $('gestao-err').textContent = 'Estratégias salvas' + (data.rival ? ' · rival ' + data.rival : '') + '.';
           renderGestaoStep();
         } catch (e) { $('gestao-err').textContent = e.message; }
       };

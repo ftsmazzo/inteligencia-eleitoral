@@ -90,6 +90,13 @@ class DossieIn(BaseModel):
     nome_arquivo: str = Field(default="dossie.html", max_length=200)
 
 
+class EstrategiasIn(BaseModel):
+    corpo: str = Field(min_length=20, max_length=80000)
+    titulo: str = Field(default="Estratégias da campanha", max_length=300)
+    rival: str | None = Field(default=None, max_length=200)
+    rivais: list[str] | None = None
+
+
 class EquipeIn(BaseModel):
     email: str = Field(min_length=5, max_length=160)
     nome: str = Field(default="", max_length=120)
@@ -225,6 +232,35 @@ def listar_memoria(
     with _db() as conn:
         itens = memoria.listar(conn, cid, tipo=tipo, limite=limite)
         return {"itens": itens, "total": len(itens)}
+
+
+@router.get("/estrategias")
+def get_estrategias(user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        item = memoria.obter_estrategias(conn, cid)
+        return {"item": item, "ok": bool(item)}
+
+
+@router.post("/estrategias")
+def post_estrategias(body: EstrategiasIn, user: tuple[str, str, str] = Depends(_usuario)) -> dict[str, Any]:
+    cid, _ = _campanha(user)
+    with _db() as conn:
+        try:
+            out = memoria.salvar_estrategias(
+                conn,
+                cid,
+                corpo=body.corpo,
+                titulo=body.titulo or "Estratégias da campanha",
+                rival=body.rival,
+                rivais=body.rivais,
+            )
+            conn.commit()
+            st = store.get_status(conn, cid)
+            out["status"] = st
+            return out
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/dossie")

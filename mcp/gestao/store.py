@@ -66,7 +66,8 @@ def get_status(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         SELECT
           COUNT(*) FILTER (WHERE tipo = 'perfil_eleitor')::int,
           COUNT(*) FILTER (WHERE tipo LIKE 'dossie%%' OR tipo = 'dossie')::int,
-          COUNT(*)::int
+          COUNT(*)::int,
+          COUNT(*) FILTER (WHERE tipo = 'estrategias')::int
         FROM ctl.campanha_memoria
         WHERE campanha_id = %s::uuid
         """,
@@ -92,6 +93,7 @@ def get_status(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         "tem_perfil": bool(mem and mem[0]),
         "tem_dossie": bool(mem and mem[1]),
         "memoria_blocos": int(mem[2] or 0) if mem else 0,
+        "tem_estrategias": bool(mem and mem[3]),
         "cargos": list(CARGOS),
         "ufs": list(UFS),
     }

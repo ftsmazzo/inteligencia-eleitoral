@@ -385,6 +385,122 @@ def texto_escopo_para_apura(
     return "\n".join(linhas)
 
 
+def salvar_estrategias(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    *,
+    corpo: str,
+    titulo: str = "Estratégias da campanha",
+    rival: str | None = None,
+    rivais: list[str] | None = None,
+    fonte: str = "gestao",
+) -> dict[str, Any]:
+    """Substitui o bloco tipo=estrategias (um canônico por campanha)."""
+    texto = (corpo or "").strip()
+    if len(texto) < 20:
+        raise ValueError("Texto de estratégias muito curto (mín. ~20 caracteres)")
+    if len(texto) > 80_000:
+        raise ValueError("Texto de estratégias grande demais (máx. ~80k)")
+    limpar_tipos(conn, campanha_id, ["estrategias"])
+    meta: dict[str, Any] = {}
+    riv = (rival or "").strip()
+    if riv:
+        meta["rival"] = riv[:200]
+    lista = [str(x).strip() for x in (rivais or []) if str(x).strip()]
+    if lista:
+        meta["rivais"] = lista[:12]
+    elif riv:
+        meta["rivais"] = [riv[:200]]
+    bid = upsert_bloco(
+        conn,
+        campanha_id,
+        tipo="estrategias",
+        titulo=(titulo or "Estratégias da campanha")[:300],
+        corpo=texto,
+        fonte=fonte,
+        nivel="indicio",
+        meta=meta,
+    )
+    return {
+        "ok": True,
+        "id": bid,
+        "tipo": "estrategias",
+        "titulo": (titulo or "Estratégias da campanha")[:300],
+        "rival": meta.get("rival"),
+        "rivais": meta.get("rivais") or [],
+        "chars": len(texto),
+    }
+
+
+def obter_estrategias(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any] | None:
+    itens = listar(conn, campanha_id, tipo="estrategias", limite=1)
+    return itens[0] if itens else None
+
+
+def consultar_para_apura(
+    conn: psycopg.Connection,
+    campanha_id: str,
+    *,
+    tipo: str | None = None,
+    query: str | None = None,
+    limite: int = 8,
+) -> dict[str, Any]:
+    """Consulta sob demanda para a tool do chat (não inventa cifra)."""
+    lim = max(1, min(int(limite or 8), 20))
+    tipo_n = (tipo or "").strip().lower() or None
+    # aliases amigáveis
+    aliases = {
+        "estrategia": "estrategias",
+        "estratégias": "estrategias",
+        "pesquisa": "dossie_pesquisas",
+        "pesquisas": "dossie_pesquisas",
+        "dossiê": "dossie",
+        "dossie": "dossie",
+        "perfil": "perfil_eleitor",
+        "rival": "base_concorrentes",
+        "concorrentes": "base_concorrentes",
+        "redes": "base_redes",
+    }
+    if tipo_n in aliases:
+        tipo_n = aliases[tipo_n]
+    # dossie = também variantes
+    itens: list[dict[str, Any]] = []
+    if tipo_n == "dossie":
+        for b in listar(conn, campanha_id, query=query, limite=40):
+            if (b.get("tipo") or "").startswith("dossie"):
+                itens.append(b)
+            if len(itens) >= lim:
+                break
+    else:
+        itens = listar(conn, campanha_id, tipo=tipo_n, query=query, limite=lim)
+
+    out_itens = []
+    for b in itens[:lim]:
+        corpo = b.get("corpo") or ""
+        out_itens.append(
+            {
+                "tipo": b.get("tipo"),
+                "titulo": b.get("titulo"),
+                "resumo": corpo[:6000],
+                "fonte": b.get("fonte"),
+                "nivel": b.get("nivel"),
+                "meta": b.get("meta") or {},
+            }
+        )
+    return {
+        "status": "ok" if out_itens else "vazio",
+        "nivel": "indicio",
+        "itens": out_itens,
+        "mensagem": None
+        if out_itens
+        else "nenhum bloco neste filtro — grave estratégias/dossiê na Gestão ou rode o motor",
+        "nota_metodologica": (
+            "Memória de campanha (ctl.campanha_memoria). Indício/contexto — "
+            "cifra oficial só via tools de urna."
+        ),
+    }
+
+
 def texto_para_apura(conn: psycopg.Connection, campanha_id: str, *, max_chars: int = 12000) -> str:
     """Concatena blocos prioritários; reserva fatia para estrategias e pesquisas."""
     garantidos: list[dict[str, Any]] = []
