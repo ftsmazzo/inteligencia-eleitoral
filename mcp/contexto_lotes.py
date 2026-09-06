@@ -416,6 +416,7 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("saude_nascidos_vivos", "br_mun_saude_sinasc", "L7", "saude"),
         ("saude_obitos", "br_mun_saude_sim", "L7", "saude"),
         ("vab_industria_mil", "br_uf_industria_contas_regionais", "L1", "industria"),
+        ("vab_agropecuaria_mil", "br_uf_agro_contas_regionais", "L2", "agro"),
         ("agro_credito_rural_vl", "br_mun_agro_credito_rural", "L2", "agro"),
     ]
     for id_ind, id_br, lote, tema in mapping:
@@ -562,6 +563,22 @@ def _load_vab_industria_from_seed(conn: psycopg.Connection) -> None:
         gran="uf",
     )
     print(f"[lotes] vab industria seed={n}")
+
+
+def _load_vab_agropecuaria_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "vab_agropecuaria_uf.csv.gz",
+        "vab_agropecuaria_mil",
+        "br_uf_agro_contas_regionais",
+        "L2",
+        "agro",
+        "IBGE SIDRA 5938 v/513",
+        "VAB agropecuária UF (contas regionais); sem inventar mun",
+        status="online",
+        gran="uf",
+    )
+    print(f"[lotes] vab agropecuaria seed={n}")
 
 
 def _load_credito_rural_from_seed(conn: psycopg.Connection) -> None:
@@ -1293,6 +1310,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("sinasc", _load_sinasc_from_seed, "saude_nascidos_vivos", "uf", 20),
         ("obitos", _load_obitos_from_seed, "saude_obitos", "uf", 20),
         ("vab_ind", _load_vab_industria_from_seed, "vab_industria_mil", "uf", 20),
+        ("vab_agro", _load_vab_agropecuaria_from_seed, "vab_agropecuaria_mil", "uf", 20),
         ("credito", _load_credito_rural_from_seed, "agro_credito_rural_vl", "uf", 20),
     ):
         try:
@@ -1317,6 +1335,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "sinasc": ("br_mun_saude_sinasc", "L7", "saude", "uf"),
                 "obitos": ("br_mun_saude_sim", "L7", "saude", "uf"),
                 "vab_ind": ("br_uf_industria_contas_regionais", "L1", "industria", "uf"),
+                "vab_agro": ("br_uf_agro_contas_regionais", "L2", "agro", "uf"),
                 "credito": ("br_mun_agro_credito_rural", "L2", "agro", "uf"),
             }
             id_br, lote, tema, gran = id_map[label]
