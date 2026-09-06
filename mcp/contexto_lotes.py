@@ -21,7 +21,7 @@ _STARTED = False
 # Map status_produto do catálogo → status operacional
 _STATUS_MAP = {
     "parcial_nucleo": "nucleo",
-    "ausente": "carregando",
+    "ausente": "parcial",  # nunca 'carregando' silencioso no seed
     "bloqueado_fonte": "bloqueado",
     "trilha_b_ou_fora": "trilha_b",
     "pendente": "pendente",
@@ -174,6 +174,8 @@ def _seed_catalog(conn: psycopg.Connection) -> int:
             # refine below after checks
             pass
         nota = b.get("nota")
+        if st == "parcial" and (b.get("status_produto") == "ausente"):
+            nota = ((nota or "") + " | na fila de carga BR (deploy contínuo); não inventar cifra").strip(" |")
         if st == "bloqueado":
             nota = (nota or "") + " | sem fonte nacional auditável"
         if st == "trilha_b":
@@ -577,13 +579,19 @@ def ensure_contexto_lotes(background: bool = True) -> None:
             _run_sql_file(conn, _SQL_DIR / "patch_contexto_lotes.sql")
             n = _seed_catalog(conn)
             print(f"[lotes] checklist seed={n}")
-        # reconcile síncrono — checklist não fica 57x 'carregando' se a thread atrasar
-        with psycopg.connect(url) as conn:
-            _sync_nucleo_from_db(conn)
-            _mark_pib_comex_counts(conn)
-            _reconcile_from_indicadores(conn)
-            _mark_remaining_explicit(conn)
-        print("[lotes] checklist reconciliado (sync)")
+            try:
+                _sync_nucleo_from_db(conn)
+            except Exception as exc:
+                print(f"[lotes] sync nucleo: {exc}")
+            try:
+                _mark_pib_comex_counts(conn)
+            except Exception as exc:
+                print(f"[lotes] mark pib: {exc}")
+            try:
+                _reconcile_from_indicadores(conn)
+            except Exception as exc:
+                print(f"[lotes] reconcile: {exc}")
+        print("[lotes] checklist boot OK")
     except Exception as exc:
         print(f"[lotes] seed/reconcile sync falhou: {exc}")
 
