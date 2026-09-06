@@ -1502,24 +1502,26 @@ def _load_l3_l8(conn: psycopg.Connection) -> None:
             conn.commit()
 
     for args in (
-        ("br_mun_mvi", "L5", "seguranca", "SIM/DATASUS", "proxy mun na fila"),
-        ("br_mun_educacao_censo_escolar", "L7", "educacao", "INEP Censo Escolar", "fila microdados; UF educ_freq já parcial"),
-        ("br_mun_saude_cnes", "L7", "saude", "DATASUS CNES", "fila CNES"),
-        ("br_por_portos_movimentacao", "L8", "turismo", "ANTAQ", "API/anuario ANTAQ indisponível no boot; sem inventar"),
+        ("br_nac_mineral_reservas_mundiais", "L8", "mineracao", "USGS/ANM", "recorte mundial; fora de cifra mun BR auditável no boot"),
         ("br_mun_mineracao_producao", "L8", "mineracao", "ANM AMB/CFEM", "portal ANM 404/SSL no boot; sem inventar"),
         ("br_mun_mineracao_processos", "L8", "mineracao", "ANM SIGMINE", "fila processos minerários"),
         ("br_mun_mineracao_beneficiamento", "L8", "mineracao", "ANM AMB", "fila produção beneficiada"),
+        ("br_por_portos_movimentacao", "L8", "turismo", "ANTAQ", "API/anuario ANTAQ indisponível no boot; sem inventar"),
         ("br_mun_caged", "L1", "trabalho", "PDET/CAGED", "SSL/fonte frágil no boot; sem inventar"),
         ("br_mun_rais", "L1", "trabalho", "RAIS", "microdados pesados; staging na fila"),
         ("br_mun_comex", "L1", "comercio", "ComexStat", "API mun 500; UF online em br_uf_comex"),
         ("br_mun_petroleo_gas", "L3", "energia", "ANP", "dados abertos 404 no boot; sem inventar"),
         ("br_nac_fertilizantes_dependencia", "L8", "agro", "ANDA/ComexStat", "ComexStat 403 no boot; sem inventar"),
         ("br_uf_credito_endividamento", "L1", "credito", "BCB", "série UF não auditável no boot; nacional ≠ UF"),
+        ("br_mun_mvi", "L5", "seguranca", "SIM/DATASUS", "proxy mun na fila"),
+        ("br_mun_educacao_censo_escolar", "L7", "educacao", "INEP Censo Escolar", "fila microdados; UF educ_freq já parcial"),
+        ("br_mun_saude_cnes", "L7", "saude", "DATASUS CNES", "fila CNES"),
     ):
         id_br, lote, tema, fonte, nota = args
-        gran = "municipio" if "_mun_" in id_br else ("porto" if "_por_" in id_br else "uf")
+        st = "bloqueado" if id_br == "br_nac_mineral_reservas_mundiais" else "parcial"
+        gran = "municipio" if "_mun_" in id_br else ("porto" if "_por_" in id_br else ("nacional" if "_nac_" in id_br else "uf"))
         _upsert_status(
-            conn, id_br, lote, tema, "parcial", gran, None, None, fonte, nota,
+            conn, id_br, lote, tema, st, gran, None, None, fonte, nota,
             preserve_better=True,
         )
     conn.commit()
