@@ -118,6 +118,136 @@ def _strip_b64(raw: str) -> tuple[str, str | None]:
     return s, None
 
 
+def extrair_identidade_visual(ctx: str) -> dict[str, str]:
+    """Puxa nome/UF/cargo/ano do bloco de escopo/identidade injetado no hub."""
+    c = ctx or ""
+    out: dict[str, str] = {}
+    m = re.search(
+        r"(?:Nosso candidato|candidato monitorado)[^\n:]{0,40}:\s*([^\n(]+)",
+        c,
+        re.I,
+    )
+    if m:
+        out["nosso"] = m.group(1).strip()[:80]
+    m = re.search(r"- UF:\s*([A-Za-z]{2})\b", c)
+    if m:
+        out["uf"] = m.group(1).upper()
+    m = re.search(r"- Cargo:\s*([^\n]+)", c)
+    if m:
+        out["cargo"] = m.group(1).strip()[:60]
+    m = re.search(r"- Ano:\s*(\d{4})", c)
+    if m:
+        out["ano"] = m.group(1)
+    m = re.search(r"- Munic[ií]pio[^\n:]*:\s*([^\n]+)", c, re.I)
+    if m:
+        out["municipio"] = m.group(1).strip()[:80]
+    m = re.search(r"- Partido[^\n:]*:\s*([^\n]+)", c, re.I)
+    if m:
+        out["partido"] = m.group(1).strip()[:40]
+    m = re.search(r"Rival\(is\) de campanha[^:\n]*:\s*([^\n;]+)", c, re.I)
+    if m and "ainda não" not in m.group(1).lower():
+        out["rival"] = m.group(1).strip()[:60]
+    return out
+
+
+def montar_prompt_imagem_campanha(pedido: str, contexto_campanha: str = "") -> str:
+    """Briefing visual amarrado à campanha — evita arte genérica sem candidato."""
+    idn = extrair_identidade_visual(contexto_campanha)
+    nome = idn.get("nosso") or ""
+    cargo = idn.get("cargo") or "candidato"
+    uf = idn.get("uf") or "Brasil"
+    ano = idn.get("ano") or ""
+    municipio = idn.get("municipio") or ""
+    partido = idn.get("partido") or ""
+    territorio = ", ".join(x for x in (municipio, uf) if x) or uf
+    pedido_limpo = (pedido or "").strip()[:700]
+
+    # Se o usuário já citou o nome, não duplicar de forma confusa
+    if not nome:
+        m = re.search(
+            r"(?:capa|imagem|arte|para|do|da|de)\s+([A-ZÁÉÍÓÚÂÊÔÃÕ][\wÁÉÍÓÚÂÊÔÃÕáéíóúâêôãõç]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕ][\wÁÉÍÓÚÂÊÔÃÕáéíóúâêôãõç]+){0,3})",
+            pedido_limpo,
+        )
+        if m:
+            nome = m.group(1).strip()[:80]
+
+    hero = nome or "NOME DO CANDIDATO (obrigatório na tipografia)"
+    linhas = [
+        "Brazilian political campaign poster / social graphic, professional war-room design.",
+        f"HERO TEXT (must be readable on the artwork): \"{hero}\"",
+        f"Office/role: {cargo}. Territory: {territorio}."
+        + (f" Election year: {ano}." if ano else ""),
+    ]
+    if partido:
+        linhas.append(f"Party cue (subtle, not a logo copy): {partido}.")
+    linhas.extend(
+        [
+            "Layout: clean campaign cover — strong typography, Brazilian local atmosphere "
+            f"for {territorio}, confident colors, not US election stock.",
+            "Style: graphic design poster (typography-first). Do NOT invent photorealistic "
+            "faces of real people; if a person appears, keep stylized/silhouette.",
+            "Forbidden: fake poll numbers, TSE logos, QR codes, watermark clutter, "
+            "generic 'vote' art without the candidate name.",
+            f"User brief: {pedido_limpo or 'capa de campanha'}",
+        ]
+    )
+    return "\n".join(linhas)
+
+
+def comprimir_data_url_imagem(
+    data_url: str,
+    *,
+    max_side: int = 1280,
+    max_chars: int = 700_000,
+    quality: int = 78,
+) -> str:
+    """Reduz data-URL (JPEG) para caber no histórico do chat."""
+    if not data_url.startswith("data:") or ";base64," not in data_url:
+        return data_url
+    head = data_url[:48].lower()
+    precisa = (
+        len(data_url) > max_chars
+        or "image/png" in head
+        or "image/webp" in head
+        or len(data_url) > int(max_chars * 0.55)
+    )
+    if not precisa:
+        return data_url
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+    except ImportError:
+        return data_url
+
+    b64, _mime = _strip_b64(data_url)
+    try:
+        raw = base64.b64decode(b64)
+        img = Image.open(BytesIO(raw))
+        img = img.convert("RGB")
+        w, h = img.size
+        scale = min(1.0, max_side / max(w, h))
+        if scale < 1.0:
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.Resampling.LANCZOS)
+        q = quality
+        out = data_url
+        for _ in range(8):
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=q, optimize=True)
+            encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+            out = f"data:image/jpeg;base64,{encoded}"
+            if len(out) <= max_chars:
+                return out
+            q = max(35, q - 10)
+            if max(img.size) > 640:
+                nw = int(img.size[0] * 0.75)
+                nh = int(img.size[1] * 0.75)
+                img = img.resize((max(1, nw), max(1, nh)), Image.Resampling.LANCZOS)
+        return out
+    except Exception:
+        return data_url
+
+
 def _audio_format(mime: str | None, nome: str = "") -> str:
     m = (mime or "").lower()
     n = (nome or "").lower()
@@ -403,20 +533,54 @@ def _extrair_imagem_resposta(data: dict[str, Any]) -> tuple[str | None, str | No
     return None, None
 
 
+def _pacote_imagem_ok(
+    *,
+    image_url: str,
+    via: str | None,
+    model: str,
+    prompt_usado: str,
+) -> dict[str, Any]:
+    """Normaliza URL/data-URL: comprime base64 para caber no histórico."""
+    url_http = image_url if image_url.startswith("http") else None
+    data = image_url if image_url.startswith("data:") else None
+    if data:
+        data = comprimir_data_url_imagem(data, max_side=1280, max_chars=700_000, quality=78)
+    return {
+        "status": "ok",
+        "nivel": "artefato",
+        "itens": [
+            {
+                "fonte": f"imagem:{model}",
+                "via": via,
+                "prompt": prompt_usado[:700],
+                "bytes_aprox": len(data) if data else None,
+            }
+        ],
+        "image_url": url_http,
+        "image_data_url": data,
+        "nota_metodologica": "Artefato visual gerado (comprimido p/ histórico) — não é dado oficial.",
+    }
+
+
 async def gerar_imagem(params: dict[str, Any]) -> dict[str, Any]:
     """Gera imagem real via OpenRouter POST /api/v1/images (fallback: chat modalities)."""
-    prompt = (params.get("prompt") or "").strip()
-    if not prompt:
+    pedido = (params.get("prompt") or "").strip()
+    if not pedido:
         return {"status": "vazio", "mensagem": "prompt obrigatório", "nivel": "artefato"}
-    ctx = (params.get("contexto_campanha") or "")[:600]
-    full = prompt if not ctx else f"{prompt}\n\nContexto de campanha (não invente cifra): {ctx}"
+    ctx = (params.get("contexto_campanha") or "")[:2500]
+    # Briefing amarrado à campanha (nome/UF/cargo) — evita arte genérica
+    full = montar_prompt_imagem_campanha(pedido, ctx)
     aspect = (params.get("aspect_ratio") or "16:9").strip()
     model = _model_image()
     body: dict[str, Any] = {
         "model": model,
-        "prompt": full[:4000],
+        "prompt": full[:3500],
         "aspect_ratio": aspect,
         "n": 1,
+        # Limita payload: 1K + jpeg (OpenRouter Images)
+        "resolution": (params.get("resolution") or "1K").strip() or "1K",
+        "output_format": "jpeg",
+        "output_compression": 75,
     }
     err_txt = ""
     async with httpx.AsyncClient(timeout=180.0) as client:
@@ -424,46 +588,48 @@ async def gerar_imagem(params: dict[str, Any]) -> dict[str, Any]:
         if r.status_code < 400:
             image_url, via = _extrair_imagem_resposta(r.json())
             if image_url:
-                item: dict[str, Any] = {
-                    "fonte": f"imagem:{model}",
-                    "via": via,
-                    "prompt": prompt[:500],
-                }
-                return {
-                    "status": "ok",
-                    "nivel": "artefato",
-                    "itens": [item],
-                    "image_url": image_url if image_url.startswith("http") else None,
-                    "image_data_url": image_url if image_url.startswith("data:") else None,
-                    "nota_metodologica": "Artefato visual gerado — não é dado oficial.",
-                }
+                return _pacote_imagem_ok(
+                    image_url=image_url,
+                    via=via,
+                    model=model,
+                    prompt_usado=full,
+                )
             err_txt = (r.text or "")[:400]
         else:
             err_txt = (r.text or "")[:400]
-            # Fallback: chat completions com modalities (alguns provedores)
+            # Retry sem params opcionais (alguns provedores rejeitam)
+            body_min = {
+                "model": model,
+                "prompt": full[:3500],
+                "aspect_ratio": aspect,
+                "n": 1,
+            }
+            r_min = await client.post(_OPENROUTER_IMAGES, headers=_headers(), json=body_min)
+            if r_min.status_code < 400:
+                image_url, via = _extrair_imagem_resposta(r_min.json())
+                if image_url:
+                    return _pacote_imagem_ok(
+                        image_url=image_url,
+                        via=via or "images_api_min",
+                        model=model,
+                        prompt_usado=full,
+                    )
+            # Fallback: chat completions com modalities
             chat_body = {
                 "model": model,
-                "messages": [{"role": "user", "content": full[:4000]}],
+                "messages": [{"role": "user", "content": full[:3500]}],
                 "modalities": ["image", "text"],
             }
             r2 = await client.post(_OPENROUTER, headers=_headers(), json=chat_body)
             if r2.status_code < 400:
                 image_url, via = _extrair_imagem_resposta(r2.json())
                 if image_url:
-                    return {
-                        "status": "ok",
-                        "nivel": "artefato",
-                        "itens": [
-                            {
-                                "fonte": f"imagem:{model}",
-                                "via": via or "chat_modalities",
-                                "prompt": prompt[:500],
-                            }
-                        ],
-                        "image_url": image_url if image_url.startswith("http") else None,
-                        "image_data_url": image_url if image_url.startswith("data:") else None,
-                        "nota_metodologica": "Artefato visual gerado — não é dado oficial.",
-                    }
+                    return _pacote_imagem_ok(
+                        image_url=image_url,
+                        via=via or "chat_modalities",
+                        model=model,
+                        prompt_usado=full,
+                    )
             # Storyboard texto
             story = {
                 "model": _model_vision(),
@@ -472,7 +638,7 @@ async def gerar_imagem(params: dict[str, Any]) -> dict[str, Any]:
                         "role": "user",
                         "content": (
                             "A geração de imagem falhou. Entregue um storyboard detalhado "
-                            f"(cenário, luz, texto na peça) para produção. Pedido: {full}"
+                            f"(tipografia com NOME do candidato, cores, layout) para produção.\n{full}"
                         ),
                     }
                 ],
@@ -484,7 +650,7 @@ async def gerar_imagem(params: dict[str, Any]) -> dict[str, Any]:
             return {
                 "status": "parcial" if text.strip() else "vazio",
                 "nivel": "artefato",
-                "itens": [{"descricao": text[:8000]}] if text.strip() else [],
+                "itens": [{"descricao": text[:8000], "prompt": full[:700]}] if text.strip() else [],
                 "mensagem": f"API de imagem indisponível ({r.status_code}) — storyboard em texto",
                 "nota_metodologica": err_txt,
             }

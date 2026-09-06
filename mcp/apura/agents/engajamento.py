@@ -199,18 +199,18 @@ def plano_imagem_forcado(
         return []
     if not tool_ok("gerar_imagem"):
         return []
-    nosso = nosso_do_ctx(campanha_ctx)
-    prompt = (pergunta or "").strip()[:900]
-    if nosso and nosso.lower() not in prompt.lower():
-        prompt = f"Arte/capa de campanha para {nosso}. Pedido do usuário: {prompt}"
+    from apura.capabilities import montar_prompt_imagem_campanha
+
+    prompt = montar_prompt_imagem_campanha(pergunta, campanha_ctx or "")
     aspect = "9:16" if re.search(r"stories|story|vertical", pergunta or "", re.I) else "16:9"
     return [
         {
             "tool": "gerar_imagem",
             "params": {
-                "prompt": prompt,
+                "prompt": pergunta.strip()[:900] or prompt[:900],
                 "aspect_ratio": aspect,
-                "contexto_campanha": (campanha_ctx or "")[:800],
+                "contexto_campanha": (campanha_ctx or "")[:2500],
+                "resolution": "1K",
             },
             "motivo": "playbook_imagem",
         }

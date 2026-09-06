@@ -657,7 +657,8 @@ MCP_TOOLS: list[dict] = [
             "name": "gerar_imagem",
             "description": (
                 "Gera imagem real de campanha (artefato visual via OpenRouter Images). "
-                "Use para peça, mockup, capa — não inventa cifra."
+                "SEMPRE passe contexto_campanha com nome do candidato, cargo e UF. "
+                "A tool monta tipografia com o nome — não peça arte genérica."
             ),
             "parameters": {
                 "type": "object",
@@ -667,7 +668,14 @@ MCP_TOOLS: list[dict] = [
                         "type": "string",
                         "description": "ex. 16:9, 1:1, 9:16",
                     },
-                    "contexto_campanha": {"type": "string"},
+                    "contexto_campanha": {
+                        "type": "string",
+                        "description": "Bloco com Nosso candidato, Cargo, UF, Ano",
+                    },
+                    "resolution": {
+                        "type": "string",
+                        "description": "512 | 1K (preferir 1K para histórico)",
+                    },
                 },
                 "required": ["prompt"],
             },

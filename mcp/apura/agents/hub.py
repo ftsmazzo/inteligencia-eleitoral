@@ -438,14 +438,22 @@ def _result_para_log(result: Any) -> Any:
 
 
 def _imagem_para_done(result: dict[str, Any]) -> dict[str, Any] | None:
+    from apura.capabilities import comprimir_data_url_imagem
+
     url = (result.get("image_url") or "").strip()
     data = (result.get("image_data_url") or "").strip()
+    prompt = ((result.get("itens") or [{}])[0] or {}).get("prompt")
     if url.startswith("http"):
-        return {"url": url, "prompt": ((result.get("itens") or [{}])[0] or {}).get("prompt")}
-    if data.startswith("data:") and len(data) < 1_500_000:
-        return {"data_url": data, "prompt": ((result.get("itens") or [{}])[0] or {}).get("prompt")}
-    if data:
-        return {"omitida": True, "nota": "imagem gerada (grande demais para histórico)"}
+        return {"url": url, "prompt": prompt}
+    if data.startswith("data:"):
+        data = comprimir_data_url_imagem(data, max_side=1280, max_chars=700_000, quality=75)
+        if len(data) < 900_000:
+            return {"data_url": data, "prompt": prompt}
+        # última tentativa mais agressiva
+        data = comprimir_data_url_imagem(data, max_side=960, max_chars=500_000, quality=55)
+        if len(data) < 900_000:
+            return {"data_url": data, "prompt": prompt}
+        return {"omitida": True, "nota": "imagem gerada (ainda grande após compressão)"}
     return None
 
 
@@ -645,6 +653,9 @@ async def executar_hub(
                         args = _injetar_anexo(name, args, anexos)
                         if name in ("gerar_mapa_html", "gerar_plano_html") and campanha_ctx:
                             args.setdefault("contexto_campanha", campanha_ctx[:1500])
+                        if name == "gerar_imagem" and campanha_ctx:
+                            args.setdefault("contexto_campanha", campanha_ctx[:2500])
+                            args.setdefault("resolution", "1K")
                         if not tool_permitida(pol, name):
                             result = {
                                 "erro": "tool_negada_pelo_perfil",
