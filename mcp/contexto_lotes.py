@@ -134,6 +134,9 @@ def _parse_sidra_mun(payload: bytes) -> tuple[int | None, list[tuple[int, int, f
     return ano, rows
 
 
+_PROTECT_STATUS = frozenset({"online", "nucleo", "bloqueado", "trilha_b"})
+
+
 def _upsert_status(
     conn: psycopg.Connection,
     id_br: str,
@@ -145,7 +148,44 @@ def _upsert_status(
     ano_ref: str | None,
     fonte: str | None,
     nota: str | None,
+    *,
+    preserve_better: bool = False,
 ) -> None:
+    """Grava status. Se preserve_better=True (seed), nunca rebaixa online/nucleo/bloqueado/trilha_b."""
+    if preserve_better:
+        conn.execute(
+            """
+            INSERT INTO ctl.lote_status
+              (id_br, lote, tema, status, granularidade, linhas, ano_ref, fonte, nota, atualizado_em)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
+            ON CONFLICT (id_br) DO UPDATE SET
+              lote = EXCLUDED.lote,
+              tema = COALESCE(EXCLUDED.tema, ctl.lote_status.tema),
+              fonte = COALESCE(EXCLUDED.fonte, ctl.lote_status.fonte),
+              granularidade = COALESCE(ctl.lote_status.granularidade, EXCLUDED.granularidade),
+              status = CASE
+                WHEN ctl.lote_status.status IN ('online','nucleo','bloqueado','trilha_b')
+                  THEN ctl.lote_status.status
+                ELSE EXCLUDED.status
+              END,
+              linhas = CASE
+                WHEN ctl.lote_status.status = 'online' THEN ctl.lote_status.linhas
+                ELSE COALESCE(EXCLUDED.linhas, ctl.lote_status.linhas)
+              END,
+              ano_ref = CASE
+                WHEN ctl.lote_status.status = 'online' THEN ctl.lote_status.ano_ref
+                ELSE COALESCE(EXCLUDED.ano_ref, ctl.lote_status.ano_ref)
+              END,
+              nota = CASE
+                WHEN ctl.lote_status.status IN ('online','nucleo','bloqueado','trilha_b')
+                  THEN ctl.lote_status.nota
+                ELSE EXCLUDED.nota
+              END,
+              atualizado_em = now()
+            """,
+            (id_br, lote, tema, status, granularidade, linhas, ano_ref, fonte, nota),
+        )
+        return
     conn.execute(
         """
         INSERT INTO ctl.lote_status
@@ -200,6 +240,7 @@ def _seed_catalog(conn: psycopg.Connection) -> int:
             ano_ref=None,
             fonte=b.get("fonte_br"),
             nota=nota,
+            preserve_better=True,
         )
         n += 1
     # L1 já em produção
@@ -207,7 +248,10 @@ def _seed_catalog(conn: psycopg.Connection) -> int:
         ("br_mun_pib", "L1", "IBGE SIDRA 5938", "online via contexto_l1"),
         ("br_uf_comex", "L1", "MDIC ComexStat", "online via contexto_l1"),
     ):
-        _upsert_status(conn, id_br, lote, "economia", "online", "municipio" if "mun" in id_br else "uf", None, None, fonte, nota)
+        _upsert_status(
+            conn, id_br, lote, "economia", "online",
+            "municipio" if "mun" in id_br else "uf", None, None, fonte, nota,
+        )
     return n
 
 
@@ -444,9 +488,27 @@ def _load_siconfi_rreo_uf(conn: psycopg.Connection, ano: int = 2023) -> None:
     print(f"[lotes] siconfi ok {len(rows)} UF")
 
 
+def _count_ind(conn: psycopg.Connection, id_ind: str, table: str = "mun") -> int:
+    sql = (
+        "SELECT count(*) FROM contexto.indicador_uf WHERE id_indicador = %s"
+        if table == "uf"
+        else "SELECT count(*) FROM contexto.indicador_mun WHERE id_indicador = %s"
+    )
+    return int(conn.execute(sql, (id_ind,)).fetchone()[0] or 0)
+
+
 def _load_l2(conn: psycopg.Connection) -> None:
     for id_ind, id_br, url, _nivel in _SIDRA_LOADS:
         tema = "fruticultura" if "fruticultura" in id_br else "agro"
+        n_exist = _count_ind(conn, id_ind, "mun")
+        if n_exist >= 1000:
+            print(f"[lotes] skip SIDRA {id_ind} já={n_exist}")
+            _upsert_status(
+                conn, id_br, "L2", tema, "online", "municipio", n_exist, None,
+                "IBGE SIDRA", f"indicador {id_ind} já carregado; skip",
+            )
+            conn.commit()
+            continue
         try:
             _load_sidra_into_indicador(conn, id_ind, id_br, url, lote="L2", tema=tema)
             conn.commit()
@@ -457,15 +519,18 @@ def _load_l2(conn: psycopg.Connection) -> None:
             conn.commit()
     _upsert_status(
         conn, "br_mun_agro_irrigacao", "L2", "agro", "parcial", "municipio", None, None,
-        "ANA/Censo Agro", "fonte nacional; carga Atlas na fila",
+        "ANA Atlas Irrigação", "planilha Atlas nacional na fila (sem inventar área)",
+        preserve_better=True,
     )
     _upsert_status(
         conn, "br_mun_agro_credito_rural", "L2", "agro", "parcial", "municipio", None, None,
         "BCB SICOR", "fonte nacional; carga SICOR na fila",
+        preserve_better=True,
     )
     _upsert_status(
         conn, "br_mun_fruticultura_exportacao", "L2", "fruticultura", "parcial", "municipio", None, None,
         "ComexStat NCM", "depende Comex NCM frutas",
+        preserve_better=True,
     )
     _upsert_status(
         conn, "br_mun_fruticultura_poscolheita", "fora", "fruticultura", "bloqueado", "municipio", None, None,
@@ -776,16 +841,23 @@ def _load_siga_potencia_mun(conn: psycopg.Connection) -> None:
 
 
 def _load_l3_l8(conn: psycopg.Connection) -> None:
-    for fn, label in (
-        (_load_pib_uf, "pib_uf"),
-        (_load_pop_uf_agregados, "pop_uf"),
-        (_load_pnad_uf, "pnad"),
-        (_load_pia_uf, "pia"),
-        (_load_siconfi_rreo_uf, "siconfi"),
-        (_load_ideb_mun, "ideb"),
-        (_load_siga_potencia_mun, "siga"),
-    ):
+    # Ordem: leves primeiro (não bloquear IDEB/SIGA atrás de SICONFI lento).
+    steps: list[tuple] = [
+        ("pib_uf", _load_pib_uf, "pib_uf_mil", "uf", 20),
+        ("pop_uf", _load_pop_uf_agregados, "pop_uf_estimativa", "uf", 20),
+        ("pnad", _load_pnad_uf, "pnad_desocupacao_pct", "uf", 20),
+        ("pia", _load_pia_uf, "pia_unidades_locais", "uf", 20),
+        ("ideb", _load_ideb_mun, "educ_ideb_ai_pub", "mun", 3000),
+        ("siga", _load_siga_potencia_mun, "energia_potencia_kw", "mun", 500),
+        ("siconfi", _load_siconfi_rreo_uf, "fiscal_rreo_anexo1_soma", "uf", 20),
+    ]
+    for label, fn, id_ind, tbl, min_n in steps:
+        n_exist = _count_ind(conn, id_ind, tbl)
+        if n_exist >= min_n:
+            print(f"[lotes] skip {label} já={n_exist}")
+            continue
         try:
+            print(f"[lotes] run {label}…")
             fn(conn)
             conn.commit()
         except Exception as exc:
@@ -796,19 +868,22 @@ def _load_l3_l8(conn: psycopg.Connection) -> None:
                     conn, "br_mun_fiscal_siconfi", "L4", "fiscal", "erro", "uf", None, None,
                     "SICONFI", str(exc)[:200],
                 )
-                conn.commit()
             elif label == "ideb":
                 _upsert_status(
                     conn, "br_mun_educacao_ideb", "L7", "educacao", "erro", "municipio", None, None,
                     "INEP IDEB", str(exc)[:200],
                 )
-                conn.commit()
             elif label == "siga":
                 _upsert_status(
                     conn, "br_mun_energia_potencia_instalada", "L3", "energia", "erro", "municipio",
                     None, None, "ANEEL SIGA", str(exc)[:200],
                 )
-                conn.commit()
+            elif label == "pnad":
+                _upsert_status(
+                    conn, "br_uf_pnad", "L1", "economia", "erro", "uf", None, None,
+                    "IBGE PNAD", str(exc)[:200],
+                )
+            conn.commit()
 
     for args in (
         ("br_mun_mvi", "L5", "seguranca", "SIM/DATASUS", "proxy mun na fila"),
@@ -819,7 +894,10 @@ def _load_l3_l8(conn: psycopg.Connection) -> None:
     ):
         id_br, lote, tema, fonte, nota = args
         gran = "municipio" if "_mun_" in id_br else ("porto" if "_por_" in id_br else "uf")
-        _upsert_status(conn, id_br, lote, tema, "parcial", gran, None, None, fonte, nota)
+        _upsert_status(
+            conn, id_br, lote, tema, "parcial", gran, None, None, fonte, nota,
+            preserve_better=True,
+        )
     conn.commit()
 
 
@@ -846,18 +924,19 @@ def _worker() -> None:
             _mark_pib_comex_counts(conn)
             _reconcile_from_indicadores(conn)
             _mark_remaining_explicit(conn)
-            try:
-                _load_l2(conn)
-            except Exception as exc:
-                print(f"[lotes] L2: {exc}")
-            _reconcile_from_indicadores(conn)
+            # Prioridade: L3+ (PNAD/IDEB/SIGA) antes de re-baixar L2 SIDRA
             try:
                 _load_l3_l8(conn)
             except Exception as exc:
                 print(f"[lotes] L3-L8: {exc}")
             _reconcile_from_indicadores(conn)
+            try:
+                _load_l2(conn)
+            except Exception as exc:
+                print(f"[lotes] L2: {exc}")
+            _reconcile_from_indicadores(conn)
             _mark_remaining_explicit(conn)
-        print("[lotes] ciclo L2–L8 + núcleo sync OK")
+        print("[lotes] ciclo L3-first + L2 + núcleo sync OK")
     except Exception as exc:
         print(f"[lotes] worker falhou: {exc}")
 
