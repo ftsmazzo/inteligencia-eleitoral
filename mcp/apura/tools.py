@@ -360,6 +360,46 @@ MCP_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "consultar_pib",
+            "description": (
+                "PIB municipal IBGE (SIDRA 5938). Contexto econômico, não urna. "
+                "vr_pib_mil em R$ mil; per capita em R$."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer", "description": "Ano-base IBGE (ex. 2023)"},
+                    "uf": {"type": "string"},
+                    "cod_ibge": {"type": "integer"},
+                    "nacional": {"type": "boolean"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_comex",
+            "description": (
+                "Comércio exterior por UF (ComexStat MDIC). fluxo=export|import. "
+                "Contexto econômico, não urna. FOB em USD."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ano": {"type": "integer"},
+                    "uf": {"type": "string"},
+                    "fluxo": {"type": "string", "description": "export ou import"},
+                    "nacional": {"type": "boolean"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "consultar_deputados_casa",
             "description": "Deputados na Câmara (mandato atual L57).",
             "parameters": {
@@ -814,6 +854,8 @@ TOOL_TO_MCP: dict[str, str] = {
     "consultar_populacao": "populacao",
     "consultar_cadunico": "cadunico",
     "consultar_bolsa_familia": "bolsa_familia",
+    "consultar_pib": "pib",
+    "consultar_comex": "comex",
     "consultar_deputados_casa": "deputados_casa",
     "consultar_senadores": "senadores",
     "consultar_proposicoes": "proposicoes",

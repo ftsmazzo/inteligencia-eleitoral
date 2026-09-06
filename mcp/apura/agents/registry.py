@@ -30,6 +30,8 @@ TOOLS_DADOS = frozenset(
         "consultar_populacao",
         "consultar_cadunico",
         "consultar_bolsa_familia",
+        "consultar_pib",
+        "consultar_comex",
         "consultar_deputados_casa",
         "consultar_senadores",
         "consultar_proposicoes",

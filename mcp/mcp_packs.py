@@ -34,6 +34,8 @@ TOOLS_FATO = (
     "populacao",
     "cadunico",
     "bolsa_familia",
+    "pib",
+    "comex",
     "deputados_casa",
     "senadores",
     "proposicoes",

@@ -606,6 +606,12 @@ def _startup_ddl() -> None:
     _ensure_municipio_api()
     _ensure_acervo()
     _ensure_analitico()
+    try:
+        from contexto_l1 import ensure_contexto_l1
+
+        ensure_contexto_l1()
+    except Exception as exc:
+        print(f"[startup] contexto_l1: {exc}")
 
 
 def _extract_token(authorization: str | None, x_token: str | None) -> str:
@@ -803,6 +809,22 @@ class PopulacaoIn(BaseModel):
     ano: int
     uf: str | None = None
     cod_ibge: int | None = None
+    nacional: bool = False
+    limite: int = 200
+
+
+class PibIn(BaseModel):
+    ano: int | None = None
+    uf: str | None = None
+    cod_ibge: int | None = None
+    nacional: bool = False
+    limite: int = 200
+
+
+class ComexIn(BaseModel):
+    ano: int | None = None
+    uf: str | None = None
+    fluxo: str | None = None
     nacional: bool = False
     limite: int = 200
 
@@ -1407,6 +1429,28 @@ def bolsa_familia(body: SocialIn, authorization: str | None = Header(default=Non
         )
 
 
+@app.post("/v1/pib")
+def pib(body: PibIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token, "pib")
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.pib(%s,%s,%s,%s,%s)",
+            (body.ano, body.uf, body.cod_ibge, body.nacional, body.limite),
+        )
+
+
+@app.post("/v1/comex")
+def comex(body: ComexIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token, "comex")
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.comex(%s,%s,%s,%s,%s)",
+            (body.ano, body.uf, body.fluxo, body.nacional, body.limite),
+        )
+
+
 @app.post("/v1/deputados_casa")
 def deputados_casa(body: DeputadosCasaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token, "deputados_casa")
@@ -1662,6 +1706,10 @@ async def _mcp_exec(
         return cadunico(SocialIn(**p), authorization, x_token)
     if name == "bolsa_familia":
         return bolsa_familia(SocialIn(**p), authorization, x_token)
+    if name == "pib":
+        return pib(PibIn(**p), authorization, x_token)
+    if name == "comex":
+        return comex(ComexIn(**p), authorization, x_token)
     if name == "deputados_casa":
         return deputados_casa(DeputadosCasaIn(**p), authorization, x_token)
     if name == "senadores":
