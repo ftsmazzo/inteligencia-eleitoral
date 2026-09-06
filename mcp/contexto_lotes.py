@@ -423,6 +423,8 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("fiscal_itr", "br_mun_fiscal_transferencias", "L4", "fiscal"),
         ("pop_mun_estimativa", "br_mun_estimativas", "L6", "demografia"),
         ("energia_gd_potencia_kw", "br_mun_energia_geracao_distribuida", "L3", "energia"),
+        ("seguranca_homicidios_dolosos", "br_uf_seguranca_letalidade", "L5", "seguranca"),
+        ("turismo_meios_hospedagem", "br_mun_turismo_oferta", "L8", "turismo"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -580,6 +582,37 @@ def _load_gd_from_seed(conn: psycopg.Connection) -> None:
         online_min=3000,
     )
     print(f"[lotes] gd seed={n}")
+
+
+def _load_homicidios_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "seguranca_homicidios_uf.csv.gz",
+        "seguranca_homicidios_dolosos",
+        "br_uf_seguranca_letalidade",
+        "L5",
+        "seguranca",
+        "FBSP Anuário 2024 T04",
+        "homicídios dolosos vítimas 2023; mun MVI na fila",
+        status="online",
+        gran="uf",
+    )
+    print(f"[lotes] homicidios seed={n}")
+
+
+def _load_turismo_hospedagem_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_mun_seed_csv(
+        conn,
+        "turismo_hospedagem_mun.csv.gz",
+        "turismo_meios_hospedagem",
+        "br_mun_turismo_oferta",
+        "L8",
+        "turismo",
+        "CADASTUR meios de hospedagem 4T2025",
+        "contagem estabelecimentos por mun; ausência ≠ zero",
+        online_min=2000,
+    )
+    print(f"[lotes] turismo hospedagem seed={n}")
 
 
 def _load_irrigacao_from_seed(conn: psycopg.Connection) -> None:
@@ -1397,6 +1430,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("pop_mun", _load_pop_mun_from_seed, "pop_mun_estimativa", "mun", 3000),
         ("itr", _load_itr_from_seed, "fiscal_itr", "mun", 3000),
         ("gd", _load_gd_from_seed, "energia_gd_potencia_kw", "mun", 3000),
+        ("homicidios", _load_homicidios_from_seed, "seguranca_homicidios_dolosos", "uf", 20),
+        ("turismo", _load_turismo_hospedagem_from_seed, "turismo_meios_hospedagem", "mun", 2000),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1427,6 +1462,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "pop_mun": ("br_mun_estimativas", "L6", "demografia", "municipio"),
                 "itr": ("br_mun_fiscal_transferencias", "L4", "fiscal", "municipio"),
                 "gd": ("br_mun_energia_geracao_distribuida", "L3", "energia", "municipio"),
+                "homicidios": ("br_uf_seguranca_letalidade", "L5", "seguranca", "uf"),
+                "turismo": ("br_mun_turismo_oferta", "L8", "turismo", "municipio"),
             }
             id_br, lote, tema, gran = id_map[label]
             _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
