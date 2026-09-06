@@ -297,7 +297,7 @@ def _sync_nucleo_from_db(conn: psycopg.Connection) -> None:
         ("br_mun_cadunico", "L6", "social", "SELECT count(*), max(anomes)::text FROM contexto.cadunico_mun", "municipio"),
         ("br_mun_bolsa_familia", "L6", "social", "SELECT count(*), max(anomes)::text FROM contexto.bolsa_familia_mun", "municipio"),
         ("br_mun_votacao_nominal", "ELE", "eleitoral", "SELECT count(*), max(ano)::text FROM eleicao.votacao", "municipio"),
-        ("br_cand_nominata", "ELE", "eleitoral", "SELECT count(*), max(ano)::text FROM eleicao.candidato", "pessoa"),
+        ("br_cand_nominata", "ELE", "eleitoral", "SELECT count(*), max(ano)::text FROM eleicao.candidatura", "pessoa"),
         ("br_mun_eleitorado_perfil", "ELE", "eleitoral", "SELECT count(*), max(ano)::text FROM eleicao.eleitorado", "municipio"),
         ("br_mun_detalhe_apuracao", "ELE", "eleitoral", "SELECT count(*), max(ano)::text FROM eleicao.detalhe_munzona", "municipio_zona"),
         ("br_depara_tse_ibge", "L0", "referencia", "SELECT count(*), NULL FROM ref.municipio WHERE cd_municipio_tse IS NOT NULL", "municipio"),
