@@ -36,6 +36,8 @@ TOOLS_FATO = (
     "bolsa_familia",
     "pib",
     "comex",
+    "status_lotes",
+    "contexto_indicador",
     "deputados_casa",
     "senadores",
     "proposicoes",

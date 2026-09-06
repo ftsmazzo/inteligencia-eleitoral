@@ -5,6 +5,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY mcp/app.py /app/app.py
 COPY mcp/mcp_packs.py /app/mcp_packs.py
 COPY mcp/contexto_l1.py /app/contexto_l1.py
+COPY mcp/contexto_lotes.py /app/contexto_lotes.py
 COPY mcp/apura /app/apura
 COPY mcp/gestao /app/gestao
 COPY mcp/static /app/static
@@ -26,6 +27,7 @@ COPY sql/patch_nominata_cargo_geral.sql /app/sql/patch_nominata_cargo_geral.sql
 COPY sql/patch_municipio_api.sql /app/sql/patch_municipio_api.sql
 COPY sql/patch_pib.sql /app/sql/patch_pib.sql
 COPY sql/patch_comex.sql /app/sql/patch_comex.sql
+COPY sql/patch_contexto_lotes.sql /app/sql/patch_contexto_lotes.sql
 COPY sql/api.sql /app/sql/api.sql
 COPY mcp/radar_client.py /app/radar_client.py
 COPY mcp/clima_motores.py /app/clima_motores.py

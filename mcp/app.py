@@ -612,6 +612,12 @@ def _startup_ddl() -> None:
         ensure_contexto_l1()
     except Exception as exc:
         print(f"[startup] contexto_l1: {exc}")
+    try:
+        from contexto_lotes import ensure_contexto_lotes
+
+        ensure_contexto_lotes(background=True)
+    except Exception as exc:
+        print(f"[startup] contexto_lotes: {exc}")
 
 
 def _extract_token(authorization: str | None, x_token: str | None) -> str:
@@ -1451,6 +1457,37 @@ def comex(body: ComexIn, authorization: str | None = Header(default=None), x_tok
         )
 
 
+class StatusLotesIn(BaseModel):
+    lote: str | None = None
+
+
+class ContextoIndicadorIn(BaseModel):
+    id_indicador: str
+    ano: int | None = None
+    uf: str | None = None
+    cod_ibge: int | None = None
+    nacional: bool = False
+    limite: int = 200
+
+
+@app.post("/v1/status_lotes")
+def status_lotes(body: StatusLotesIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token, "status_lotes")
+    with db() as conn:
+        return _one(conn, "SELECT api.status_lotes(%s)", (body.lote,))
+
+
+@app.post("/v1/contexto_indicador")
+def contexto_indicador(body: ContextoIndicadorIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
+    _token_ok(authorization, x_token, "contexto_indicador")
+    with db() as conn:
+        return _one(
+            conn,
+            "SELECT api.contexto_indicador(%s,%s,%s,%s,%s,%s)",
+            (body.id_indicador, body.ano, body.uf, body.cod_ibge, body.nacional, body.limite),
+        )
+
+
 @app.post("/v1/deputados_casa")
 def deputados_casa(body: DeputadosCasaIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token, "deputados_casa")
@@ -1710,6 +1747,10 @@ async def _mcp_exec(
         return pib(PibIn(**p), authorization, x_token)
     if name == "comex":
         return comex(ComexIn(**p), authorization, x_token)
+    if name == "status_lotes":
+        return status_lotes(StatusLotesIn(**p), authorization, x_token)
+    if name == "contexto_indicador":
+        return contexto_indicador(ContextoIndicadorIn(**p), authorization, x_token)
     if name == "deputados_casa":
         return deputados_casa(DeputadosCasaIn(**p), authorization, x_token)
     if name == "senadores":

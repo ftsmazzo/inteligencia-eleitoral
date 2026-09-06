@@ -32,6 +32,8 @@ TOOLS_DADOS = frozenset(
         "consultar_bolsa_familia",
         "consultar_pib",
         "consultar_comex",
+        "consultar_status_lotes",
+        "consultar_contexto_indicador",
         "consultar_deputados_casa",
         "consultar_senadores",
         "consultar_proposicoes",

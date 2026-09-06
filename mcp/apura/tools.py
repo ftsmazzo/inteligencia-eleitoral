@@ -400,6 +400,47 @@ MCP_TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "consultar_status_lotes",
+            "description": (
+                "Checklist de TODOS os lotes da fonte-verdade BR (online/parcial/nucleo/"
+                "bloqueado/trilha_b). Use para saber o que já existe — sem lacuna silenciosa."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "lote": {"type": "string", "description": "Ex.: L1, L2, ELE (opcional)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "consultar_contexto_indicador",
+            "description": (
+                "Indicador socioeconômico BR (PAM, PPM, PNAD, etc.) por id_indicador. "
+                "Contexto, não urna."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id_indicador": {
+                        "type": "string",
+                        "description": "Ex.: agro_pam_soja_t, agro_ppm_bovinos, pnad_taxa_desocupacao",
+                    },
+                    "ano": {"type": "integer"},
+                    "uf": {"type": "string"},
+                    "cod_ibge": {"type": "integer"},
+                    "nacional": {"type": "boolean"},
+                    "limite": {"type": "integer", "default": 50},
+                },
+                "required": ["id_indicador"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "consultar_deputados_casa",
             "description": "Deputados na Câmara (mandato atual L57).",
             "parameters": {
@@ -856,6 +897,8 @@ TOOL_TO_MCP: dict[str, str] = {
     "consultar_bolsa_familia": "bolsa_familia",
     "consultar_pib": "pib",
     "consultar_comex": "comex",
+    "consultar_status_lotes": "status_lotes",
+    "consultar_contexto_indicador": "contexto_indicador",
     "consultar_deputados_casa": "deputados_casa",
     "consultar_senadores": "senadores",
     "consultar_proposicoes": "proposicoes",
