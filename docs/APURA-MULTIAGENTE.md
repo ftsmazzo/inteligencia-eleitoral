@@ -65,6 +65,7 @@ Contexto do chat (nessa ordem): **ESCOPO** → **ALVOS CANÔNICOS** → **CONHEC
 - Proibido definir rival só pela nominata/vice de urna antiga.
 - Bloco opcional `tipo=estrategias` em `ctl.campanha_memoria` (prioridade máxima na memória).
 - Skill runtime: `SKILL_CAMPANHA_IDENTIDADE` (com escopo).
+- Playbook duro (hub): pedido de estratégia/ângulo/contraste → se não houver `consultar_clima` no rival, o hub força; clima vazio → `pesquisar_web`.
 
 ## Schema
 

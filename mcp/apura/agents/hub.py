@@ -531,6 +531,83 @@ async def executar_hub(
                 yield _sse("error", {"mensagem": "Limite de consultas atingido nesta mensagem."})
                 return
 
+            # Playbook duro: estratégia/ângulo sem clima → força consulta no rival
+            from apura.agents.engajamento import (
+                plano_engajamento_forcado,
+                resultado_clima_vazio,
+                web_ja_consultada,
+            )
+
+            def _ok(name: str) -> bool:
+                return bool(pol.get("bypass")) or tool_permitida(pol, name)
+
+            for extra in plano_engajamento_forcado(
+                pergunta, campanha_ctx, tool_log, tool_ok=_ok
+            ):
+                name = extra["tool"]
+                args = dict(extra.get("params") or {})
+                if name == "consultar_clima":
+                    args = _enriquecer_clima_params(args, campanha_ctx, pergunta)
+                yield _sse(
+                    "status",
+                    {
+                        "fase": "consultando",
+                        "tool": name,
+                        "motivo": extra.get("motivo"),
+                    },
+                )
+                result = await chamar_mcp(
+                    name,
+                    args,
+                    mcp_token,
+                    campanha_id=campanha_id,
+                    usuario_id=usuario_id,
+                )
+                tool_log.append(
+                    {
+                        "tool": name,
+                        "params": args,
+                        "result": result,
+                        "forcado": extra.get("motivo"),
+                    }
+                )
+
+            # Se clima forçado veio vazio e ainda não há web → Perplexity
+            if (
+                _ok("pesquisar_web")
+                and not web_ja_consultada(tool_log)
+                and resultado_clima_vazio(tool_log)
+                and any(t.get("forcado") for t in tool_log)
+            ):
+                from apura.agents.engajamento import rival_principal_do_ctx, nosso_do_ctx
+
+                alvo = rival_principal_do_ctx(campanha_ctx) or nosso_do_ctx(campanha_ctx)
+                if alvo:
+                    args = {"query": f"{alvo} eleições notícias pesquisa intenção de voto"}
+                    yield _sse(
+                        "status",
+                        {
+                            "fase": "consultando",
+                            "tool": "pesquisar_web",
+                            "motivo": "playbook_clima_vazio_web",
+                        },
+                    )
+                    result = await chamar_mcp(
+                        "pesquisar_web",
+                        args,
+                        mcp_token,
+                        campanha_id=campanha_id,
+                        usuario_id=usuario_id,
+                    )
+                    tool_log.append(
+                        {
+                            "tool": "pesquisar_web",
+                            "params": args,
+                            "result": result,
+                            "forcado": "playbook_clima_vazio_web",
+                        }
+                    )
+
         state.agentes_plano = plano_de_tool_log(tool_log)
         yield _sse(
             "status",

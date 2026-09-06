@@ -386,22 +386,67 @@ def texto_escopo_para_apura(
 
 
 def texto_para_apura(conn: psycopg.Connection, campanha_id: str, *, max_chars: int = 12000) -> str:
-    """Concatena blocos prioritários para o system prompt do Apura."""
-    blocos = listar(conn, campanha_id, limite=40)
+    """Concatena blocos prioritários; reserva fatia para estrategias e pesquisas."""
+    garantidos: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for tipo in ("estrategias", "dossie_pesquisas", "dossie", "perfil_eleitor"):
+        for b in listar(conn, campanha_id, tipo=tipo, limite=3):
+            bid = b.get("id") or ""
+            if bid and bid in seen_ids:
+                continue
+            if bid:
+                seen_ids.add(bid)
+            garantidos.append(b)
+    # demais dossie_*
+    for b in listar(conn, campanha_id, limite=40):
+        tipo = b.get("tipo") or ""
+        if tipo.startswith("dossie") and tipo not in ("dossie", "dossie_pesquisas"):
+            bid = b.get("id") or ""
+            if bid and bid in seen_ids:
+                continue
+            if bid:
+                seen_ids.add(bid)
+            garantidos.append(b)
+    resto = []
+    for b in listar(conn, campanha_id, limite=40):
+        bid = b.get("id") or ""
+        if bid and bid in seen_ids:
+            continue
+        resto.append(b)
+
+    blocos = garantidos + resto
     if not blocos:
         return ""
     partes: list[str] = [
         "CONHECIMENTO DA CAMPANHA (memória indexada — contextualiza; cifras oficiais vêm das tools):\n"
-        "Prioridade: estrategias → dossiê → perfil → bases. Cifra de urna só via tools."
+        "Prioridade fixa: estrategias → dossiê/pesquisas → perfil → demais bases. "
+        "Cifra de urna só via tools."
     ]
     used = len(partes[0])
-    for b in blocos:
+    # Reserva ~35% do budget para os garantidos (estratégias/pesquisas/dossiê)
+    reserve_for_rest = int(max_chars * 0.55)
+    for i, b in enumerate(blocos):
         chunk = (
             f"\n### [{b['tipo']}] {b['titulo']}\n{b['corpo']}\n"
             f"(fonte: {b['fonte'] or 'campanha'} | nível: {b['nivel']})"
         )
-        if used + len(chunk) > max_chars:
+        # primeiros garantidos podem usar até max_chars - reserve; depois o resto
+        limit = max_chars if i < len(garantidos) else max_chars
+        if i >= len(garantidos) and used > reserve_for_rest and used + len(chunk) > max_chars:
             break
+        if used + len(chunk) > limit:
+            if i < len(garantidos):
+                # corta corpo do garantido em vez de pular
+                room = max(limit - used - 120, 400)
+                corpo = (b.get("corpo") or "")[:room]
+                chunk = (
+                    f"\n### [{b['tipo']}] {b['titulo']}\n{corpo}\n"
+                    f"(fonte: {b['fonte'] or 'campanha'} | nível: {b['nivel']} | truncado)"
+                )
+                if used + len(chunk) > limit:
+                    break
+            else:
+                break
         partes.append(chunk)
         used += len(chunk)
     return "\n".join(partes)
