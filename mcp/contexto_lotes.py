@@ -313,14 +313,20 @@ def _load_pop_uf_agregados(conn: psycopg.Connection) -> None:
                 cod = str(loc.get("id") or "")
                 sg = COD_TO_SG.get(cod.zfill(2))
                 vals = serie.get("serie") or {}
-                if not sg or "2024" not in vals:
+                if not sg or not vals:
                     continue
+                # pega o ano mais recente da série
+                anos = sorted(k for k in vals.keys() if str(k).isdigit())
+                if not anos:
+                    continue
+                ano_s = anos[-1]
                 try:
-                    rows.append((2024, sg, "pop_uf_estimativa", float(vals["2024"]), "ibge_agregados"))
+                    rows.append((int(ano_s), sg, "pop_uf_estimativa", float(vals[ano_s]), "ibge_agregados"))
                 except ValueError:
                     continue
     if not rows:
         raise RuntimeError("pop_uf zero")
+    ano_ref = str(max(r[0] for r in rows))
     with conn.cursor() as cur:
         cur.execute("DELETE FROM contexto.indicador_uf WHERE id_indicador = %s", ("pop_uf_estimativa",))
         with cur.copy(
@@ -328,12 +334,56 @@ def _load_pop_uf_agregados(conn: psycopg.Connection) -> None:
         ) as copy:
             for r in rows:
                 copy.write_row(r)
-    _upsert_status(conn, "br_uf_populacao", "L6", "demografia", "online", "uf", len(rows), "2024", "IBGE 6579", "indicador pop_uf_estimativa")
-    print(f"[lotes] pop_uf ok {len(rows)}")
+    _upsert_status(conn, "br_uf_populacao", "L6", "demografia", "online", "uf", len(rows), ano_ref, "IBGE 6579", "indicador pop_uf_estimativa")
+    print(f"[lotes] pop_uf ok {len(rows)} ano={ano_ref}")
+
+
+def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
+    """Se o indicador já está no banco, marca o id_br como online (mesmo se o seed resetou)."""
+    mapping = [
+        ("agro_ppm_bovinos", "br_mun_agro_ppm", "L2", "agro"),
+        ("agro_pam_soja_t", "br_mun_agro_pam", "L2", "agro"),
+        ("agro_pam_milho_t", "br_mun_agro_pam", "L2", "agro"),
+        ("agro_pam_cafe_t", "br_mun_agro_pam", "L2", "agro"),
+        ("agro_pam_cana_t", "br_mun_agro_pam", "L2", "agro"),
+        ("agro_pam_laranja_t", "br_mun_fruticultura_producao", "L2", "fruticultura"),
+        ("pib_uf_mil", "br_uf_industria_contas_regionais", "L1", "industria"),
+        ("pop_uf_estimativa", "br_uf_populacao", "L6", "demografia"),
+        ("fiscal_rreo_anexo1_soma", "br_mun_fiscal_siconfi", "L4", "fiscal"),
+    ]
+    for id_ind, id_br, lote, tema in mapping:
+        try:
+            row = conn.execute(
+                """
+                SELECT count(*), max(ano)::text FROM (
+                  SELECT ano FROM contexto.indicador_mun WHERE id_indicador = %s
+                  UNION ALL
+                  SELECT ano FROM contexto.indicador_uf WHERE id_indicador = %s
+                ) x
+                """,
+                (id_ind, id_ind),
+            ).fetchone()
+            n = int(row[0] or 0)
+            if n <= 0:
+                continue
+            gran = "municipio" if id_br.startswith("br_mun_") else "uf"
+            _upsert_status(
+                conn, id_br, lote, tema, "online" if n >= 20 else "parcial", gran, n, row[1],
+                "reconciliado", f"indicador {id_ind} presente",
+            )
+        except Exception:
+            continue
+    conn.commit()
+
+
+def _fetch_timeout(url: str, timeout: int = 60) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
 
 
 def _load_siconfi_rreo_uf(conn: psycopg.Connection, ano: int = 2023) -> None:
-    """RREO Anexo 01 — valor agregado por UF (esfera estadual)."""
+    """RREO Anexo 01 — valor agregado por UF (esfera estadual). Timeout curto."""
     print("[lotes] SICONFI RREO UF…")
     id_ind = "fiscal_rreo_anexo1_soma"
     rows = []
@@ -344,7 +394,7 @@ def _load_siconfi_rreo_uf(conn: psycopg.Connection, ano: int = 2023) -> None:
             f"&no_anexo=RREO-Anexo%2001&id_ente={int(cod)}"
         )
         try:
-            data = json.loads(_fetch(url).decode("utf-8"))
+            data = json.loads(_fetch_timeout(url, timeout=45).decode("utf-8"))
             items = data.get("items") or []
             total = 0.0
             n = 0
@@ -360,7 +410,7 @@ def _load_siconfi_rreo_uf(conn: psycopg.Connection, ano: int = 2023) -> None:
             if n == 0:
                 continue
             rows.append((ano, sg, id_ind, total, "siconfi_rreo"))
-            print(f"  {sg} ok linhas_rreo={n}")
+            print(f"  {sg} ok n={n}")
         except Exception as exc:
             print(f"  {sg} fail {exc}")
     if not rows:
@@ -373,28 +423,8 @@ def _load_siconfi_rreo_uf(conn: psycopg.Connection, ano: int = 2023) -> None:
             for r in rows:
                 copy.write_row(r)
     _upsert_status(
-        conn,
-        "br_mun_fiscal_siconfi",
-        "L4",
-        "fiscal",
-        "parcial",
-        "uf",
-        len(rows),
-        str(ano),
-        "SICONFI RREO",
-        "UF online (soma Anexo 01); mun na fila (API por ente)",
-    )
-    _upsert_status(
-        conn,
-        "br_nac_fiscal_execucao_federal",
-        "L4",
-        "fiscal",
-        "parcial",
-        "nacional",
-        None,
-        None,
-        "STN/SIAFI",
-        "fila; SICONFI UF já parcial",
+        conn, "br_mun_fiscal_siconfi", "L4", "fiscal", "parcial", "uf", len(rows), str(ano),
+        "SICONFI RREO", "UF online (soma Anexo 01); mun na fila",
     )
     print(f"[lotes] siconfi ok {len(rows)} UF")
 
@@ -430,7 +460,6 @@ def _load_l2(conn: psycopg.Connection) -> None:
 
 
 def _load_l3_l8(conn: psycopg.Connection) -> None:
-    # PIB UF
     try:
         print("[lotes] pib_uf…")
         payload = _fetch("https://apisidra.ibge.gov.br/values/t/5938/n3/all/v/37/p/last")
@@ -469,8 +498,6 @@ def _load_l3_l8(conn: psycopg.Connection) -> None:
     except Exception as exc:
         conn.rollback()
         print(f"[lotes] pop_uf fail {exc}")
-        _upsert_status(conn, "br_uf_populacao", "L6", "demografia", "erro", "uf", None, None, "IBGE", str(exc)[:200])
-        conn.commit()
 
     try:
         _load_siconfi_rreo_uf(conn)
@@ -481,39 +508,19 @@ def _load_l3_l8(conn: psycopg.Connection) -> None:
         _upsert_status(conn, "br_mun_fiscal_siconfi", "L4", "fiscal", "erro", "uf", None, None, "SICONFI", str(exc)[:200])
         conn.commit()
 
-    # Energia / segurança / saúde — status explícito + o que der
-    _upsert_status(
-        conn, "br_mun_energia_consumo", "L3", "energia", "parcial", "municipio", None, None,
-        "EPE/ANEEL", "fonte nacional; granularidade mun a confirmar — fila CSV EPE",
-    )
-    _upsert_status(
-        conn, "br_mun_energia_geracao_distribuida", "L3", "energia", "parcial", "municipio", None, None,
-        "ANEEL GD", "fila dados abertos ANEEL",
-    )
-    _upsert_status(
-        conn, "br_uf_mvi", "L5", "seguranca", "parcial", "uf", None, None,
-        "FBSP/SIM", "FBSP tipicamente UF; carga anuário na fila",
-    )
-    _upsert_status(
-        conn, "br_mun_mvi", "L5", "seguranca", "parcial", "municipio", None, None,
-        "SIM/DATASUS", "proxy mun na fila; não confundir com FBSP",
-    )
-    _upsert_status(
-        conn, "br_mun_educacao_ideb", "L7", "educacao", "parcial", "municipio", None, None,
-        "INEP IDEB", "fila download INEP",
-    )
-    _upsert_status(
-        conn, "br_mun_educacao_censo_escolar", "L7", "educacao", "parcial", "municipio", None, None,
-        "INEP Censo Escolar", "fila microdados INEP",
-    )
-    _upsert_status(
-        conn, "br_mun_saude_cnes", "L7", "saude", "parcial", "municipio", None, None,
-        "DATASUS CNES", "fila CNES",
-    )
-    _upsert_status(
-        conn, "br_por_portos_movimentacao", "L8", "turismo", "parcial", "porto", None, None,
-        "ANTAQ", "checar painel operacional; fila",
-    )
+    for args in (
+        ("br_mun_energia_consumo", "L3", "energia", "EPE/ANEEL", "fila CSV EPE"),
+        ("br_mun_energia_geracao_distribuida", "L3", "energia", "ANEEL GD", "fila dados abertos ANEEL"),
+        ("br_uf_mvi", "L5", "seguranca", "FBSP/SIM", "anuário UF na fila"),
+        ("br_mun_mvi", "L5", "seguranca", "SIM/DATASUS", "proxy mun na fila"),
+        ("br_mun_educacao_ideb", "L7", "educacao", "INEP IDEB", "fila download INEP"),
+        ("br_mun_educacao_censo_escolar", "L7", "educacao", "INEP Censo Escolar", "fila microdados"),
+        ("br_mun_saude_cnes", "L7", "saude", "DATASUS CNES", "fila CNES"),
+        ("br_por_portos_movimentacao", "L8", "turismo", "ANTAQ", "fila ANTAQ"),
+    ):
+        id_br, lote, tema, fonte, nota = args
+        gran = "municipio" if "_mun_" in id_br else ("porto" if "_por_" in id_br else "uf")
+        _upsert_status(conn, id_br, lote, tema, "parcial", gran, None, None, fonte, nota)
     conn.commit()
 
 
@@ -523,15 +530,7 @@ def _mark_remaining_explicit(conn: psycopg.Connection) -> None:
     ).fetchall()
     for id_br, lote, tema, fonte, nota in rows:
         _upsert_status(
-            conn,
-            id_br,
-            lote or "L9",
-            tema,
-            "parcial",
-            None,
-            None,
-            None,
-            fonte,
+            conn, id_br, lote or "L9", tema, "parcial", None, None, None, fonte,
             (nota or "") + " | na fila de carga BR (deploy contínuo); não inventar cifra",
         )
     conn.commit()
@@ -546,8 +545,18 @@ def _worker() -> None:
         with psycopg.connect(url) as conn:
             _sync_nucleo_from_db(conn)
             _mark_pib_comex_counts(conn)
-            _load_l2(conn)
-            _load_l3_l8(conn)
+            _reconcile_from_indicadores(conn)
+            _mark_remaining_explicit(conn)
+            try:
+                _load_l2(conn)
+            except Exception as exc:
+                print(f"[lotes] L2: {exc}")
+            _reconcile_from_indicadores(conn)
+            try:
+                _load_l3_l8(conn)
+            except Exception as exc:
+                print(f"[lotes] L3-L8: {exc}")
+            _reconcile_from_indicadores(conn)
             _mark_remaining_explicit(conn)
         print("[lotes] ciclo L2–L8 + núcleo sync OK")
     except Exception as exc:
