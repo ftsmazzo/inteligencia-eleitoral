@@ -410,6 +410,8 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("educ_ideb_af_pub", "br_mun_educacao_ideb", "L7", "educacao"),
         ("educ_ideb_em_pub", "br_mun_educacao_ideb", "L7", "educacao"),
         ("energia_potencia_kw", "br_mun_energia_potencia_instalada", "L3", "energia"),
+        ("fiscal_seguranca_empenhada", "br_uf_seguranca_gasto", "L5", "seguranca"),
+        ("educ_freq_6_17", "br_mun_educacao_censo_escolar", "L7", "educacao"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -425,6 +427,13 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
             ).fetchone()
             n = int(row[0] or 0)
             if n <= 0:
+                continue
+            # SICONFI / censo escolar: só UF no momento → parcial honesto
+            if id_br in ("br_mun_fiscal_siconfi", "br_mun_educacao_censo_escolar") and n < 1000:
+                _upsert_status(
+                    conn, id_br, lote, tema, "parcial", "uf", n, row[1],
+                    "reconciliado", f"indicador {id_ind} UF presente; mun na fila",
+                )
                 continue
             gran = "municipio" if id_br.startswith("br_mun_") else "uf"
             _upsert_status(
@@ -442,9 +451,132 @@ def _fetch_timeout(url: str, timeout: int = 60) -> bytes:
         return r.read()
 
 
+def _load_uf_seed_csv(
+    conn: psycopg.Connection,
+    filename: str,
+    id_ind: str,
+    id_br: str,
+    lote: str,
+    tema: str,
+    fonte: str,
+    nota: str,
+    *,
+    status: str = "online",
+    gran: str = "uf",
+    online_min: int = 20,
+) -> int:
+    """Carrega indicador_uf a partir de mcp/seed/<filename> (ano,sg_uf,id_indicador,valor)."""
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / filename
+    if not path.exists():
+        return 0
+    rows: list[tuple] = []
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                sg = str(rec["sg_uf"]).upper()
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if len(sg) != 2:
+                continue
+            rows.append((ano, sg, id_ind, val, "seed_csv"))
+    if not rows:
+        return 0
+    st = status if len(rows) >= online_min else "parcial"
+    if status == "parcial":
+        st = "parcial"
+    _upsert_indicador_uf(conn, id_ind, rows, id_br, lote, tema, fonte, nota)
+    # _upsert_indicador_uf força online se >=20; ajustar se pedimos parcial
+    if st == "parcial":
+        _upsert_status(conn, id_br, lote, tema, "parcial", gran, len(rows), str(max(r[0] for r in rows)), fonte, nota)
+    return len(rows)
+
+
+def _load_siconfi_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "fiscal_rreo_anexo1_uf.csv.gz",
+        "fiscal_rreo_anexo1_soma",
+        "br_mun_fiscal_siconfi",
+        "L4",
+        "fiscal",
+        "SICONFI RREO Anexo 01",
+        "UF online (soma Anexo 01); mun na fila",
+        status="parcial",
+        gran="uf",
+    )
+    print(f"[lotes] siconfi seed a1={n}")
+
+
+def _load_seguranca_gasto_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "fiscal_seguranca_empenhada_uf.csv.gz",
+        "fiscal_seguranca_empenhada",
+        "br_uf_seguranca_gasto",
+        "L5",
+        "seguranca",
+        "SICONFI RREO Anexo 02",
+        "despesa Segurança Pública empenhada até 6º bimestre",
+        status="online",
+        gran="uf",
+    )
+    print(f"[lotes] seguranca gasto seed={n}")
+
+
+def _load_educ_freq_uf(conn: psycopg.Connection) -> None:
+    """Censo 2022 — pessoas 6–17 que frequentavam escola (SIDRA 10058) por UF."""
+    print("[lotes] educ_freq_6_17 UF…")
+    url = "https://apisidra.ibge.gov.br/values/t/10058/n3/all/v/13283/p/2022/c58/95253"
+    data = json.loads(_fetch(url).decode("utf-8"))
+    rows = []
+    for row in data[1:]:
+        cod, val = row.get("D1C"), row.get("V")
+        if not cod or val in (None, "", "...", "-", "..", "X"):
+            continue
+        sg = COD_TO_SG.get(str(cod).zfill(2))
+        if not sg:
+            continue
+        rows.append((2022, sg, "educ_freq_6_17", float(str(val).replace(",", ".")), "ibge_sidra"))
+    if not rows:
+        raise RuntimeError("educ_freq zero")
+    _upsert_indicador_uf(
+        conn, "educ_freq_6_17", rows, "br_mun_educacao_censo_escolar", "L7", "educacao",
+        "IBGE SIDRA 10058", "UF: pessoas 6–17 na escola (Censo 2022); mun na fila",
+    )
+    _upsert_status(
+        conn, "br_mun_educacao_censo_escolar", "L7", "educacao", "parcial", "uf",
+        len(rows), "2022", "IBGE SIDRA 10058",
+        "UF online (freq. escolar 6–17); microdados mun na fila",
+    )
+    print(f"[lotes] educ_freq ok {len(rows)}")
+
+
 def _load_siconfi_rreo_uf(conn: psycopg.Connection, ano: int = 2023) -> None:
-    """RREO Anexo 01 — valor agregado por UF (esfera estadual). Timeout curto."""
-    print("[lotes] SICONFI RREO UF…")
+    """RREO Anexo 01 — valor agregado por UF. Prefere seed; API como fallback."""
+    if _count_ind(conn, "fiscal_rreo_anexo1_soma", "uf") >= 20:
+        print("[lotes] siconfi já carregado")
+        return
+    n = _load_uf_seed_csv(
+        conn,
+        "fiscal_rreo_anexo1_uf.csv.gz",
+        "fiscal_rreo_anexo1_soma",
+        "br_mun_fiscal_siconfi",
+        "L4",
+        "fiscal",
+        "SICONFI RREO Anexo 01",
+        "UF online (soma Anexo 01); mun na fila",
+        status="parcial",
+        gran="uf",
+    )
+    if n >= 20:
+        print(f"[lotes] siconfi seed ok {n}")
+        return
+    print("[lotes] SICONFI RREO UF API…")
     id_ind = "fiscal_rreo_anexo1_soma"
     rows = []
     for cod, sg in COD_TO_SG.items():
@@ -457,20 +589,20 @@ def _load_siconfi_rreo_uf(conn: psycopg.Connection, ano: int = 2023) -> None:
             data = json.loads(_fetch_timeout(url, timeout=45).decode("utf-8"))
             items = data.get("items") or []
             total = 0.0
-            n = 0
+            n_it = 0
             for it in items:
                 v = it.get("valor")
                 if v is None:
                     continue
                 try:
                     total += float(v)
-                    n += 1
+                    n_it += 1
                 except (TypeError, ValueError):
                     continue
-            if n == 0:
+            if n_it == 0:
                 continue
             rows.append((ano, sg, id_ind, total, "siconfi_rreo"))
-            print(f"  {sg} ok n={n}")
+            print(f"  {sg} ok n={n_it}")
         except Exception as exc:
             print(f"  {sg} fail {exc}")
     if not rows:
@@ -1014,6 +1146,9 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("pop_uf", _load_pop_uf_agregados, "pop_uf_estimativa", "uf", 20),
         ("ideb", _load_ideb_mun, "educ_ideb_ai_pub", "mun", 3000),
         ("siga", _load_siga_potencia_mun, "energia_potencia_kw", "mun", 500),
+        ("siconfi", _load_siconfi_from_seed, "fiscal_rreo_anexo1_soma", "uf", 20),
+        ("seg_gasto", _load_seguranca_gasto_from_seed, "fiscal_seguranca_empenhada", "uf", 20),
+        ("educ_freq", _load_educ_freq_uf, "educ_freq_6_17", "uf", 20),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1030,6 +1165,9 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "pop_uf": ("br_uf_populacao", "L6", "demografia", "uf"),
                 "ideb": ("br_mun_educacao_ideb", "L7", "educacao", "municipio"),
                 "siga": ("br_mun_energia_potencia_instalada", "L3", "energia", "municipio"),
+                "siconfi": ("br_mun_fiscal_siconfi", "L4", "fiscal", "uf"),
+                "seg_gasto": ("br_uf_seguranca_gasto", "L5", "seguranca", "uf"),
+                "educ_freq": ("br_mun_educacao_censo_escolar", "L7", "educacao", "uf"),
             }
             id_br, lote, tema, gran = id_map[label]
             _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
