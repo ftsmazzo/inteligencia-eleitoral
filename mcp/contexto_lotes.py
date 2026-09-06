@@ -426,6 +426,8 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("seguranca_homicidios_dolosos", "br_uf_seguranca_letalidade", "L5", "seguranca"),
         ("turismo_meios_hospedagem", "br_mun_turismo_oferta", "L8", "turismo"),
         ("fiscal_emendas", "br_mun_fiscal_emendas", "L4", "fiscal"),
+        ("seguranca_feminicidios", "br_mun_seguranca_mulher", "L5", "seguranca"),
+        ("seguranca_roubo_total", "br_mun_seguranca_patrimonial", "L5", "seguranca"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -449,6 +451,8 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
                 "br_mun_saude_sinasc",
                 "br_mun_saude_sim",
                 "br_mun_agro_credito_rural",
+                "br_mun_seguranca_mulher",
+                "br_mun_seguranca_patrimonial",
             ) and n < 1000:
                 _upsert_status(
                     conn, id_br, lote, tema, "parcial", "uf", n, row[1],
@@ -629,6 +633,38 @@ def _load_emendas_from_seed(conn: psycopg.Connection) -> None:
         online_min=3000,
     )
     print(f"[lotes] emendas seed={n}")
+
+
+def _load_feminicidios_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "seguranca_feminicidios_uf.csv.gz",
+        "seguranca_feminicidios",
+        "br_mun_seguranca_mulher",
+        "L5",
+        "seguranca",
+        "FBSP Anuário 2024 T23",
+        "feminicídios UF 2023; mun na fila",
+        status="parcial",
+        gran="uf",
+    )
+    print(f"[lotes] feminicidios seed={n}")
+
+
+def _load_roubo_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn,
+        "seguranca_roubo_uf.csv.gz",
+        "seguranca_roubo_total",
+        "br_mun_seguranca_patrimonial",
+        "L5",
+        "seguranca",
+        "FBSP Anuário 2024 T17",
+        "roubo total UF 2023; mun na fila (não ratear)",
+        status="parcial",
+        gran="uf",
+    )
+    print(f"[lotes] roubo seed={n}")
 
 
 def _load_irrigacao_from_seed(conn: psycopg.Connection) -> None:
@@ -1453,6 +1489,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("homicidios", _load_homicidios_from_seed, "seguranca_homicidios_dolosos", "uf", 20),
         ("turismo", _load_turismo_hospedagem_from_seed, "turismo_meios_hospedagem", "mun", 2000),
         ("emendas", _load_emendas_from_seed, "fiscal_emendas", "mun", 3000),
+        ("feminicidios", _load_feminicidios_from_seed, "seguranca_feminicidios", "uf", 20),
+        ("roubo", _load_roubo_from_seed, "seguranca_roubo_total", "uf", 20),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1486,6 +1524,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "homicidios": ("br_uf_seguranca_letalidade", "L5", "seguranca", "uf"),
                 "turismo": ("br_mun_turismo_oferta", "L8", "turismo", "municipio"),
                 "emendas": ("br_mun_fiscal_emendas", "L4", "fiscal", "municipio"),
+                "feminicidios": ("br_mun_seguranca_mulher", "L5", "seguranca", "uf"),
+                "roubo": ("br_mun_seguranca_patrimonial", "L5", "seguranca", "uf"),
             }
             id_br, lote, tema, gran = id_map[label]
             _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
