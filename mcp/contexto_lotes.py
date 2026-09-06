@@ -425,6 +425,7 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("energia_gd_potencia_kw", "br_mun_energia_geracao_distribuida", "L3", "energia"),
         ("seguranca_homicidios_dolosos", "br_uf_seguranca_letalidade", "L5", "seguranca"),
         ("turismo_meios_hospedagem", "br_mun_turismo_oferta", "L8", "turismo"),
+        ("fiscal_emendas", "br_mun_fiscal_emendas", "L4", "fiscal"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -613,6 +614,21 @@ def _load_turismo_hospedagem_from_seed(conn: psycopg.Connection) -> None:
         online_min=2000,
     )
     print(f"[lotes] turismo hospedagem seed={n}")
+
+
+def _load_emendas_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_mun_seed_csv(
+        conn,
+        "fiscal_emendas_mun.csv.gz",
+        "fiscal_emendas",
+        "br_mun_fiscal_emendas",
+        "L4",
+        "fiscal",
+        "Portal Transparência emendas 2024",
+        "soma valor empenhado por mun; ausência ≠ zero",
+        online_min=3000,
+    )
+    print(f"[lotes] emendas seed={n}")
 
 
 def _load_irrigacao_from_seed(conn: psycopg.Connection) -> None:
@@ -1436,6 +1452,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("gd", _load_gd_from_seed, "energia_gd_potencia_kw", "mun", 3000),
         ("homicidios", _load_homicidios_from_seed, "seguranca_homicidios_dolosos", "uf", 20),
         ("turismo", _load_turismo_hospedagem_from_seed, "turismo_meios_hospedagem", "mun", 2000),
+        ("emendas", _load_emendas_from_seed, "fiscal_emendas", "mun", 3000),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1468,6 +1485,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "gd": ("br_mun_energia_geracao_distribuida", "L3", "energia", "municipio"),
                 "homicidios": ("br_uf_seguranca_letalidade", "L5", "seguranca", "uf"),
                 "turismo": ("br_mun_turismo_oferta", "L8", "turismo", "municipio"),
+                "emendas": ("br_mun_fiscal_emendas", "L4", "fiscal", "municipio"),
             }
             id_br, lote, tema, gran = id_map[label]
             _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
