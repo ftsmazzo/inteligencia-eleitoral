@@ -667,6 +667,33 @@ def _load_roubo_from_seed(conn: psycopg.Connection) -> None:
     print(f"[lotes] roubo seed={n}")
 
 
+def _load_l0_refs(conn: psycopg.Connection) -> None:
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / "ref_dicionario_indicadores.csv.gz"
+    n_dic = 0
+    if path.exists():
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            n_dic = sum(1 for _ in csv.DictReader(fh))
+    if n_dic > 0:
+        _upsert_status(
+            conn, "ref_dicionario_indicadores", "L0", "referencia", "online", "catalogo",
+            n_dic, None, "catalogo_brasil.json", "dicionário gerado do catálogo BR",
+        )
+    path_g = Path(__file__).resolve().parent / "seed" / "ref_gestoes_federais.csv.gz"
+    n_g = 0
+    if path_g.exists():
+        with gzip.open(path_g, "rt", encoding="utf-8") as fh:
+            n_g = sum(1 for _ in csv.DictReader(fh))
+    if n_g > 0:
+        _upsert_status(
+            conn, "ref_gestoes_federais", "L0", "referencia", "online", "nacional",
+            n_g, "2026", "seed metadado", "mandatos federais públicos (metadado)",
+        )
+    print(f"[lotes] l0 refs dic={n_dic} gestoes={n_g}")
+
+
 def _load_irrigacao_from_seed(conn: psycopg.Connection) -> None:
     n = _load_mun_seed_csv(
         conn,
@@ -1527,8 +1554,13 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "feminicidios": ("br_mun_seguranca_mulher", "L5", "seguranca", "uf"),
                 "roubo": ("br_mun_seguranca_patrimonial", "L5", "seguranca", "uf"),
             }
-            id_br, lote, tema, gran = id_map[label]
-            _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
+            if label in id_map:
+                id_br, lote, tema, gran = id_map[label]
+                _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, "boot-sync", str(exc)[:200])
+    try:
+        _load_l0_refs(conn)
+    except Exception as exc:
+        print(f"[lotes] l0 refs fail {exc}")
 
 
 def _mark_remaining_explicit(conn: psycopg.Connection) -> None:
