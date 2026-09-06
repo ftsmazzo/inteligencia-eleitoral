@@ -18,7 +18,8 @@ from collections import defaultdict
 from pathlib import Path
 
 import psycopg
-from openpyxl import load_workbook
+
+# openpyxl só no loader IDEB (falha de import não pode derrubar o boot inteiro)
 
 _SQL_DIR = Path(__file__).resolve().parent / "sql"
 _SEED = Path(__file__).resolve().parent / "seed" / "catalogo_brasil.json"
@@ -712,6 +713,10 @@ _IDEB_PACKS = [
 
 def _load_ideb_mun(conn: psycopg.Connection) -> None:
     print("[lotes] IDEB mun…")
+    try:
+        from openpyxl import load_workbook
+    except Exception as exc:
+        raise RuntimeError(f"openpyxl indisponível: {exc}") from exc
     cods = {r[0] for r in conn.execute("SELECT cod_ibge FROM ref.municipio")}
     total = 0
     for id_ind, url, member in _IDEB_PACKS:
@@ -852,37 +857,29 @@ def _load_l3_l8(conn: psycopg.Connection) -> None:
         ("siconfi", _load_siconfi_rreo_uf, "fiscal_rreo_anexo1_soma", "uf", 20),
     ]
     for label, fn, id_ind, tbl, min_n in steps:
-        n_exist = _count_ind(conn, id_ind, tbl)
-        if n_exist >= min_n:
-            print(f"[lotes] skip {label} já={n_exist}")
-            continue
         try:
+            n_exist = _count_ind(conn, id_ind, tbl)
+            if n_exist >= min_n:
+                print(f"[lotes] skip {label} já={n_exist}")
+                continue
             print(f"[lotes] run {label}…")
             fn(conn)
             conn.commit()
         except Exception as exc:
             conn.rollback()
             print(f"[lotes] {label} fail {exc}")
-            if label == "siconfi":
-                _upsert_status(
-                    conn, "br_mun_fiscal_siconfi", "L4", "fiscal", "erro", "uf", None, None,
-                    "SICONFI", str(exc)[:200],
-                )
-            elif label == "ideb":
-                _upsert_status(
-                    conn, "br_mun_educacao_ideb", "L7", "educacao", "erro", "municipio", None, None,
-                    "INEP IDEB", str(exc)[:200],
-                )
-            elif label == "siga":
-                _upsert_status(
-                    conn, "br_mun_energia_potencia_instalada", "L3", "energia", "erro", "municipio",
-                    None, None, "ANEEL SIGA", str(exc)[:200],
-                )
-            elif label == "pnad":
-                _upsert_status(
-                    conn, "br_uf_pnad", "L1", "economia", "erro", "uf", None, None,
-                    "IBGE PNAD", str(exc)[:200],
-                )
+            err_map = {
+                "siconfi": ("br_mun_fiscal_siconfi", "L4", "fiscal", "uf", "SICONFI"),
+                "ideb": ("br_mun_educacao_ideb", "L7", "educacao", "municipio", "INEP IDEB"),
+                "siga": ("br_mun_energia_potencia_instalada", "L3", "energia", "municipio", "ANEEL SIGA"),
+                "pnad": ("br_uf_pnad", "L1", "economia", "uf", "IBGE PNAD"),
+                "pia": ("br_uf_industria_pia", "L1", "industria", "uf", "IBGE PIA"),
+                "pib_uf": ("br_uf_industria_contas_regionais", "L1", "industria", "uf", "IBGE PIB"),
+                "pop_uf": ("br_uf_populacao", "L6", "demografia", "uf", "IBGE pop"),
+            }
+            if label in err_map:
+                id_br, lote, tema, gran, fonte = err_map[label]
+                _upsert_status(conn, id_br, lote, tema, "erro", gran, None, None, fonte, str(exc)[:200])
             conn.commit()
 
     for args in (
@@ -899,6 +896,41 @@ def _load_l3_l8(conn: psycopg.Connection) -> None:
             preserve_better=True,
         )
     conn.commit()
+
+
+def _load_light_sync(conn: psycopg.Connection) -> None:
+    """Cargas rápidas no boot (não esperam thread)."""
+    for label, fn, id_ind, tbl, min_n in (
+        ("pnad", _load_pnad_uf, "pnad_desocupacao_pct", "uf", 20),
+        ("pia", _load_pia_uf, "pia_unidades_locais", "uf", 20),
+        ("pib_uf", _load_pib_uf, "pib_uf_mil", "uf", 20),
+        ("pop_uf", _load_pop_uf_agregados, "pop_uf_estimativa", "uf", 20),
+    ):
+        try:
+            if _count_ind(conn, id_ind, tbl) >= min_n:
+                print(f"[lotes] sync skip {label}")
+                continue
+            print(f"[lotes] sync run {label}…")
+            fn(conn)
+        except Exception as exc:
+            print(f"[lotes] sync {label} fail {exc}")
+            _upsert_status(
+                conn,
+                {
+                    "pnad": "br_uf_pnad",
+                    "pia": "br_uf_industria_pia",
+                    "pib_uf": "br_uf_industria_contas_regionais",
+                    "pop_uf": "br_uf_populacao",
+                }[label],
+                {"pnad": "L1", "pia": "L1", "pib_uf": "L1", "pop_uf": "L6"}[label],
+                {"pnad": "economia", "pia": "industria", "pib_uf": "industria", "pop_uf": "demografia"}[label],
+                "erro",
+                "uf",
+                None,
+                None,
+                "boot-sync",
+                str(exc)[:200],
+            )
 
 
 def _mark_remaining_explicit(conn: psycopg.Connection) -> None:
@@ -967,6 +999,14 @@ def ensure_contexto_lotes(background: bool = True) -> None:
                 _reconcile_from_indicadores(conn)
             except Exception as exc:
                 print(f"[lotes] reconcile: {exc}")
+            try:
+                _load_light_sync(conn)
+            except Exception as exc:
+                print(f"[lotes] light sync: {exc}")
+            try:
+                _reconcile_from_indicadores(conn)
+            except Exception as exc:
+                print(f"[lotes] reconcile2: {exc}")
         print("[lotes] checklist boot OK")
     except Exception as exc:
         print(f"[lotes] seed/reconcile sync falhou: {exc}")
@@ -974,5 +1014,6 @@ def ensure_contexto_lotes(background: bool = True) -> None:
     if background:
         t = threading.Thread(target=_worker, name="contexto-lotes", daemon=True)
         t.start()
+        print("[lotes] worker thread started")
     else:
         _worker()
