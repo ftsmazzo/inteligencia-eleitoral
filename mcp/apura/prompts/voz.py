@@ -32,6 +32,8 @@ SEM_DADOS: cumprimento curto + convite a missão com recorte.
 
 --- PROIBIDO ---
 Erro técnico inventado; juridiquês vazio; só número sem leitura; sermão ideológico; inventar memória.
+Se houver ALVOS CANÔNICOS: "rival/adversário" = esses nomes — nunca troque por vice/chapa de urna antiga.
+Estratégia sem alvo cravado + sem fato/indício = incompleta; diga a lacuna e o próximo cruzamento.
 """.strip() + "\n\n" + POLITICA_DADOS
 
 VOZ_OPERACIONAL = """Você é o Apura em modo operacional.

@@ -268,20 +268,52 @@ async def _stream_resposta(model: str, messages: list[dict], temperature: float 
             yield text
 
 
-def _enriquecer_clima_params(args: dict[str, Any], campanha_ctx: str) -> dict[str, Any]:
-    """Clima quente: se q vazio e há escopo, injeta nome do candidato."""
+def _enriquecer_clima_params(
+    args: dict[str, Any],
+    campanha_ctx: str,
+    pergunta: str = "",
+) -> dict[str, Any]:
+    """Clima quente: injeta q do rival canônico ou do nosso candidato."""
     out = dict(args or {})
     if (out.get("q") or "").strip():
         return out
+    ctx = campanha_ctx or ""
+    ped = pergunta or ""
+    if re.search(r"rival|advers[aá]rio|\beles\b", ped, re.I):
+        m = re.search(
+            r"Rival\(is\) de campanha[^:\n]*:\s*([^\n]+)",
+            ctx,
+            re.I,
+        )
+        if m and "ainda não nomeados" not in m.group(1).lower():
+            primeiro = m.group(1).split(";")[0].strip()
+            if primeiro:
+                out["q"] = primeiro[:120]
+                out.setdefault("janela_horas", 168)
+                return out
     m = re.search(
-        r"candidato[^\n:]{0,40}:\s*([^\n]+)",
-        campanha_ctx or "",
+        r"(?:Nosso candidato|candidato monitorado)[^\n:]{0,40}:\s*([^\n(]+)",
+        ctx,
         re.I,
     )
     if m:
         out["q"] = m.group(1).strip()[:120]
         out.setdefault("janela_horas", 168)
     return out
+
+
+def _ctx_para_orquestrador(campanha_ctx: str, *, soft: int = 9000) -> str:
+    """Mantém ESCOPO + ALVOS intactos; corta só o CONHECIMENTO se passar do soft."""
+    raw = (campanha_ctx or "").strip()
+    if not raw or len(raw) <= soft:
+        return raw
+    marker = "CONHECIMENTO DA CAMPANHA"
+    if marker in raw:
+        head, _, tail = raw.partition(marker)
+        head = head.strip()
+        budget = max(soft - len(head) - len(marker) - 8, 800)
+        return f"{head}\n\n{marker}{tail[:budget]}"
+    return raw[:soft]
 
 
 async def executar_hub(
@@ -372,8 +404,9 @@ async def executar_hub(
     if campanha_ctx.strip():
         orch_system = (
             f"{orch_system}\n\n"
-            "Contexto desta campanha (escopo + memória / RAG). Números oficiais só via tools.\n"
-            f"{campanha_ctx.strip()[:6000]}"
+            "Contexto desta campanha (escopo + alvos canônicos + memória). "
+            "Números oficiais só via tools. Rival = ALVOS CANÔNICOS.\n"
+            f"{_ctx_para_orquestrador(campanha_ctx)}"
         )
     slug = pol.get("perfil_slug")
     if slug and not pol.get("bypass"):
@@ -449,7 +482,7 @@ async def executar_hub(
                         except json.JSONDecodeError:
                             args = {}
                         if name == "consultar_clima":
-                            args = _enriquecer_clima_params(args, campanha_ctx)
+                            args = _enriquecer_clima_params(args, campanha_ctx, pergunta)
                         if not tool_permitida(pol, name):
                             result = {
                                 "erro": "tool_negada_pelo_perfil",

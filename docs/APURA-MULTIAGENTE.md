@@ -57,6 +57,15 @@ No Chat: `Ativar Ary` (também aceita Airy).
 - **Não** inicia briefing nem questionário
 - Desligar: `Desativar Ary`
 
+## Identidade & rival canônico
+
+Contexto do chat (nessa ordem): **ESCOPO** → **ALVOS CANÔNICOS** → **CONHECIMENTO** (estratégias → dossiê → bases).
+
+- “Nosso rival” = nomes do card ALVOS (Radar adversário, redes, rótulos no dossiê/estratégias).
+- Proibido definir rival só pela nominata/vice de urna antiga.
+- Bloco opcional `tipo=estrategias` em `ctl.campanha_memoria` (prioridade máxima na memória).
+- Skill runtime: `SKILL_CAMPANHA_IDENTIDADE` (com escopo).
+
 ## Schema
 
 `patch_gestao_v5.sql` — contatos/tarefas; `patch_gestao_v6.sql` — modelos por perfil; ambos em `gestao.schema.ensure_schema`.

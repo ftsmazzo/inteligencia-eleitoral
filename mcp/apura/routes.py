@@ -25,7 +25,11 @@ from apura.auth import (
 from apura.cadastro import entregar_token, listar_campanhas_ativas, solicitar_cadastro
 from apura.export import exportar_html, exportar_xlsx
 from apura.orchestrator import executar_chat
-from apura.prompt import SKILL_NARRATIVA_DEFAULT, SKILL_WAR_ROOM_DEFAULT
+from apura.prompt import (
+    SKILL_CAMPANHA_IDENTIDADE,
+    SKILL_NARRATIVA_DEFAULT,
+    SKILL_WAR_ROOM_DEFAULT,
+)
 from apura.skills import (
     MAX_ATIVAS,
     MAX_CONTEUDO,
@@ -542,10 +546,20 @@ async def chat(
                 escopo_txt = gestao_memoria.texto_escopo_para_apura(status, radar_cfg)
                 if escopo_txt:
                     partes_ctx.append(escopo_txt)
+                try:
+                    alvos_txt = gestao_memoria.texto_alvos_para_apura(
+                        conn, camp[0], status, radar_cfg
+                    )
+                except Exception:
+                    alvos_txt = ""
+                if alvos_txt:
+                    partes_ctx.append(alvos_txt)
                 memoria_txt = gestao_memoria.texto_para_apura(conn, camp[0])
                 if memoria_txt:
                     partes_ctx.append(memoria_txt)
                 campanha_ctx = "\n\n".join(partes_ctx)
+                if campanha_ctx and SKILL_CAMPANHA_IDENTIDADE not in skills_txt:
+                    skills_txt = (skills_txt + "\n\n" + SKILL_CAMPANHA_IDENTIDADE).strip()
         except Exception:
             campanha_ctx = ""
             politica = None
