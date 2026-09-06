@@ -404,7 +404,7 @@ def _extrair_imagem_resposta(data: dict[str, Any]) -> tuple[str | None, str | No
 
 
 async def gerar_imagem(params: dict[str, Any]) -> dict[str, Any]:
-    """Gera imagem real via OpenRouter POST /api/v1/images."""
+    """Gera imagem real via OpenRouter POST /api/v1/images (fallback: chat modalities)."""
     prompt = (params.get("prompt") or "").strip()
     if not prompt:
         return {"status": "vazio", "mensagem": "prompt obrigatório", "nivel": "artefato"}
@@ -418,56 +418,83 @@ async def gerar_imagem(params: dict[str, Any]) -> dict[str, Any]:
         "aspect_ratio": aspect,
         "n": 1,
     }
+    err_txt = ""
     async with httpx.AsyncClient(timeout=180.0) as client:
         r = await client.post(_OPENROUTER_IMAGES, headers=_headers(), json=body)
-    if r.status_code >= 400:
-        # fallback: storyboard texto para não quebrar fluxo
-        story = {
-            "model": _model_vision(),
-            "messages": [
-                {
-                    "role": "user",
-                    "content": (
-                        "A geração de imagem falhou. Entregue um storyboard detalhado "
-                        f"(cenário, luz, texto na peça) para produção. Pedido: {full}"
-                    ),
+        if r.status_code < 400:
+            image_url, via = _extrair_imagem_resposta(r.json())
+            if image_url:
+                item: dict[str, Any] = {
+                    "fonte": f"imagem:{model}",
+                    "via": via,
+                    "prompt": prompt[:500],
                 }
-            ],
-        }
-        async with httpx.AsyncClient(timeout=90.0) as client2:
-            r2 = await client2.post(_OPENROUTER, headers=_headers(), json=story)
-        text = ""
-        if r2.status_code < 400:
-            text = (r2.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
-        return {
-            "status": "parcial" if text.strip() else "vazio",
-            "nivel": "artefato",
-            "itens": [{"descricao": text[:8000]}] if text.strip() else [],
-            "mensagem": f"API de imagem indisponível ({r.status_code}) — storyboard em texto",
-            "nota_metodologica": (r.text or "")[:400],
-        }
+                return {
+                    "status": "ok",
+                    "nivel": "artefato",
+                    "itens": [item],
+                    "image_url": image_url if image_url.startswith("http") else None,
+                    "image_data_url": image_url if image_url.startswith("data:") else None,
+                    "nota_metodologica": "Artefato visual gerado — não é dado oficial.",
+                }
+            err_txt = (r.text or "")[:400]
+        else:
+            err_txt = (r.text or "")[:400]
+            # Fallback: chat completions com modalities (alguns provedores)
+            chat_body = {
+                "model": model,
+                "messages": [{"role": "user", "content": full[:4000]}],
+                "modalities": ["image", "text"],
+            }
+            r2 = await client.post(_OPENROUTER, headers=_headers(), json=chat_body)
+            if r2.status_code < 400:
+                image_url, via = _extrair_imagem_resposta(r2.json())
+                if image_url:
+                    return {
+                        "status": "ok",
+                        "nivel": "artefato",
+                        "itens": [
+                            {
+                                "fonte": f"imagem:{model}",
+                                "via": via or "chat_modalities",
+                                "prompt": prompt[:500],
+                            }
+                        ],
+                        "image_url": image_url if image_url.startswith("http") else None,
+                        "image_data_url": image_url if image_url.startswith("data:") else None,
+                        "nota_metodologica": "Artefato visual gerado — não é dado oficial.",
+                    }
+            # Storyboard texto
+            story = {
+                "model": _model_vision(),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "A geração de imagem falhou. Entregue um storyboard detalhado "
+                            f"(cenário, luz, texto na peça) para produção. Pedido: {full}"
+                        ),
+                    }
+                ],
+            }
+            r3 = await client.post(_OPENROUTER, headers=_headers(), json=story)
+            text = ""
+            if r3.status_code < 400:
+                text = (r3.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
+            return {
+                "status": "parcial" if text.strip() else "vazio",
+                "nivel": "artefato",
+                "itens": [{"descricao": text[:8000]}] if text.strip() else [],
+                "mensagem": f"API de imagem indisponível ({r.status_code}) — storyboard em texto",
+                "nota_metodologica": err_txt,
+            }
 
-    data = r.json()
-    image_url, via = _extrair_imagem_resposta(data)
-    if not image_url:
-        return {
-            "status": "vazio",
-            "mensagem": "API de imagem não retornou bytes/URL",
-            "nivel": "artefato",
-            "nota_metodologica": json.dumps(data)[:400],
-        }
-    # Não persistir b64 gigante no tool_log resumido — UI pega do done.imagem
-    item: dict[str, Any] = {"fonte": f"imagem:{model}", "via": via, "prompt": prompt[:500]}
-    out: dict[str, Any] = {
-        "status": "ok",
+    return {
+        "status": "vazio",
+        "mensagem": "API de imagem não retornou bytes/URL",
         "nivel": "artefato",
-        "itens": [item],
-        "image_url": image_url if image_url.startswith("http") else None,
-        "image_data_url": image_url if image_url.startswith("data:") else None,
-        "nota_metodologica": "Artefato visual gerado — não é dado oficial.",
+        "nota_metodologica": err_txt,
     }
-    return out
-
 
 async def gerar_mapa_html(params: dict[str, Any]) -> dict[str, Any]:
     """Plano/mapa estratégico HTML via template determinístico (bem feito, estável)."""

@@ -157,3 +157,99 @@ def plano_engajamento_forcado(
             }
         )
     return extras
+
+
+_PEDIDO_IMAGEM = re.compile(
+    r"(?:gera(?:r)?|cria(?:r)?|faz(?:er)?|monte)\s+(?:uma?\s+)?(?:imagem|arte|capa|banner|flyer|pe[cç]a\s+visual)|"
+    r"capa\s+(?:de\s+)?(?:campanha|candidato)|"
+    r"imagem\s+(?:de\s+)?(?:capa|campanha|propaganda)|"
+    r"mockup|gerar_imagem|artefato\s+visual|"
+    r"(?:pe[cç]a|card)\s+(?:para\s+)?(?:instagram|feed|stories)",
+    re.I,
+)
+
+_PEDIDO_PLANO_HTML = re.compile(
+    r"(?:plano|mapa)\s+(?:estrat[eé]gico\s+)?html|"
+    r"gerar_(?:mapa|plano)_html|"
+    r"monte\s+(?:um\s+)?plano\s+(?:em\s+)?html|"
+    r"artefato\s+html",
+    re.I,
+)
+
+
+def pedido_exige_imagem(pergunta: str) -> bool:
+    return bool(_PEDIDO_IMAGEM.search(pergunta or ""))
+
+
+def pedido_exige_plano_html(pergunta: str) -> bool:
+    return bool(_PEDIDO_PLANO_HTML.search(pergunta or ""))
+
+
+def plano_imagem_forcado(
+    pergunta: str,
+    campanha_ctx: str,
+    tool_log: list[dict[str, Any]],
+    *,
+    tool_ok,
+) -> list[dict[str, Any]]:
+    """Se pediram imagem e a tool não rodou, força gerar_imagem."""
+    if not pedido_exige_imagem(pergunta):
+        return []
+    if "gerar_imagem" in _tools_usadas(tool_log):
+        return []
+    if not tool_ok("gerar_imagem"):
+        return []
+    nosso = nosso_do_ctx(campanha_ctx)
+    prompt = (pergunta or "").strip()[:900]
+    if nosso and nosso.lower() not in prompt.lower():
+        prompt = f"Arte/capa de campanha para {nosso}. Pedido do usuário: {prompt}"
+    aspect = "9:16" if re.search(r"stories|story|vertical", pergunta or "", re.I) else "16:9"
+    return [
+        {
+            "tool": "gerar_imagem",
+            "params": {
+                "prompt": prompt,
+                "aspect_ratio": aspect,
+                "contexto_campanha": (campanha_ctx or "")[:800],
+            },
+            "motivo": "playbook_imagem",
+        }
+    ]
+
+
+def plano_html_forcado(
+    pergunta: str,
+    campanha_ctx: str,
+    tool_log: list[dict[str, Any]],
+    *,
+    tool_ok,
+) -> list[dict[str, Any]]:
+    if not pedido_exige_plano_html(pergunta):
+        return []
+    usadas = _tools_usadas(tool_log)
+    if "gerar_mapa_html" in usadas or "gerar_plano_html" in usadas:
+        return []
+    if not (tool_ok("gerar_mapa_html") or tool_ok("gerar_plano_html")):
+        return []
+    tool = "gerar_mapa_html" if tool_ok("gerar_mapa_html") else "gerar_plano_html"
+    nosso = nosso_do_ctx(campanha_ctx) or ""
+    rival = rival_principal_do_ctx(campanha_ctx) or ""
+    return [
+        {
+            "tool": tool,
+            "params": {
+                "titulo": "Plano estratégico",
+                "eixos": (
+                    "Território: priorizar bases e municípios-chave\n"
+                    "Narrativa: mensagem central da campanha\n"
+                    "Contraste: diferença frente ao rival\n"
+                    "Mobilização: porta a porta e redes\n"
+                    f"Pedido: {(pergunta or '')[:600]}"
+                ),
+                "nosso": nosso,
+                "rival": rival,
+                "contexto_campanha": (campanha_ctx or "")[:1500],
+            },
+            "motivo": "playbook_plano_html",
+        }
+    ]

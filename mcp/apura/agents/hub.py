@@ -192,12 +192,38 @@ def _entrada_redator(
     notas: str,
     state: MissaoState,
 ) -> str:
+    notas_artefato: list[str] = []
+    for tr in tool_log:
+        name = tr.get("tool") or ""
+        res = tr.get("result") if isinstance(tr.get("result"), dict) else {}
+        if name == "gerar_imagem":
+            if tr.get("_imagem_done") or (res.get("status") == "ok" and (res.get("image_url") or "image_data_url" in str(res))):
+                notas_artefato.append(
+                    "IMAGEM_GERADA: sim. A UI mostra a imagem abaixo da resposta. "
+                    "Comente a peça em 2–3 linhas. PROIBIDO dizer que geração de imagem não existe."
+                )
+            elif res.get("status") == "parcial":
+                notas_artefato.append(
+                    "IMAGEM_PARCIAL: API falhou; há storyboard em texto nos dados. "
+                    "Admita falha técnica + entregue o storyboard. PROIBIDO dizer que Apura não gera imagem."
+                )
+            else:
+                notas_artefato.append(
+                    f"IMAGEM_FALHOU: {res.get('mensagem') or 'sem bytes'}. "
+                    "Falha técnica — briefing/storyboard. PROIBIDO negar a capacidade."
+                )
+        if name in ("gerar_mapa_html", "gerar_plano_html") and res.get("html"):
+            notas_artefato.append(
+                "PLANO_HTML_GERADO: sim. A UI embute o HTML. Apresente em 2–3 linhas o que está no plano."
+            )
+    bloco_art = ("\n\nARTEFATOS:\n" + "\n".join(notas_artefato)) if notas_artefato else ""
     return (
         f"PERGUNTA_ATUAL:\n{pergunta}\n\n"
         f"ESTADO_MISSAO:\n{resumo_para_prompt(state)}\n\n"
         f"HISTORICO_RECENTE:\n{_historico_redator(historico)}\n\n"
         f"PENDENTE_ORQUESTRADOR:\n{notas or '(nenhum)'}\n\n"
         f"DADOS_OFICIAIS:\n{compactar_por_camadas(tool_log)}"
+        f"{bloco_art}"
     )
 
 
@@ -501,6 +527,14 @@ async def executar_hub(
             "audio",
             "anexo",
             "transcrev",
+            "capa",
+            "banner",
+            "flyer",
+            "mockup",
+            "gerar",
+            "arte ",
+            "peça",
+            "peca",
         )
     )
     so_protocolo = (
@@ -671,6 +705,8 @@ async def executar_hub(
             # Playbook duro: estratégia/ângulo sem clima → força consulta no rival
             from apura.agents.engajamento import (
                 plano_engajamento_forcado,
+                plano_html_forcado,
+                plano_imagem_forcado,
                 resultado_clima_vazio,
                 web_ja_consultada,
             )
@@ -678,9 +714,17 @@ async def executar_hub(
             def _ok(name: str) -> bool:
                 return bool(pol.get("bypass")) or tool_permitida(pol, name)
 
-            for extra in plano_engajamento_forcado(
-                pergunta, campanha_ctx, tool_log, tool_ok=_ok
-            ):
+            extras_forcados = list(
+                plano_engajamento_forcado(pergunta, campanha_ctx, tool_log, tool_ok=_ok)
+            )
+            extras_forcados.extend(
+                plano_imagem_forcado(pergunta, campanha_ctx, tool_log, tool_ok=_ok)
+            )
+            extras_forcados.extend(
+                plano_html_forcado(pergunta, campanha_ctx, tool_log, tool_ok=_ok)
+            )
+
+            for extra in extras_forcados:
                 name = extra["tool"]
                 args = dict(extra.get("params") or {})
                 if name == "consultar_clima":
@@ -700,14 +744,24 @@ async def executar_hub(
                     campanha_id=campanha_id,
                     usuario_id=usuario_id,
                 )
-                tool_log.append(
-                    {
-                        "tool": name,
-                        "params": args,
-                        "result": _result_para_log(result),
-                        "forcado": extra.get("motivo"),
-                    }
-                )
+                entry: dict[str, Any] = {
+                    "tool": name,
+                    "params": {
+                        k: (
+                            f"[omitido {len(str(v))} chars]"
+                            if k in ("file_base64", "data_base64") and v
+                            else v
+                        )
+                        for k, v in args.items()
+                    },
+                    "result": _result_para_log(result),
+                    "forcado": extra.get("motivo"),
+                }
+                if name == "gerar_imagem" and isinstance(result, dict):
+                    img_done = _imagem_para_done(result)
+                    if img_done:
+                        entry["_imagem_done"] = img_done
+                tool_log.append(entry)
 
             # Se clima forçado veio vazio e ainda não há web → Perplexity
             if (
