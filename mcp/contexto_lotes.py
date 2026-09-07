@@ -1132,15 +1132,6 @@ def _load_porto_from_seed(conn: psycopg.Connection) -> None:
     print(f"[lotes] portos seed={len(rows)} carga_t={n_t}")
 
 
-def _load_caged_from_seed(conn: psycopg.Connection) -> None:
-    n = _load_mun6_seed_csv(
-        conn, "trabalho_caged_saldo_mun.csv.gz", "trabalho_caged_saldo",
-        "br_mun_caged", "L1", "trabalho", "PDET/CAGED",
-        "saldo Jul/2026 por município; ausência ≠ zero", online_min=3000,
-    )
-    print(f"[lotes] caged seed={n}")
-
-
 def _load_energia_consumo_from_seed(conn: psycopg.Connection) -> None:
     n = _load_uf_seed_csv(
         conn, "energia_consumo_uf.csv.gz", "energia_consumo_mwh",
@@ -1154,7 +1145,7 @@ def _load_cfem_from_seed(conn: psycopg.Connection) -> None:
     n = _load_mun_seed_csv(
         conn, "mineracao_cfem_mun.csv.gz", "mineracao_cfem_arrecadado",
         "br_mun_mineracao_producao", "L8", "mineracao", "ANM CFEM",
-        "ValorRecolhido CFEM agregado mun 2022–2026; sem CPF/CNPJ; ausência ≠ zero",
+        "ValorRecolhido CFEM agregado mun 2017–2026; sem CPF/CNPJ; ausência ≠ zero",
         online_min=2000,
     )
     print(f"[lotes] cfem seed={n}")
@@ -1164,48 +1155,154 @@ def _load_comex_mun_from_seed(conn: psycopg.Connection) -> None:
     import csv
     import gzip
 
-    path = Path(__file__).resolve().parent / "seed" / "comex_mun_2024.csv.gz"
+    seed_dir = Path(__file__).resolve().parent / "seed"
+    path = seed_dir / "comex_mun.csv.gz"
+    if not path.exists():
+        path = seed_dir / "comex_mun_2024.csv.gz"
     if not path.exists():
         return
     cods = {r[0] for r in conn.execute("SELECT cod_ibge FROM ref.municipio")}
+    m6 = _ibge6_map(conn)
     by_ind: dict[str, list[tuple]] = defaultdict(list)
     with gzip.open(path, "rt", encoding="utf-8") as fh:
         for rec in csv.DictReader(fh):
             try:
                 ano = int(rec["ano"])
-                cod = int(rec["cod_ibge"])
+                raw = int(rec["cod_ibge"])
                 id_ind = str(rec["id_indicador"])
                 val = float(rec["valor"])
             except (KeyError, TypeError, ValueError):
                 continue
-            if cod not in cods:
-                # Comex às vezes usa 7 dígitos; tentar map6
+            cod = raw if raw in cods else m6.get(raw if raw < 1_000_000 else raw // 10)
+            if not cod:
                 continue
             by_ind[id_ind].append((ano, cod, id_ind, val, "seed_csv"))
-    if not by_ind:
-        # retry com map6 caso CO_MUN venha sem DV
-        m6 = _ibge6_map(conn)
-        with gzip.open(path, "rt", encoding="utf-8") as fh:
-            for rec in csv.DictReader(fh):
-                try:
-                    ano = int(rec["ano"])
-                    raw = int(rec["cod_ibge"])
-                    id_ind = str(rec["id_indicador"])
-                    val = float(rec["valor"])
-                except (KeyError, TypeError, ValueError):
-                    continue
-                cod = raw if raw in cods else m6.get(raw if raw < 1000000 else raw // 10)
-                if not cod:
-                    continue
-                by_ind[id_ind].append((ano, cod, id_ind, val, "seed_csv"))
     total = 0
+    anos: set[int] = set()
     for id_ind, rows in by_ind.items():
         _upsert_indicador_mun(
             conn, id_ind, rows, "br_mun_comex", "L1", "comercio", "MDIC ComexStat",
-            "FOB USD mun 2024 (export/import); ausência ≠ zero", online_min=2000,
+            "FOB USD mun 2024–2026 (export/import); ausência ≠ zero", online_min=2000,
         )
         total += len(rows)
-    print(f"[lotes] comex mun seed={total}")
+        anos.update(r[0] for r in rows)
+    if total:
+        _upsert_status(
+            conn, "br_mun_comex", "L1", "comercio", "online", "municipio", total,
+            ",".join(str(a) for a in sorted(anos)),
+            "MDIC ComexStat", "FOB USD mun agregado 2024–2026; ausência ≠ zero",
+        )
+    print(f"[lotes] comex mun seed={total} anos={sorted(anos)}")
+
+
+def _load_caged_from_seed(conn: psycopg.Connection) -> None:
+    import csv
+    import gzip
+
+    seed_dir = Path(__file__).resolve().parent / "seed"
+    path = seed_dir / "trabalho_caged_mun.csv.gz"
+    if not path.exists():
+        n = _load_mun6_seed_csv(
+            conn, "trabalho_caged_saldo_mun.csv.gz", "trabalho_caged_saldo",
+            "br_mun_caged", "L1", "trabalho", "PDET/CAGED",
+            "saldo Jul/2026 por município; ausência ≠ zero", online_min=3000,
+        )
+        print(f"[lotes] caged seed={n}")
+        return
+    m6 = _ibge6_map(conn)
+    by_ind: dict[str, list[tuple]] = defaultdict(list)
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                cod6 = int(rec["cod_ibge6"])
+                id_ind = str(rec["id_indicador"])
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            cod = m6.get(cod6)
+            if not cod:
+                continue
+            by_ind[id_ind].append((ano, cod, id_ind, val, "seed_csv"))
+    total = 0
+    for id_ind, rows in by_ind.items():
+        _upsert_indicador_mun(
+            conn, id_ind, rows, "br_mun_caged", "L1", "trabalho", "PDET/CAGED",
+            "admissões/desligamentos/saldo Jul/2026; ausência ≠ zero", online_min=3000,
+        )
+        total += len(rows)
+    print(f"[lotes] caged seed={total}")
+
+
+def _load_porto_det_from_seed(conn: psycopg.Connection) -> None:
+    import csv
+    import gzip
+
+    _ensure_indicador_porto(conn)
+    path = Path(__file__).resolve().parent / "seed" / "porto_movimentacao_det.csv.gz"
+    if not path.exists():
+        return
+    rows: list[tuple] = []
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                nome = str(rec["nm_porto"]).strip()
+                sg = str(rec["sg_uf"]).upper()[:2]
+                id_ind = str(rec["id_indicador"])
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not nome or len(sg) != 2:
+                continue
+            rows.append((ano, nome, sg, id_ind, val, "seed_csv"))
+    if not rows:
+        return
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM contexto.indicador_porto WHERE id_indicador IN ('porto_carga_t_det','porto_teu_det')"
+        )
+        with cur.copy(
+            "COPY contexto.indicador_porto (ano, nm_porto, sg_uf, id_indicador, valor, ds_fonte) FROM STDIN"
+        ) as copy:
+            for r in rows:
+                copy.write_row(r)
+    print(f"[lotes] portos detalhe seed={len(rows)}")
+
+
+def _load_rais_from_seed(conn: psycopg.Connection) -> None:
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / "trabalho_rais_estoque_uf.csv.gz"
+    if not path.exists():
+        return
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        n = sum(1 for _ in csv.DictReader(fh))
+    if n < 20:
+        print(f"[lotes] rais seed insuficiente n={n}; mantém fila")
+        return
+    n = _load_uf_seed_csv(
+        conn, "trabalho_rais_estoque_uf.csv.gz", "trabalho_rais_estoque",
+        "br_mun_rais", "L1", "trabalho", "RAIS/MTE",
+        "estoque/vínculos UF (parcial); mun na fila", status="parcial", gran="uf",
+    )
+    print(f"[lotes] rais UF seed={n}")
+
+
+def _load_producao_bruta_uf_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn, "mineracao_venda_bruta_uf.csv.gz", "mineracao_venda_bruta_rs",
+        "br_mun_mineracao_producao", "L8", "mineracao", "ANM AMB",
+        "valor venda bruta UF (série); CFEM mun é âncora", status="parcial", gran="uf",
+    )
+    # não rebaixar se CFEM já online
+    _upsert_status(
+        conn, "br_mun_mineracao_producao", "L8", "mineracao", "online", "municipio",
+        None, None, "ANM CFEM+AMB", "CFEM mun + venda bruta UF; ausência ≠ zero",
+        preserve_better=True,
+    )
+    print(f"[lotes] producao bruta UF seed={n}")
 
 
 def _load_cnes_from_seed(conn: psycopg.Connection) -> None:
@@ -1391,10 +1488,7 @@ def _upsert_indicador_mun(
         raise RuntimeError(f"{id_ind} zero")
     ano_ref = str(max(r[0] for r in rows))
     with conn.cursor() as cur:
-        cur.execute(
-            "DELETE FROM contexto.indicador_mun WHERE id_indicador = %s AND ano = %s",
-            (id_ind, int(ano_ref)),
-        )
+        cur.execute("DELETE FROM contexto.indicador_mun WHERE id_indicador = %s", (id_ind,))
         with cur.copy(
             "COPY contexto.indicador_mun (ano, cod_ibge, id_indicador, valor, ds_fonte) FROM STDIN"
         ) as copy:
@@ -1822,17 +1916,24 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("roubo", _load_roubo_from_seed, "seguranca_roubo_total", "uf", 20),
         ("exec_fed", _load_execucao_federal_from_seed, "fiscal_execucao_federal_pago", "uf", 20),
         ("malha_aerea", _load_malha_aerea_from_seed, "turismo_pax_origem_uf", "uf", 20),
-        ("portos", _load_porto_from_seed, "porto_carga_t", "porto", 50),
-        ("caged", _load_caged_from_seed, "trabalho_caged_saldo", "mun", 3000),
-        ("energia_cons", _load_energia_consumo_from_seed, "energia_consumo_mwh", "uf", 20),
-        ("cfem", _load_cfem_from_seed, "mineracao_cfem_arrecadado", "mun", 2000),
-        ("comex_mun", _load_comex_mun_from_seed, "comex_export_fob_usd", "mun", 2000),
+        ("portos", _load_porto_from_seed, "porto_carga_t", "porto", 9999),
+        ("porto_det", _load_porto_det_from_seed, "porto_carga_t_det", "porto", 9999),
+        ("caged", _load_caged_from_seed, "trabalho_caged_saldo", "mun", 9999),
+        ("energia_cons", _load_energia_consumo_from_seed, "energia_consumo_mwh", "uf", 9999),
+        ("cfem", _load_cfem_from_seed, "mineracao_cfem_arrecadado", "mun", 9999),
+        ("comex_mun", _load_comex_mun_from_seed, "comex_export_fob_usd", "mun", 9999),
         ("cnes", _load_cnes_from_seed, "saude_cnes_estabelecimentos", "mun", 3000),
         ("enem", _load_enem_from_seed, "educ_enem_media", "mun", 1000),
         ("sisdepen", _load_sisdepen_from_seed, "prisional_populacao", "uf", 9999),
+        ("rais", _load_rais_from_seed, "trabalho_rais_estoque", "uf", 9999),
+        ("prod_bruta", _load_producao_bruta_uf_from_seed, "mineracao_venda_bruta_rs", "uf", 9999),
     ):
         try:
-            if _count_ind(conn, id_ind, tbl) >= min_n:
+            force = {
+                "portos", "porto_det", "caged", "energia_cons", "cfem",
+                "comex_mun", "sisdepen", "rais", "prod_bruta",
+            }
+            if label not in force and _count_ind(conn, id_ind, tbl) >= min_n:
                 print(f"[lotes] sync skip {label}")
                 continue
             print(f"[lotes] sync run {label}…")
@@ -1868,6 +1969,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "exec_fed": ("br_nac_fiscal_execucao_federal", "L4", "fiscal", "uf"),
                 "malha_aerea": ("br_aer_turismo_malha_aerea", "L8", "turismo", "uf"),
                 "portos": ("br_por_portos_movimentacao", "L8", "turismo", "porto"),
+                "porto_det": ("br_por_portos_movimentacao", "L8", "turismo", "porto"),
                 "caged": ("br_mun_caged", "L1", "trabalho", "municipio"),
                 "energia_cons": ("br_mun_energia_consumo", "L3", "energia", "uf"),
                 "cfem": ("br_mun_mineracao_producao", "L8", "mineracao", "municipio"),
@@ -1875,6 +1977,8 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "cnes": ("br_mun_saude_cnes", "L7", "saude", "municipio"),
                 "enem": ("br_mun_educacao_enem", "L7", "educacao", "municipio"),
                 "sisdepen": ("br_upr_prisional_sisdepen", "L5", "seguranca", "uf"),
+                "rais": ("br_mun_rais", "L1", "trabalho", "uf"),
+                "prod_bruta": ("br_mun_mineracao_producao", "L8", "mineracao", "uf"),
             }
             if label in id_map:
                 id_br, lote, tema, gran = id_map[label]
