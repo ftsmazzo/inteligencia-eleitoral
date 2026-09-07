@@ -768,6 +768,19 @@ class PerfilEleitorIn(BaseModel):
     cd_cargo: int | None = None
 
 
+class MotorBaseIn(BaseModel):
+    """Recheio completo do motor Gestão (todos os blocos base_* + perfil_eleitor)."""
+
+    ano_ref: int
+    cargo: str
+    uf: str | None = None
+    sq_candidato: int
+    nm_candidato: str | None = None
+    nm_urna: str | None = None
+    sg_partido: str | None = None
+    cd_cargo: int | None = None
+
+
 class ColigacaoIn(BaseModel):
     ano: int
     cargo: str
@@ -1336,6 +1349,62 @@ def perfil_eleitor_http(
     return {"status": "ok", **doc}
 
 
+@app.post("/v1/motor-base")
+def motor_base_http(
+    body: MotorBaseIn,
+    authorization: str | None = Header(default=None),
+    x_token: str | None = Header(default=None),
+) -> Any:
+    """Todos os blocos do motor Gestão (recheio), sem gravar ctl.campanha_memoria.
+
+    Retorna itens: trajetoria, concorrentes, votos, mapa_cargo, prefeitos,
+    ficha_uf, redes, eleitorado, perfil_eleitor.
+    """
+    _token_ok(authorization, x_token, "motor_base")
+    from gestao.motor import gerar_blocos_por_status
+    from gestao.store import CARGOS
+
+    cargo_key = body.cargo.strip().lower().replace(" ", "_")
+    extra = {
+        "prefeito": {"key": "prefeito", "label": "Prefeito", "cd_cargo": 11},
+        "vereador": {"key": "vereador", "label": "Vereador", "cd_cargo": 13},
+    }
+    mapa = {c["key"]: c for c in CARGOS}
+    mapa.update(extra)
+    info = mapa.get(cargo_key)
+    if body.cd_cargo is not None:
+        cd = int(body.cd_cargo)
+        label = next((c["label"] for c in list(CARGOS) + list(extra.values()) if c["cd_cargo"] == cd), cargo_key)
+    elif info:
+        cd = int(info["cd_cargo"])
+        label = str(info["label"])
+    else:
+        raise HTTPException(400, "cargo inválido")
+
+    uf = (body.uf or "").strip().upper() or None
+    if cargo_key != "presidente" and (not uf or len(uf) != 2):
+        raise HTTPException(400, "UF obrigatória para este cargo")
+
+    st = {
+        "ano_ref": int(body.ano_ref),
+        "cd_cargo": cd,
+        "sg_uf": uf,
+        "sq_candidato": int(body.sq_candidato),
+        "nm_candidato": body.nm_candidato or body.nm_urna or "",
+        "nm_urna": body.nm_urna or body.nm_candidato or "",
+        "sg_partido": body.sg_partido,
+        "cargo_label": label,
+    }
+    with db_trilha_a() as conn:
+        try:
+            out = gerar_blocos_por_status(conn, st)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(502, f"Motor falhou: {type(exc).__name__}: {exc}") from exc
+    return {"status": "ok", **out}
+
+
 @app.post("/v1/coligacao")
 def coligacao(body: ColigacaoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token, "coligacao")
@@ -1791,6 +1860,8 @@ async def _mcp_exec(
         return eleitorado(EleitoradoIn(**p), authorization, x_token)
     if name == "perfil_eleitor":
         return perfil_eleitor_http(PerfilEleitorIn(**p), authorization, x_token)
+    if name == "motor_base":
+        return motor_base_http(MotorBaseIn(**p), authorization, x_token)
     if name == "coligacao":
         return coligacao(ColigacaoIn(**p), authorization, x_token)
     if name == "vagas":

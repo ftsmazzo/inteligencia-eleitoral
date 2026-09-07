@@ -473,10 +473,246 @@ def _redes_traj(conn: psycopg.Connection, traj: list[dict[str, Any]], ano_ref: i
     return seen[:30]
 
 
-def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
-    st = get_status(conn, campanha_id)
+def _montar_itens_motor(
+    *,
+    st: dict[str, Any],
+    ano: int,
+    cd: int,
+    uf: str | None,
+    nm: str,
+    traj: list[dict[str, Any]],
+    traj_doc: dict[str, Any] | None,
+    conc: list[dict[str, Any]],
+    votos: list[dict[str, Any]],
+    meta_votos: dict[str, Any],
+    mapa: dict[str, Any],
+    pref: dict[str, Any],
+    ficha_doc: dict[str, Any] | None,
+    redes_doc: dict[str, Any] | None,
+    elei_doc: dict[str, Any] | None,
+    perfil_doc: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Monta os blocos textuais (recheio) sem persistir."""
+    itens: list[dict[str, Any]] = []
+
+    if traj_doc:
+        itens.append(
+            {
+                "tipo": "base_trajetoria",
+                "titulo": traj_doc["titulo"],
+                "corpo": traj_doc["corpo"],
+                "fonte": traj_doc["fonte"],
+                "nivel": traj_doc.get("nivel") or "fato",
+                "meta": traj_doc.get("meta") or {},
+            }
+        )
+    else:
+        corp_tr = "Trajetória eleitoral (candidaturas na base oficial):\n"
+        if traj:
+            for t in traj:
+                corp_tr += (
+                    f"- {t['ano']} · {t.get('cargo')} · {t.get('sg_uf')} · {t.get('nm_urna')} · "
+                    f"{t.get('sg_partido')} · {t.get('ds_situacao')}\n"
+                )
+        else:
+            corp_tr += "Inexistente cruzamento por nome na base deste recorte.\n"
+        itens.append(
+            {
+                "tipo": "base_trajetoria",
+                "titulo": f"Trajetória — {st.get('nm_urna') or nm}",
+                "corpo": corp_tr,
+                "fonte": "eleicao.candidatura",
+                "nivel": "fato",
+                "meta": {"n": len(traj), "contrato": "trajetoria_fallback"},
+            }
+        )
+
+    corp_c = f"Concorrentes {ano} · {_cargo_label(cd)} · {uf or 'BR'}:\n"
+    for c in conc[:50]:
+        corp_c += f"- {c['nm_urna']} · {c['sg_partido']} · nº {c['nr_candidato']} · {c['ds_situacao']}\n"
+    if not conc:
+        corp_c += "Lista vazia neste filtro.\n"
+    itens.append(
+        {
+            "tipo": "base_concorrentes",
+            "titulo": "Concorrentes do cargo",
+            "corpo": corp_c,
+            "fonte": "eleicao.candidatura",
+            "nivel": "fato",
+            "meta": {"n": len(conc)},
+        }
+    )
+
+    corp_v = "Geografia do voto do candidato (urna anterior):\n"
+    if meta_votos.get("nota"):
+        corp_v += f"Fonte: {meta_votos['nota']}\n"
+    if votos:
+        for v in votos:
+            corp_v += f"- {v['municipio']}: {v['votos']:,} votos\n".replace(",", ".")
+    else:
+        corp_v += (
+            "Inexistente votos nominais do próprio candidato em anos anteriores "
+            "(use mapa do cargo + prefeitos + fichas).\n"
+        )
+    itens.append(
+        {
+            "tipo": "base_votos",
+            "titulo": "Geografia do voto (candidato)",
+            "corpo": corp_v,
+            "fonte": "eleicao.votacao",
+            "nivel": "fato",
+            "meta": meta_votos,
+        }
+    )
+
+    corp_m = (
+        f"Mapa do cargo na UF — última urna "
+        f"({_cargo_label(mapa.get('cd_cargo') or cd)} · {mapa.get('ano') or '—'}):\n"
+    )
+    if mapa.get("linhas"):
+        for ln in mapa["linhas"][:30]:
+            corp_m += (
+                f"- {ln['municipio']}: {ln['eleito']} ({ln['partido']}) — "
+                f"{ln['votos']:,} votos\n".replace(",", ".")
+            )
+    else:
+        corp_m += "Inexistente neste filtro.\n"
+    itens.append(
+        {
+            "tipo": "base_mapa_cargo",
+            "titulo": "Mapa do cargo (última urna da UF)",
+            "corpo": corp_m,
+            "fonte": "eleicao.votacao + api._eh_eleito",
+            "nivel": "fato",
+            "meta": {"ano": mapa.get("ano"), "n": len(mapa.get("linhas") or [])},
+        }
+    )
+
+    corp_p = "Prefeitos eleitos 2024 na UF (situação de urna, não cadastro):\n"
+    if pref.get("total_eleitos"):
+        corp_p += (
+            f"Total: {pref['total_eleitos']}. Mesmo partido do candidato: "
+            f"{len(pref.get('aliados_partido') or [])}.\n"
+        )
+        for a in pref.get("aliados_partido") or []:
+            corp_p += f"- ALIADO partidário: {a['municipio']} — {a['prefeito']} ({a['partido']})\n"
+        for a in pref.get("outros") or []:
+            corp_p += f"- {a['municipio']} — {a['prefeito']} ({a['partido']})\n"
+    else:
+        corp_p += "Inexistente ou UF ausente.\n"
+    itens.append(
+        {
+            "tipo": "base_prefeitos",
+            "titulo": "Mapa de prefeitos 2024",
+            "corpo": corp_p,
+            "fonte": "eleicao.votacao 2024 + api._eh_eleito",
+            "nivel": "fato",
+            "meta": {
+                "total_eleitos": pref.get("total_eleitos"),
+                "aliados": len(pref.get("aliados_partido") or []),
+            },
+        }
+    )
+
+    if ficha_doc:
+        itens.append(
+            {
+                "tipo": "base_ficha_uf",
+                "titulo": ficha_doc["titulo"],
+                "corpo": ficha_doc["corpo"],
+                "fonte": ficha_doc["fonte"],
+                "nivel": ficha_doc.get("nivel") or "fato",
+                "meta": ficha_doc.get("meta") or {},
+            }
+        )
+    else:
+        itens.append(
+            {
+                "tipo": "base_ficha_uf",
+                "titulo": f"Movimento territorial {uf or '—'}",
+                "corpo": "Inexistente movimento territorial (UF ausente ou falha no cruzamento).",
+                "fonte": "eleicao.votacao",
+                "nivel": "fato",
+                "meta": {},
+            }
+        )
+
+    if redes_doc:
+        itens.append(
+            {
+                "tipo": "base_redes",
+                "titulo": redes_doc["titulo"],
+                "corpo": redes_doc["corpo"],
+                "fonte": redes_doc["fonte"],
+                "nivel": redes_doc.get("nivel") or "fato",
+                "meta": redes_doc.get("meta") or {},
+            }
+        )
+    else:
+        itens.append(
+            {
+                "tipo": "base_redes",
+                "titulo": "Redes TSE — próprio e adversários",
+                "corpo": "Inexistente redes TSE neste escopo.",
+                "fonte": "eleicao.rede_social",
+                "nivel": "fato",
+                "meta": {},
+            }
+        )
+
+    if elei_doc:
+        itens.append(
+            {
+                "tipo": "base_eleitorado",
+                "titulo": elei_doc["titulo"],
+                "corpo": elei_doc["corpo"],
+                "fonte": elei_doc["fonte"],
+                "nivel": elei_doc.get("nivel") or "fato",
+                "meta": elei_doc.get("meta") or {},
+            }
+        )
+    else:
+        itens.append(
+            {
+                "tipo": "base_eleitorado",
+                "titulo": f"Eleitorado {uf or '—'}",
+                "corpo": "Inexistente série de eleitorado para esta UF.",
+                "fonte": "eleicao.eleitorado",
+                "nivel": "fato",
+                "meta": {},
+            }
+        )
+
+    if perfil_doc:
+        itens.append(
+            {
+                "tipo": "perfil_eleitor",
+                "titulo": perfil_doc["titulo"],
+                "corpo": perfil_doc["corpo"],
+                "fonte": perfil_doc["fonte"],
+                "nivel": perfil_doc.get("nivel") or "fato",
+                "meta": perfil_doc.get("meta") or {"motor": "perfil_v2"},
+            }
+        )
+    else:
+        itens.append(
+            {
+                "tipo": "perfil_eleitor",
+                "titulo": f"Perfil eleitoral — {uf or '—'}",
+                "corpo": "Perfil eleitoral indisponível (UF ausente ou falha no motor). Sem estimativa.",
+                "fonte": "motor Gestão",
+                "nivel": "fato",
+                "meta": {"motor": "perfil_v2", "ok": False},
+            }
+        )
+
+    return itens
+
+
+def gerar_blocos_por_status(conn: psycopg.Connection, st: dict[str, Any]) -> dict[str, Any]:
+    """Recheio completo do motor (todos os blocos) sem gravar ctl.campanha_memoria."""
     if not st.get("sq_candidato") or not st.get("cd_cargo") or not st.get("ano_ref"):
-        raise ValueError("Escopo incompleto — salve ano, cargo, UF e candidato antes do motor")
+        raise ValueError("Escopo incompleto — ano, cargo e candidato (sq) obrigatórios")
 
     try:
         conn.execute("SET LOCAL statement_timeout = '60000'")
@@ -498,7 +734,6 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         None,
         avisos,
     )
-    # registros da narrativa (se houver) alimentam outros blocos; senão fallback lista crua
     if traj_doc and traj_doc.get("registros"):
         traj = traj_doc["registros"]
     conc = _safe("concorrentes", conn, lambda: _concorrentes(conn, ano, cd, uf, sq), [], avisos)
@@ -554,179 +789,6 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         if uf
         else None
     )
-
-    memoria.limpar_tipos(conn, campanha_id, _MOTOR_TIPOS)
-
-    if traj_doc:
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="base_trajetoria",
-            titulo=traj_doc["titulo"],
-            corpo=traj_doc["corpo"],
-            fonte=traj_doc["fonte"],
-            nivel=traj_doc.get("nivel") or "fato",
-            meta=traj_doc.get("meta") or {},
-        )
-    else:
-        corp_tr = "Trajetória eleitoral (candidaturas na base oficial):\n"
-        if traj:
-            for t in traj:
-                corp_tr += (
-                    f"- {t['ano']} · {t.get('cargo')} · {t.get('sg_uf')} · {t.get('nm_urna')} · "
-                    f"{t.get('sg_partido')} · {t.get('ds_situacao')}\n"
-                )
-        else:
-            corp_tr += "Inexistente cruzamento por nome na base deste recorte.\n"
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="base_trajetoria",
-            titulo=f"Trajetória — {st.get('nm_urna') or nm}",
-            corpo=corp_tr,
-            fonte="eleicao.candidatura",
-            nivel="fato",
-            meta={"n": len(traj), "contrato": "trajetoria_fallback"},
-        )
-
-    corp_c = f"Concorrentes {ano} · {_cargo_label(cd)} · {uf or 'BR'}:\n"
-    for c in conc[:50]:
-        corp_c += f"- {c['nm_urna']} · {c['sg_partido']} · nº {c['nr_candidato']} · {c['ds_situacao']}\n"
-    if not conc:
-        corp_c += "Lista vazia neste filtro.\n"
-    memoria.upsert_bloco(
-        conn, campanha_id,
-        tipo="base_concorrentes",
-        titulo="Concorrentes do cargo",
-        corpo=corp_c,
-        fonte="eleicao.candidatura",
-        nivel="fato",
-        meta={"n": len(conc)},
-    )
-
-    corp_v = "Geografia do voto do candidato (urna anterior):\n"
-    if meta_votos.get("nota"):
-        corp_v += f"Fonte: {meta_votos['nota']}\n"
-    if votos:
-        for v in votos:
-            corp_v += f"- {v['municipio']}: {v['votos']:,} votos\n".replace(",", ".")
-    else:
-        corp_v += (
-            "Inexistente votos nominais do próprio candidato em anos anteriores "
-            "(use mapa do cargo + prefeitos + fichas).\n"
-        )
-    memoria.upsert_bloco(
-        conn, campanha_id,
-        tipo="base_votos",
-        titulo="Geografia do voto (candidato)",
-        corpo=corp_v,
-        fonte="eleicao.votacao",
-        nivel="fato",
-        meta=meta_votos,
-    )
-
-    corp_m = (
-        f"Mapa do cargo na UF — última urna "
-        f"({_cargo_label(mapa.get('cd_cargo') or cd)} · {mapa.get('ano') or '—'}):\n"
-    )
-    if mapa.get("linhas"):
-        for ln in mapa["linhas"][:30]:
-            corp_m += (
-                f"- {ln['municipio']}: {ln['eleito']} ({ln['partido']}) — "
-                f"{ln['votos']:,} votos\n".replace(",", ".")
-            )
-    else:
-        corp_m += "Inexistente neste filtro.\n"
-    memoria.upsert_bloco(
-        conn, campanha_id,
-        tipo="base_mapa_cargo",
-        titulo="Mapa do cargo (última urna da UF)",
-        corpo=corp_m,
-        fonte="eleicao.votacao + api._eh_eleito",
-        nivel="fato",
-        meta={"ano": mapa.get("ano"), "n": len(mapa.get("linhas") or [])},
-    )
-
-    corp_p = "Prefeitos eleitos 2024 na UF (situação de urna, não cadastro):\n"
-    if pref.get("total_eleitos"):
-        corp_p += f"Total: {pref['total_eleitos']}. Mesmo partido do candidato: {len(pref.get('aliados_partido') or [])}.\n"
-        for a in (pref.get("aliados_partido") or []):
-            corp_p += f"- ALIADO partidário: {a['municipio']} — {a['prefeito']} ({a['partido']})\n"
-        for a in (pref.get("outros") or []):
-            corp_p += f"- {a['municipio']} — {a['prefeito']} ({a['partido']})\n"
-    else:
-        corp_p += "Inexistente ou UF ausente.\n"
-    memoria.upsert_bloco(
-        conn, campanha_id,
-        tipo="base_prefeitos",
-        titulo="Mapa de prefeitos 2024",
-        corpo=corp_p,
-        fonte="eleicao.votacao 2024 + api._eh_eleito",
-        nivel="fato",
-        meta={"total_eleitos": pref.get("total_eleitos"), "aliados": len(pref.get("aliados_partido") or [])},
-    )
-
-    if ficha_doc:
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="base_ficha_uf",
-            titulo=ficha_doc["titulo"],
-            corpo=ficha_doc["corpo"],
-            fonte=ficha_doc["fonte"],
-            nivel=ficha_doc.get("nivel") or "fato",
-            meta=ficha_doc.get("meta") or {},
-        )
-    else:
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="base_ficha_uf",
-            titulo=f"Movimento territorial {uf or '—'}",
-            corpo="Inexistente movimento territorial (UF ausente ou falha no cruzamento).",
-            fonte="eleicao.votacao",
-            nivel="fato",
-            meta={},
-        )
-
-    if redes_doc:
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="base_redes",
-            titulo=redes_doc["titulo"],
-            corpo=redes_doc["corpo"],
-            fonte=redes_doc["fonte"],
-            nivel=redes_doc.get("nivel") or "fato",
-            meta=redes_doc.get("meta") or {},
-        )
-    else:
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="base_redes",
-            titulo="Redes TSE — próprio e adversários",
-            corpo="Inexistente redes TSE neste escopo.",
-            fonte="eleicao.rede_social",
-            nivel="fato",
-            meta={},
-        )
-
-    if elei_doc:
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="base_eleitorado",
-            titulo=elei_doc["titulo"],
-            corpo=elei_doc["corpo"],
-            fonte=elei_doc["fonte"],
-            nivel=elei_doc.get("nivel") or "fato",
-            meta=elei_doc.get("meta") or {},
-        )
-    else:
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="base_eleitorado",
-            titulo=f"Eleitorado {uf or '—'}",
-            corpo="Inexistente série de eleitorado para esta UF.",
-            fonte="eleicao.eleitorado",
-            nivel="fato",
-            meta={},
-        )
-
     perfil_doc = _safe(
         "perfil_eleitor",
         conn,
@@ -739,25 +801,65 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
         None,
         avisos,
     )
-    if perfil_doc:
+
+    itens = _montar_itens_motor(
+        st=st,
+        ano=ano,
+        cd=cd,
+        uf=uf,
+        nm=nm,
+        traj=traj,
+        traj_doc=traj_doc,
+        conc=conc,
+        votos=votos,
+        meta_votos=meta_votos,
+        mapa=mapa,
+        pref=pref,
+        ficha_doc=ficha_doc,
+        redes_doc=redes_doc,
+        elei_doc=elei_doc,
+        perfil_doc=perfil_doc,
+    )
+
+    return {
+        "ok": True,
+        "itens": itens,
+        "tipos": list(_MOTOR_TIPOS),
+        "blocos": len(itens),
+        "trajetoria": len(traj),
+        "concorrentes": len(conc),
+        "votos_mun": len(votos),
+        "prefeitos": pref.get("total_eleitos") or 0,
+        "mapa_cargo": len(mapa.get("linhas") or []),
+        "fichas": 1 if ficha_doc else 0,
+        "redes": len((redes_doc or {}).get("meta", {}).get("pessoas") or []),
+        "tem_perfil": bool(perfil_doc),
+        "perfil_meta": (perfil_doc or {}).get("meta"),
+        "avisos": avisos,
+    }
+
+
+def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
+    st = get_status(conn, campanha_id)
+    if not st.get("sq_candidato") or not st.get("cd_cargo") or not st.get("ano_ref"):
+        raise ValueError("Escopo incompleto — salve ano, cargo, UF e candidato antes do motor")
+
+    out = gerar_blocos_por_status(conn, st)
+    nm = st.get("nm_candidato") or st.get("nm_urna") or ""
+    uf = st.get("sg_uf")
+    cd = int(st["cd_cargo"])
+
+    memoria.limpar_tipos(conn, campanha_id, _MOTOR_TIPOS)
+    for b in out["itens"]:
         memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="perfil_eleitor",
-            titulo=perfil_doc["titulo"],
-            corpo=perfil_doc["corpo"],
-            fonte=perfil_doc["fonte"],
-            nivel=perfil_doc.get("nivel") or "fato",
-            meta=perfil_doc.get("meta") or {"motor": "perfil_v2"},
-        )
-    else:
-        memoria.upsert_bloco(
-            conn, campanha_id,
-            tipo="perfil_eleitor",
-            titulo=f"Perfil eleitoral — {uf or '—'}",
-            corpo="Perfil eleitoral indisponível (UF ausente ou falha no motor). Sem estimativa.",
-            fonte="motor Gestão",
-            nivel="fato",
-            meta={"motor": "perfil_v2", "ok": False},
+            conn,
+            campanha_id,
+            tipo=b["tipo"],
+            titulo=b["titulo"],
+            corpo=b["corpo"],
+            fonte=b["fonte"],
+            nivel=b.get("nivel") or "fato",
+            meta=b.get("meta") or {},
         )
 
     try:
@@ -778,16 +880,16 @@ def rodar_motor(conn: psycopg.Connection, campanha_id: str) -> dict[str, Any]:
 
     return {
         "ok": True,
-        "blocos": len(_MOTOR_TIPOS),
-        "trajetoria": len(traj),
-        "concorrentes": len(conc),
-        "votos_mun": len(votos),
-        "prefeitos": pref.get("total_eleitos") or 0,
-        "mapa_cargo": len(mapa.get("linhas") or []),
-        "fichas": 1 if ficha_doc else 0,
-        "redes": len((redes_doc or {}).get("meta", {}).get("pessoas") or []),
-        "tem_perfil": bool(perfil_doc),
-        "perfil_meta": (perfil_doc or {}).get("meta"),
-        "avisos": avisos,
+        "blocos": out["blocos"],
+        "trajetoria": out["trajetoria"],
+        "concorrentes": out["concorrentes"],
+        "votos_mun": out["votos_mun"],
+        "prefeitos": out["prefeitos"],
+        "mapa_cargo": out["mapa_cargo"],
+        "fichas": out["fichas"],
+        "redes": out["redes"],
+        "tem_perfil": out["tem_perfil"],
+        "perfil_meta": out["perfil_meta"],
+        "avisos": out["avisos"],
         "status": get_status(conn, campanha_id),
     }
