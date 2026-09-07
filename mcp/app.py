@@ -746,6 +746,16 @@ class EleitoradoIn(BaseModel):
     nacional: bool = False
 
 
+class PerfilEleitorIn(BaseModel):
+    """Contrato v2 — mesmo texto do motor Gestão (docs/PERFIL-ELEITOR.md)."""
+
+    uf: str = Field(min_length=2, max_length=2)
+    cargo: str = Field(
+        description="presidente|governador|senador|deputado_federal|deputado_estadual|prefeito|vereador"
+    )
+    cd_cargo: int | None = None
+
+
 class ColigacaoIn(BaseModel):
     ano: int
     cargo: str
@@ -1266,6 +1276,54 @@ def eleitorado(body: EleitoradoIn, authorization: str | None = Header(default=No
         )
 
 
+@app.post("/v1/perfil-eleitor")
+def perfil_eleitor_http(
+    body: PerfilEleitorIn,
+    authorization: str | None = Header(default=None),
+    x_token: str | None = Header(default=None),
+) -> Any:
+    """Perfil eleitoral rico (contrato v2) — mesmo motor da Gestão Apura.
+
+    Sexo / faixa / escolaridade / campeão UF / top municípios / apontamentos 2024.
+    Não usa dossiê nem voto do candidato da campanha.
+    """
+    _token_ok(authorization, x_token, "perfil_eleitor")
+    from gestao.perfil_eleitor import montar_perfil_eleitor
+    from gestao.store import CARGOS
+
+    cargo_key = body.cargo.strip().lower().replace(" ", "_")
+    cd = body.cd_cargo
+    label = cargo_key
+    if cd is None:
+        extra = {
+            "prefeito": {"key": "prefeito", "label": "Prefeito", "cd_cargo": 11},
+            "vereador": {"key": "vereador", "label": "Vereador", "cd_cargo": 13},
+        }
+        mapa = {c["key"]: c for c in CARGOS}
+        mapa.update(extra)
+        info = mapa.get(cargo_key)
+        if not info:
+            raise HTTPException(
+                400,
+                "cargo inválido: presidente|governador|senador|deputado_federal|"
+                "deputado_estadual|prefeito|vereador",
+            )
+        cd = int(info["cd_cargo"])
+        label = str(info["label"])
+    else:
+        label = next((c["label"] for c in CARGOS if c["cd_cargo"] == cd), cargo_key)
+
+    uf = body.uf.strip().upper()
+    with db() as conn:
+        try:
+            doc = montar_perfil_eleitor(
+                conn, uf=uf, cd_cargo=int(cd), cargo_label=label
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    return {"status": "ok", **doc}
+
+
 @app.post("/v1/coligacao")
 def coligacao(body: ColigacaoIn, authorization: str | None = Header(default=None), x_token: str | None = Header(default=None)) -> Any:
     _token_ok(authorization, x_token, "coligacao")
@@ -1719,6 +1777,8 @@ async def _mcp_exec(
         return comparecimento(ComparecimentoIn(**p), authorization, x_token)
     if name == "eleitorado":
         return eleitorado(EleitoradoIn(**p), authorization, x_token)
+    if name == "perfil_eleitor":
+        return perfil_eleitor_http(PerfilEleitorIn(**p), authorization, x_token)
     if name == "coligacao":
         return coligacao(ColigacaoIn(**p), authorization, x_token)
     if name == "vagas":
