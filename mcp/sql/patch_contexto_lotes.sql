@@ -49,6 +49,18 @@ CREATE TABLE IF NOT EXISTS contexto.indicador_nac (
   PRIMARY KEY (ano, id_indicador)
 );
 
+CREATE TABLE IF NOT EXISTS contexto.indicador_porto (
+  ano             smallint NOT NULL,
+  nm_porto        text NOT NULL,
+  sg_uf           char(2) NOT NULL,
+  id_indicador    text NOT NULL,
+  valor           numeric,
+  ds_fonte        text NOT NULL,
+  PRIMARY KEY (ano, nm_porto, sg_uf, id_indicador)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ind_porto_ind ON contexto.indicador_porto (id_indicador, ano);
+
 COMMENT ON TABLE ctl.lote_status IS
   'Checklist lote a lote: online|parcial|nucleo|bloqueado|trilha_b. Sem lacuna silenciosa.';
 COMMENT ON TABLE contexto.indicador_mun IS

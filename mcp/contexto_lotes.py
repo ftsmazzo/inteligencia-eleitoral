@@ -430,6 +430,14 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
         ("seguranca_roubo_total", "br_mun_seguranca_patrimonial", "L5", "seguranca"),
         ("fiscal_execucao_federal_pago", "br_nac_fiscal_execucao_federal", "L4", "fiscal"),
         ("turismo_pax_origem_uf", "br_aer_turismo_malha_aerea", "L8", "turismo"),
+        ("porto_carga_t", "br_por_portos_movimentacao", "L8", "turismo"),
+        ("trabalho_caged_saldo", "br_mun_caged", "L1", "trabalho"),
+        ("energia_consumo_mwh", "br_mun_energia_consumo", "L3", "energia"),
+        ("mineracao_cfem_arrecadado", "br_mun_mineracao_producao", "L8", "mineracao"),
+        ("comex_export_fob_usd", "br_mun_comex", "L1", "comercio"),
+        ("saude_cnes_estabelecimentos", "br_mun_saude_cnes", "L7", "saude"),
+        ("educ_enem_media", "br_mun_educacao_enem", "L7", "educacao"),
+        ("prisional_populacao", "br_upr_prisional_sisdepen", "L5", "seguranca"),
     ]
     for id_ind, id_br, lote, tema in mapping:
         try:
@@ -439,9 +447,11 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
                   SELECT ano FROM contexto.indicador_mun WHERE id_indicador = %s
                   UNION ALL
                   SELECT ano FROM contexto.indicador_uf WHERE id_indicador = %s
+                  UNION ALL
+                  SELECT ano FROM contexto.indicador_porto WHERE id_indicador = %s
                 ) x
                 """,
-                (id_ind, id_ind),
+                (id_ind, id_ind, id_ind),
             ).fetchone()
             n = int(row[0] or 0)
             if n <= 0:
@@ -456,13 +466,20 @@ def _reconcile_from_indicadores(conn: psycopg.Connection) -> None:
                 "br_mun_seguranca_mulher",
                 "br_mun_seguranca_patrimonial",
                 "br_aer_turismo_malha_aerea",
+                "br_mun_energia_consumo",
+                "br_upr_prisional_sisdepen",
             ) and n < 1000:
                 _upsert_status(
                     conn, id_br, lote, tema, "parcial", "uf", n, row[1],
-                    "reconciliado", f"indicador {id_ind} UF presente; mun na fila",
+                    "reconciliado", f"indicador {id_ind} UF presente; capilaridade alvo na fila",
                 )
                 continue
-            gran = "municipio" if id_br.startswith("br_mun_") else "uf"
+            if id_br == "br_por_portos_movimentacao":
+                gran = "porto"
+            elif id_br.startswith("br_mun_"):
+                gran = "municipio"
+            else:
+                gran = "uf"
             _upsert_status(
                 conn, id_br, lote, tema, "online" if n >= 20 else "parcial", gran, n, row[1],
                 "reconciliado", f"indicador {id_ind} presente",
@@ -995,12 +1012,260 @@ def _load_siconfi_rreo_uf(conn: psycopg.Connection, ano: int = 2023) -> None:
 
 
 def _count_ind(conn: psycopg.Connection, id_ind: str, table: str = "mun") -> int:
-    sql = (
-        "SELECT count(*) FROM contexto.indicador_uf WHERE id_indicador = %s"
-        if table == "uf"
-        else "SELECT count(*) FROM contexto.indicador_mun WHERE id_indicador = %s"
-    )
+    if table == "uf":
+        sql = "SELECT count(*) FROM contexto.indicador_uf WHERE id_indicador = %s"
+    elif table == "porto":
+        sql = "SELECT count(*) FROM contexto.indicador_porto WHERE id_indicador = %s"
+    else:
+        sql = "SELECT count(*) FROM contexto.indicador_mun WHERE id_indicador = %s"
     return int(conn.execute(sql, (id_ind,)).fetchone()[0] or 0)
+
+
+def _ibge6_map(conn: psycopg.Connection) -> dict[int, int]:
+    """Mapa código IBGE 6 dígitos → 7 dígitos (ref.municipio)."""
+    out: dict[int, int] = {}
+    for (cod,) in conn.execute("SELECT cod_ibge FROM ref.municipio"):
+        c = int(cod)
+        out[c // 10] = c
+    return out
+
+
+def _load_mun6_seed_csv(
+    conn: psycopg.Connection,
+    filename: str,
+    id_ind: str,
+    id_br: str,
+    lote: str,
+    tema: str,
+    fonte: str,
+    nota: str,
+    *,
+    online_min: int = 1000,
+) -> int:
+    """Seed com cod_ibge6 (sem dígito verificador)."""
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / filename
+    if not path.exists():
+        return 0
+    m6 = _ibge6_map(conn)
+    rows: list[tuple] = []
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                cod6 = int(rec["cod_ibge6"])
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            cod = m6.get(cod6)
+            if not cod:
+                continue
+            rows.append((ano, cod, id_ind, val, "seed_csv"))
+    if not rows:
+        return 0
+    _upsert_indicador_mun(
+        conn, id_ind, rows, id_br, lote, tema, fonte, nota, online_min=online_min,
+    )
+    return len(rows)
+
+
+def _ensure_indicador_porto(conn: psycopg.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS contexto.indicador_porto (
+          ano smallint NOT NULL,
+          nm_porto text NOT NULL,
+          sg_uf char(2) NOT NULL,
+          id_indicador text NOT NULL,
+          valor numeric,
+          ds_fonte text NOT NULL,
+          PRIMARY KEY (ano, nm_porto, sg_uf, id_indicador)
+        )
+        """
+    )
+
+
+def _load_porto_from_seed(conn: psycopg.Connection) -> None:
+    import csv
+    import gzip
+
+    _ensure_indicador_porto(conn)
+    path = Path(__file__).resolve().parent / "seed" / "porto_movimentacao.csv.gz"
+    if not path.exists():
+        return
+    rows: list[tuple] = []
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                nome = str(rec["nm_porto"]).strip()
+                sg = str(rec["sg_uf"]).upper()[:2]
+                id_ind = str(rec["id_indicador"])
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not nome or len(sg) != 2:
+                continue
+            rows.append((ano, nome, sg, id_ind, val, "seed_csv"))
+    if not rows:
+        return
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM contexto.indicador_porto WHERE id_indicador IN ('porto_carga_t','porto_teu')"
+        )
+        with cur.copy(
+            "COPY contexto.indicador_porto (ano, nm_porto, sg_uf, id_indicador, valor, ds_fonte) FROM STDIN"
+        ) as copy:
+            for r in rows:
+                copy.write_row(r)
+    n_t = sum(1 for r in rows if r[3] == "porto_carga_t")
+    anos = sorted({r[0] for r in rows})
+    _upsert_status(
+        conn, "br_por_portos_movimentacao", "L8", "turismo",
+        "online" if n_t >= 50 else "parcial", "porto", n_t,
+        ",".join(str(a) for a in anos),
+        "ANTAQ Qlik/Anuário",
+        "carga t (+TEU quando houver); 2026 YTD + 2021 anuário; ausência ≠ zero",
+    )
+    print(f"[lotes] portos seed={len(rows)} carga_t={n_t}")
+
+
+def _load_caged_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_mun6_seed_csv(
+        conn, "trabalho_caged_saldo_mun.csv.gz", "trabalho_caged_saldo",
+        "br_mun_caged", "L1", "trabalho", "PDET/CAGED",
+        "saldo Jul/2026 por município; ausência ≠ zero", online_min=3000,
+    )
+    print(f"[lotes] caged seed={n}")
+
+
+def _load_energia_consumo_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_uf_seed_csv(
+        conn, "energia_consumo_uf.csv.gz", "energia_consumo_mwh",
+        "br_mun_energia_consumo", "L3", "energia", "EPE",
+        "consumo MWh agregado UF (parcial; mun na fila)", status="parcial", gran="uf",
+    )
+    print(f"[lotes] energia consumo UF seed={n}")
+
+
+def _load_cfem_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_mun_seed_csv(
+        conn, "mineracao_cfem_mun.csv.gz", "mineracao_cfem_arrecadado",
+        "br_mun_mineracao_producao", "L8", "mineracao", "ANM CFEM",
+        "ValorRecolhido CFEM agregado mun 2022–2026; sem CPF/CNPJ; ausência ≠ zero",
+        online_min=2000,
+    )
+    print(f"[lotes] cfem seed={n}")
+
+
+def _load_comex_mun_from_seed(conn: psycopg.Connection) -> None:
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / "comex_mun_2024.csv.gz"
+    if not path.exists():
+        return
+    cods = {r[0] for r in conn.execute("SELECT cod_ibge FROM ref.municipio")}
+    by_ind: dict[str, list[tuple]] = defaultdict(list)
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                cod = int(rec["cod_ibge"])
+                id_ind = str(rec["id_indicador"])
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if cod not in cods:
+                # Comex às vezes usa 7 dígitos; tentar map6
+                continue
+            by_ind[id_ind].append((ano, cod, id_ind, val, "seed_csv"))
+    if not by_ind:
+        # retry com map6 caso CO_MUN venha sem DV
+        m6 = _ibge6_map(conn)
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
+            for rec in csv.DictReader(fh):
+                try:
+                    ano = int(rec["ano"])
+                    raw = int(rec["cod_ibge"])
+                    id_ind = str(rec["id_indicador"])
+                    val = float(rec["valor"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                cod = raw if raw in cods else m6.get(raw if raw < 1000000 else raw // 10)
+                if not cod:
+                    continue
+                by_ind[id_ind].append((ano, cod, id_ind, val, "seed_csv"))
+    total = 0
+    for id_ind, rows in by_ind.items():
+        _upsert_indicador_mun(
+            conn, id_ind, rows, "br_mun_comex", "L1", "comercio", "MDIC ComexStat",
+            "FOB USD mun 2024 (export/import); ausência ≠ zero", online_min=2000,
+        )
+        total += len(rows)
+    print(f"[lotes] comex mun seed={total}")
+
+
+def _load_cnes_from_seed(conn: psycopg.Connection) -> None:
+    n = _load_mun6_seed_csv(
+        conn, "saude_cnes_estab_mun.csv.gz", "saude_cnes_estabelecimentos",
+        "br_mun_saude_cnes", "L7", "saude", "DATASUS CNES",
+        "estabelecimentos Jul/2026 por mun gestor; ausência ≠ zero", online_min=3000,
+    )
+    print(f"[lotes] cnes seed={n}")
+
+
+def _load_enem_from_seed(conn: psycopg.Connection) -> None:
+    import csv
+    import gzip
+
+    path = Path(__file__).resolve().parent / "seed" / "educ_enem_mun.csv.gz"
+    if not path.exists():
+        return
+    cods = {r[0] for r in conn.execute("SELECT cod_ibge FROM ref.municipio")}
+    by_ind: dict[str, list[tuple]] = defaultdict(list)
+    with gzip.open(path, "rt", encoding="utf-8") as fh:
+        for rec in csv.DictReader(fh):
+            try:
+                ano = int(rec["ano"])
+                cod = int(rec["cod_ibge"])
+                id_ind = str(rec["id_indicador"])
+                val = float(rec["valor"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if cod not in cods:
+                continue
+            by_ind[id_ind].append((ano, cod, id_ind, val, "seed_csv"))
+    total = 0
+    for id_ind, rows in by_ind.items():
+        _upsert_indicador_mun(
+            conn, id_ind, rows, "br_mun_educacao_enem", "L7", "educacao", "INEP ENEM",
+            "média notas e inscritos por mun prova 2024; ausência ≠ zero", online_min=1000,
+        )
+        total += len(rows)
+    print(f"[lotes] enem seed={total}")
+
+
+def _load_sisdepen_from_seed(conn: psycopg.Connection) -> None:
+    n_uf = _load_uf_seed_csv(
+        conn, "prisional_pop_uf.csv.gz", "prisional_populacao",
+        "br_upr_prisional_sisdepen", "L5", "seguranca", "MJ SISDEPEN",
+        "população prisional agregada UF 2025; unidade na fila", status="parcial", gran="uf",
+    )
+    n_mun = _load_mun_seed_csv(
+        conn, "prisional_pop_mun.csv.gz", "prisional_populacao_mun",
+        "br_upr_prisional_sisdepen", "L5", "seguranca", "MJ SISDEPEN",
+        "população prisional agregada mun 2025; unidade na fila", online_min=5000,
+    )
+    # status honesto: parcial (granularidade alvo = unidade)
+    _upsert_status(
+        conn, "br_upr_prisional_sisdepen", "L5", "seguranca", "parcial", "uf",
+        n_uf, "2025", "MJ SISDEPEN",
+        f"pop UF={n_uf} mun={n_mun}; unidade prisional na fila; ausência ≠ zero",
+    )
+    print(f"[lotes] sisdepen seed uf={n_uf} mun={n_mun}")
 
 
 def _load_l2(conn: psycopg.Connection) -> None:
@@ -1557,6 +1822,14 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("roubo", _load_roubo_from_seed, "seguranca_roubo_total", "uf", 20),
         ("exec_fed", _load_execucao_federal_from_seed, "fiscal_execucao_federal_pago", "uf", 20),
         ("malha_aerea", _load_malha_aerea_from_seed, "turismo_pax_origem_uf", "uf", 20),
+        ("portos", _load_porto_from_seed, "porto_carga_t", "porto", 50),
+        ("caged", _load_caged_from_seed, "trabalho_caged_saldo", "mun", 3000),
+        ("energia_cons", _load_energia_consumo_from_seed, "energia_consumo_mwh", "uf", 20),
+        ("cfem", _load_cfem_from_seed, "mineracao_cfem_arrecadado", "mun", 2000),
+        ("comex_mun", _load_comex_mun_from_seed, "comex_export_fob_usd", "mun", 2000),
+        ("cnes", _load_cnes_from_seed, "saude_cnes_estabelecimentos", "mun", 3000),
+        ("enem", _load_enem_from_seed, "educ_enem_media", "mun", 1000),
+        ("sisdepen", _load_sisdepen_from_seed, "prisional_populacao", "uf", 20),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
@@ -1594,6 +1867,14 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
                 "roubo": ("br_mun_seguranca_patrimonial", "L5", "seguranca", "uf"),
                 "exec_fed": ("br_nac_fiscal_execucao_federal", "L4", "fiscal", "uf"),
                 "malha_aerea": ("br_aer_turismo_malha_aerea", "L8", "turismo", "uf"),
+                "portos": ("br_por_portos_movimentacao", "L8", "turismo", "porto"),
+                "caged": ("br_mun_caged", "L1", "trabalho", "municipio"),
+                "energia_cons": ("br_mun_energia_consumo", "L3", "energia", "uf"),
+                "cfem": ("br_mun_mineracao_producao", "L8", "mineracao", "municipio"),
+                "comex_mun": ("br_mun_comex", "L1", "comercio", "municipio"),
+                "cnes": ("br_mun_saude_cnes", "L7", "saude", "municipio"),
+                "enem": ("br_mun_educacao_enem", "L7", "educacao", "municipio"),
+                "sisdepen": ("br_upr_prisional_sisdepen", "L5", "seguranca", "uf"),
             }
             if label in id_map:
                 id_br, lote, tema, gran = id_map[label]
