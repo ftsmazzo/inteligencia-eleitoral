@@ -697,6 +697,18 @@ def db() -> psycopg.Connection:
     return psycopg.connect(url)
 
 
+def db_trilha_a() -> psycopg.Connection:
+    """Leitura Trilha A (eleicao.*) — admin se disponível (perfil rico / motor)."""
+    url = (
+        os.environ.get("POSTGRES_ADMIN_URL")
+        or os.environ.get("AGENTE_DATABASE_URL")
+        or os.environ.get("DATABASE_URL")
+    )
+    if not url:
+        raise HTTPException(500, "DATABASE_URL ausente")
+    return psycopg.connect(url)
+
+
 class MunicipioIn(BaseModel):
     nome: str
     uf: str | None = None
@@ -1314,7 +1326,7 @@ def perfil_eleitor_http(
         label = next((c["label"] for c in CARGOS if c["cd_cargo"] == cd), cargo_key)
 
     uf = body.uf.strip().upper()
-    with db() as conn:
+    with db_trilha_a() as conn:
         try:
             doc = montar_perfil_eleitor(
                 conn, uf=uf, cd_cargo=int(cd), cargo_label=label
