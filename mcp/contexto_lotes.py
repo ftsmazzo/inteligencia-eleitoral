@@ -1829,7 +1829,7 @@ def _load_light_sync(conn: psycopg.Connection) -> None:
         ("comex_mun", _load_comex_mun_from_seed, "comex_export_fob_usd", "mun", 2000),
         ("cnes", _load_cnes_from_seed, "saude_cnes_estabelecimentos", "mun", 3000),
         ("enem", _load_enem_from_seed, "educ_enem_media", "mun", 1000),
-        ("sisdepen", _load_sisdepen_from_seed, "prisional_populacao", "uf", 20),
+        ("sisdepen", _load_sisdepen_from_seed, "prisional_populacao", "uf", 9999),
     ):
         try:
             if _count_ind(conn, id_ind, tbl) >= min_n:
