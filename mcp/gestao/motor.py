@@ -795,6 +795,7 @@ def gerar_blocos_por_status(conn: psycopg.Connection, st: dict[str, Any]) -> dic
         lambda: montar_perfil_eleitor(
             conn,
             uf=uf or "",
+            ufs=st.get("ufs") or ([uf] if uf else None),
             cd_cargo=cd,
             cargo_label=st.get("cargo_label") or _cargo_label(cd),
         ),

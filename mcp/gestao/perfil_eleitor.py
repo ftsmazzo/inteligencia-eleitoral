@@ -255,7 +255,107 @@ def _delta_shares(
     return [t for _, t in deltas[:5]]
 
 
+def _agrega_dim_ufs(
+    conn: psycopg.Connection,
+    ano: int,
+    ufs: list[str],
+    coluna: str,
+    top: int = 8,
+) -> list[tuple[str, int]]:
+    if coluna not in ("ds_genero", "ds_faixa_etaria", "ds_grau_escolaridade"):
+        raise ValueError("dimensao invalida")
+    rows = conn.execute(
+        f"""
+        SELECT COALESCE(NULLIF(TRIM({coluna}), ''), '(não informado)'),
+               SUM(qt_eleitores)::bigint
+        FROM eleicao.eleitorado
+        WHERE ano = %s AND sg_uf = ANY(%s)
+        GROUP BY 1
+        ORDER BY 2 DESC NULLS LAST
+        LIMIT %s
+        """,
+        (ano, ufs, top),
+    ).fetchall()
+    return [(str(r[0]), int(r[1] or 0)) for r in rows]
+
+
+def _total_eleitores_ufs(conn: psycopg.Connection, ano: int, ufs: list[str]) -> int:
+    row = conn.execute(
+        """
+        SELECT COALESCE(SUM(qt_eleitores)::bigint, 0)
+        FROM eleicao.eleitorado
+        WHERE ano = %s AND sg_uf = ANY(%s)
+        """,
+        (ano, ufs),
+    ).fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+def _perfil_demo_ufs(
+    conn: psycopg.Connection, ano: int, ufs: list[str]
+) -> dict[str, Any]:
+    total = _total_eleitores_ufs(conn, ano, ufs)
+    return {
+        "ano": ano,
+        "total": total,
+        "genero": _agrega_dim_ufs(conn, ano, ufs, "ds_genero"),
+        "faixa_etaria": _agrega_dim_ufs(conn, ano, ufs, "ds_faixa_etaria", top=10),
+        "escolaridade": _agrega_dim_ufs(conn, ano, ufs, "ds_grau_escolaridade", top=10),
+    }
+
+
+def _top_municipios_ufs(
+    conn: psycopg.Connection, ano: int, ufs: list[str], limite: int = 12
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT e.sg_uf,
+               e.cd_municipio_tse,
+               COALESCE(m.nome, e.cd_municipio_tse::text),
+               SUM(e.qt_eleitores)::bigint
+        FROM eleicao.eleitorado e
+        LEFT JOIN ref.municipio m ON m.cd_municipio_tse = e.cd_municipio_tse
+        WHERE e.ano = %s AND e.sg_uf = ANY(%s)
+        GROUP BY e.sg_uf, e.cd_municipio_tse, m.nome
+        ORDER BY SUM(e.qt_eleitores) DESC NULLS LAST
+        LIMIT %s
+        """,
+        (ano, ufs, limite),
+    ).fetchall()
+    return [
+        {
+            "uf": str(r[0]),
+            "cd_municipio_tse": int(r[1]),
+            "nome": r[2],
+            "eleitores": int(r[3] or 0),
+        }
+        for r in rows
+    ]
+
+
 def montar_perfil_eleitor(
+    conn: psycopg.Connection,
+    *,
+    uf: str = "",
+    ufs: list[str] | None = None,
+    cd_cargo: int,
+    cargo_label: str,
+) -> dict[str, Any]:
+    lista = [str(u).upper()[:2] for u in (ufs or []) if u]
+    if not lista and uf:
+        lista = [str(uf).upper()[:2]]
+    if not lista:
+        raise ValueError("UF ou ufs[] obrigatório para Perfil eleitoral")
+    if len(lista) == 1:
+        return _montar_perfil_uma_uf(
+            conn, uf=lista[0], cd_cargo=cd_cargo, cargo_label=cargo_label
+        )
+    return _montar_perfil_recorte(
+        conn, ufs=lista, cd_cargo=cd_cargo, cargo_label=cargo_label
+    )
+
+
+def _montar_perfil_uma_uf(
     conn: psycopg.Connection,
     *,
     uf: str,
@@ -371,10 +471,106 @@ def montar_perfil_eleitor(
         "meta": {
             "contrato": "perfil_eleitor_v2",
             "uf": uf,
+            "ufs": [uf],
             "ano_ancora": ano_ancora,
             "cd_cargo": cargo_mapa,
             "apontamentos_2024": apontar_2024,
             "municipios": len(muns),
             "campeao_uf": campeao_uf,
+        },
+    }
+
+
+def _montar_perfil_recorte(
+    conn: psycopg.Connection,
+    *,
+    ufs: list[str],
+    cd_cargo: int,
+    cargo_label: str,
+) -> dict[str, Any]:
+    """Perfil agregado do recorte (ex.: 9 UFs do Nordeste)."""
+    cargo_mapa = 11 if cd_cargo == 12 else cd_cargo
+    ano_ancora = _ANCORA_CARGO.get(cargo_mapa) or 2022
+    municipal = cargo_mapa in _CARGOS_MUNICIPAIS
+    apontar_2024 = (not municipal) and ano_ancora != 2024
+    rotulo = f"{len(ufs)} UFs ({', '.join(ufs)})"
+
+    demo = _perfil_demo_ufs(conn, ano_ancora, ufs)
+    demo_2024 = _perfil_demo_ufs(conn, 2024, ufs) if apontar_2024 else None
+    campeoes = []
+    for u in ufs:
+        c = _campeao_uf(conn, ano_ancora, cargo_mapa, u)
+        campeoes.append({"uf": u, **(c or {"partido": None, "nome": None})})
+    muns = _top_municipios_ufs(conn, ano_ancora, ufs, limite=12)
+
+    linhas: list[str] = [
+        f"Perfil eleitoral — recorte {rotulo} · âncora {ano_ancora} ({cargo_label}).",
+        "Fonte: Trilha A (eleicao.eleitorado + eleicao.votacao). "
+        "Não usa dossiê nem voto do candidato da campanha.",
+        "Demografia = soma das UFs do escopo. Campeão = eleito na urna em cada UF.",
+        "",
+        f"## Recorte ({rotulo})",
+    ]
+    linhas.extend(_linhas_demo(demo))
+    linhas += ["", "## Campeão por UF"]
+    for u in ufs:
+        c = _campeao_uf(conn, ano_ancora, cargo_mapa, u)
+        if c:
+            linhas.append(
+                f"- {u}: {c['partido']} — {c['nome']} "
+                f"({_fmt_n(c['votos'])} votos, turno {c['turno']})."
+            )
+        else:
+            linhas.append(f"- {u}: inexistente neste filtro.")
+
+    if apontar_2024 and demo_2024 and demo_2024.get("total"):
+        linhas += ["", "### Apontamentos 2024 (cadastro municipal no recorte)"]
+        t0, t1 = demo["total"], demo_2024["total"]
+        if t0 and t1:
+            var = 100.0 * (t1 - t0) / t0
+            linhas.append(
+                f"- Eleitorado recorte: {_fmt_n(t0)} ({ano_ancora}) → {_fmt_n(t1)} (2024) "
+                f"({var:+.1f}%).".replace(".", ",")
+            )
+
+    linhas += ["", "## Municípios (maiores eleitorados no recorte)"]
+    for mun in muns:
+        uf_m = mun["uf"]
+        cd = mun["cd_municipio_tse"]
+        turno = _turno_final(conn, ano_ancora, cargo_mapa, uf_m)
+        demo_m = _perfil_demo(conn, ano_ancora, uf_m, cd)
+        camp_m = _campeao_mun(conn, ano_ancora, cargo_mapa, uf_m, cd, turno)
+        linhas.append(f"### {mun['nome']} ({uf_m})")
+        linhas.extend(_linhas_demo(demo_m))
+        if camp_m:
+            linhas.append(
+                f"- Campeão local {ano_ancora} ({cargo_label}): {camp_m['partido']} — "
+                f"{camp_m['nome']} ({_fmt_n(camp_m['votos'])} votos, turno {camp_m['turno']})."
+            )
+        else:
+            linhas.append(f"- Campeão local {ano_ancora}: inexistente neste filtro.")
+
+    linhas += [
+        "",
+        "## Nota de leitura",
+        "- Este bloco descreve o eleitorado do recorte (soma das UFs) e quem venceu em cada UF.",
+        "- Não afirma quem é o eleitor do candidato da campanha.",
+        "- Não rateia UF→município além dos municípios listados com dado próprio.",
+    ]
+
+    return {
+        "titulo": f"Perfil eleitoral — {len(ufs)} UFs · {ano_ancora}",
+        "corpo": "\n".join(linhas),
+        "fonte": "eleicao.eleitorado + eleicao.votacao (Trilha A)",
+        "nivel": "fato",
+        "meta": {
+            "contrato": "perfil_eleitor_v2_recorte",
+            "ufs": ufs,
+            "ano_ancora": ano_ancora,
+            "cd_cargo": cargo_mapa,
+            "apontamentos_2024": apontar_2024,
+            "municipios": len(muns),
+            "campeoes_uf": campeoes,
+            "eleitorado_total": demo.get("total"),
         },
     }

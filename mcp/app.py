@@ -774,6 +774,7 @@ class MotorBaseIn(BaseModel):
     ano_ref: int
     cargo: str
     uf: str | None = None
+    ufs: list[str] | None = None
     sq_candidato: int
     nm_candidato: str | None = None
     nm_urna: str | None = None
@@ -1382,13 +1383,15 @@ def motor_base_http(
         raise HTTPException(400, "cargo inválido")
 
     uf = (body.uf or "").strip().upper() or None
-    if cargo_key != "presidente" and (not uf or len(uf) != 2):
+    ufs_body = [str(u).strip().upper()[:2] for u in (body.ufs or []) if str(u).strip()]
+    if cargo_key != "presidente" and (not uf or len(uf) != 2) and not ufs_body:
         raise HTTPException(400, "UF obrigatória para este cargo")
 
     st = {
         "ano_ref": int(body.ano_ref),
         "cd_cargo": cd,
-        "sg_uf": uf,
+        "sg_uf": uf or (ufs_body[0] if ufs_body else None),
+        "ufs": ufs_body or ([uf] if uf else []),
         "sq_candidato": int(body.sq_candidato),
         "nm_candidato": body.nm_candidato or body.nm_urna or "",
         "nm_urna": body.nm_urna or body.nm_candidato or "",
