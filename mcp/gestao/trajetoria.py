@@ -418,6 +418,7 @@ def montar_trajetoria(
             "candidato": nome,
             "n_registros": len(historico),
             "n_passados": len(passadas),
+            "registros": historico[:20],
         },
         "registros": historico,
     }

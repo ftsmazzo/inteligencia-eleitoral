@@ -539,7 +539,19 @@ def _montar_itens_motor(
             "corpo": corp_c,
             "fonte": "eleicao.candidatura",
             "nivel": "fato",
-            "meta": {"n": len(conc)},
+            "meta": {
+                "n": len(conc),
+                "itens": [
+                    {
+                        "nome": c.get("nm_urna"),
+                        "partido": c.get("sg_partido"),
+                        "numero": str(c.get("nr_candidato") or ""),
+                        "situacao": c.get("ds_situacao"),
+                        "sq": c.get("sq_candidato"),
+                    }
+                    for c in conc[:50]
+                ],
+            },
         }
     )
 
@@ -554,6 +566,11 @@ def _montar_itens_motor(
             "Inexistente votos nominais do próprio candidato em anos anteriores "
             "(use mapa do cargo + prefeitos + fichas).\n"
         )
+    meta_v = dict(meta_votos or {})
+    meta_v["votos"] = [
+        {"municipio": v.get("municipio"), "votos": v.get("votos"), "rotulo": v.get("municipio"), "valor": v.get("votos")}
+        for v in (votos or [])[:40]
+    ]
     itens.append(
         {
             "tipo": "base_votos",
@@ -561,7 +578,7 @@ def _montar_itens_motor(
             "corpo": corp_v,
             "fonte": "eleicao.votacao",
             "nivel": "fato",
-            "meta": meta_votos,
+            "meta": meta_v,
         }
     )
 
@@ -584,7 +601,11 @@ def _montar_itens_motor(
             "corpo": corp_m,
             "fonte": "eleicao.votacao + api._eh_eleito",
             "nivel": "fato",
-            "meta": {"ano": mapa.get("ano"), "n": len(mapa.get("linhas") or [])},
+            "meta": {
+                "ano": mapa.get("ano"),
+                "n": len(mapa.get("linhas") or []),
+                "linhas": (mapa.get("linhas") or [])[:40],
+            },
         }
     )
 
@@ -610,6 +631,8 @@ def _montar_itens_motor(
             "meta": {
                 "total_eleitos": pref.get("total_eleitos"),
                 "aliados": len(pref.get("aliados_partido") or []),
+                "aliados_partido": pref.get("aliados_partido") or [],
+                "outros": (pref.get("outros") or [])[:80],
             },
         }
     )

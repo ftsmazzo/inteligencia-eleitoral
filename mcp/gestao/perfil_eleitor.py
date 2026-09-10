@@ -477,6 +477,11 @@ def _montar_perfil_uma_uf(
             "apontamentos_2024": apontar_2024,
             "municipios": len(muns),
             "campeao_uf": campeao_uf,
+            "eleitorado_total": demo_uf.get("total"),
+            "genero": demo_uf.get("genero") or [],
+            "faixa_etaria": demo_uf.get("faixa_etaria") or [],
+            "escolaridade": demo_uf.get("escolaridade") or [],
+            "top_municipios": muns[:12],
         },
     }
 
@@ -572,5 +577,9 @@ def _montar_perfil_recorte(
             "municipios": len(muns),
             "campeoes_uf": campeoes,
             "eleitorado_total": demo.get("total"),
+            "genero": demo.get("genero") or [],
+            "faixa_etaria": demo.get("faixa_etaria") or [],
+            "escolaridade": demo.get("escolaridade") or [],
+            "top_municipios": muns[:12],
         },
     }
